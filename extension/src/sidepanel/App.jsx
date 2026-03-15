@@ -158,10 +158,9 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked }) => {
             <span className={`w-1.5 h-1.5 rounded-full transition-colors ${isBookmarked ? 'bg-amber-600' : 'bg-amber-400 group-hover:bg-amber-500'}`}></span>
           )}
           {isYouTube ? youtubeTimestamp : (
-            block?.metadata?.title ? getSourceHandle(block.metadata.title) :
-              (isBookmarked ? 'Saved' :
-                (citation.blockId.startsWith('pin-') ? citation.blockId.split('-')[1] : 'Source'))
-          )} {!isYouTube ? citation.blockId.replace(/^(bi-block-|nb-block-|db-block-|pin-[A-Z0-9]+-)/, '') : ''}
+            (isBookmarked ? 'Saved' :
+              (citation.blockId.startsWith('pin-') ? 'Source' : 'Source'))
+          )} {!isYouTube ? (citation.blockId.match(/\d+$/)?.[0] || citation.blockId.replace(/^(bi-block-|nb-block-|db-block-|pin-[A-Z0-9]+-)/, '')) : ''}
         </button>
       </HoverCard.Trigger>
       <HoverCard.Portal>
@@ -1464,7 +1463,7 @@ function App() {
           if ((activeContext?.type === 'url' || !activeContext) && !queryNotebook) {
             const extResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
             if (extResponse && extResponse.data) {
-              blocks = extResponse.data.blocks;
+              blocks = extResponse.data.blocks.map(b => ({ ...b, url: currentUrl }));
               setContentBlocks(blocks); // Update state for Hover Cards
             }
           }
@@ -2250,26 +2249,37 @@ function App() {
                       flexWrap: 'wrap',
                       gap: '8px'
                     }}>
-                      {msg.citations.map((cite, i) => {
-                        // Merge live blocks with pinned tab blocks to resolve all possible citations
-                        const allAvailableBlocks = [
-                          ...(contentBlocks || []),
-                          ...pinnedTabs.flatMap(t => t.blocks || [])
-                        ];
-                        const isBookmarked = bookmarks.some(b => {
+                      {msg.citations
+                        .filter(cite => {
+                          const allAvailableBlocks = [
+                            ...(contentBlocks || []),
+                            ...pinnedTabs.flatMap(t => t.blocks || [])
+                          ];
                           const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
-                          return b.content === block?.text;
-                        });
-                        return (
-                          <CitationHoverCard
-                            key={i}
-                            citation={cite}
-                            blocks={allAvailableBlocks}
-                            onSave={handleSaveBookmark}
-                            isBookmarked={isBookmarked}
-                          />
-                        );
-                      })}
+                          // If currentUrl is set, filter by it. Otherwise show all.
+                          // Match by source URL or blocks from current window
+                          return !currentUrl || block?.url === currentUrl || block?.sourceURL === currentUrl;
+                        })
+                        .map((cite, i) => {
+                          // Merge live blocks with pinned tab blocks to resolve all possible citations
+                          const allAvailableBlocks = [
+                            ...(contentBlocks || []),
+                            ...pinnedTabs.flatMap(t => t.blocks || [])
+                          ];
+                          const isBookmarked = bookmarks.some(b => {
+                            const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
+                            return b.content === block?.text;
+                          });
+                          return (
+                            <CitationHoverCard
+                              key={i}
+                              citation={cite}
+                              blocks={allAvailableBlocks}
+                              onSave={handleSaveBookmark}
+                              isBookmarked={isBookmarked}
+                            />
+                          );
+                        })}
                     </div>
                   )}
 
@@ -2439,7 +2449,11 @@ function App() {
                 }
                 const handle = getSourceHandle(currentTabTitle);
                 const pinId = `pin-${handle}-`;
-                const blocksWithUniqueIds = blocks.map(b => ({ ...b, id: pinId + b.id.replace(/^bi-block-/, '') }));
+                const blocksWithUniqueIds = blocks.map(b => ({ 
+                  ...b, 
+                  id: pinId + b.id.replace(/^bi-block-/, ''),
+                  url: currentUrl // Inject URL for filtering
+                }));
                 setPinnedTabs(prev => [...prev, { title: currentTabTitle || 'Pinned Tab', url: currentUrl, blocks: blocksWithUniqueIds }]);
                 toast.success("Tab pinned for Multi-Tab AI");
               }}
