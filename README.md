@@ -56,15 +56,13 @@ We use a custom PostgreSQL function `hybrid_search_documents` that implements a 
 
 ## 🏎️ Parser Ecosystem
 
-SnapMind supports a wide array of sources through its specialized parsing layer (`backend/*_parser.py`):
+SnapMind supports diverse sources through its specialized parsing layer (`backend/*_parser.py`):
 
-| Source Type | Technology | Logic |
+| Source Type | Status | Technology |
 | :--- | :--- | :--- |
-| **YouTube** | `pytubefix` + `Invidious` | Extracts high-res transcripts, timestamps, and AI-generated video summaries. |
-| **PDF/DOCX/CSV** | `python-docx` / `PyPDF2` | Ingests complex local documentation into the cloud vector store. |
-| **GitHub** | `git` / `scrapers` | Clones and semantically indexes entire repositories for "Chat with Code" mode. |
-| **Notion** | `Notion API` | Experimental support for syncing and searching private workspaces. |
-| **Twitter (X)** | `scrapers` | Indexes tweet threads and keeps track of viral conversations. |
+| **YouTube** | 🚧 *Under Construction* | `pytubefix` + `Invidious` |
+| **PDF/DOCX/CSV** | ✅ *Stable* | `python-docx` / `PyPDF2` |
+| **GitHub** | ✅ *Stable* | `git / scrapers` |
 
 ---
 
@@ -77,36 +75,29 @@ SnapMind supports a wide array of sources through its specialized parsing layer 
 
 ---
 
-## 🚀 Deployment Guide
+## 🚀 Getting Started
 
-### 1. Database Setup (Supabase)
-Run the initialization script in the Supabase SQL Editor:
-```bash
-# Found in: backend/supabase_setup.sql
-# 1. Enable pgvector extension
-# 2. Create tables, indexes, and hybrid search functions
-```
+The backend is already live on Hugging Face. Follow these steps to set up the extension locally:
 
-### 2. Backend Config
-Rename `.env.example` to `.env` and provide your keys:
-- `DATABASE_URL`: Your Supabase connection string.
-- `GOOGLE_API_KEY`: For Gemini embeddings.
-- `MISTRAL_API_KEY`: For the reasoning agent.
-- `FIRECRAWL_API_KEY`: For advanced web scraping.
+### 🏗️ Extension Configuration
 
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
-
-### 3. Extension Setup
-```bash
-cd extension
-npm install
-npm run build
-```
-Load the `dist/` folder via Chrome's `Developer mode` in `chrome://extensions`.
+1.  **Navigate** to the `extension/` directory.
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+3.  **Build the extension**:
+    ```bash
+    npm run build
+    ```
+4.  **Load into Chrome**:
+    - Open Chrome and navigate to `chrome://extensions/`.
+    - Enable **Developer mode**.
+    - Click **Load unpacked** and select the `extension/dist` folder.
+5.  **Set Server URL**:
+    - Open the SnapMind sidepanel.
+    - Go to **Settings**.
+    - Ensure the **Server URL** is: `https://roshan123478-snapmind-backend.hf.space`
 
 ---
 
