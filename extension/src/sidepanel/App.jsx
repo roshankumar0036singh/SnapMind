@@ -2249,37 +2249,35 @@ function App() {
                       flexWrap: 'wrap',
                       gap: '8px'
                     }}>
-                      {msg.citations
-                        .filter(cite => {
-                          const allAvailableBlocks = [
-                            ...(contentBlocks || []),
-                            ...pinnedTabs.flatMap(t => t.blocks || [])
-                          ];
-                          const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
-                          // If currentUrl is set, filter by it. Otherwise show all.
-                          // Match by source URL or blocks from current window
-                          return !currentUrl || block?.url === currentUrl || block?.sourceURL === currentUrl;
-                        })
-                        .map((cite, i) => {
-                          // Merge live blocks with pinned tab blocks to resolve all possible citations
-                          const allAvailableBlocks = [
-                            ...(contentBlocks || []),
-                            ...pinnedTabs.flatMap(t => t.blocks || [])
-                          ];
-                          const isBookmarked = bookmarks.some(b => {
+                      {(() => {
+                        const allAvailableBlocks = [
+                          ...(contentBlocks || []),
+                          ...pinnedTabs.flatMap(t => t.blocks || [])
+                        ];
+                        return msg.citations
+                          .filter(cite => {
                             const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
-                            return b.content === block?.text;
+                            // If currentUrl is set, filter by it. 
+                            // ALSO: Always show citations from ANY pinned tab (important for comparisons)
+                            const isPinned = pinnedTabs.some(t => t.url === block?.url || t.url === block?.sourceURL);
+                            return isPinned || !currentUrl || block?.url === currentUrl || block?.sourceURL === currentUrl;
+                          })
+                          .map((cite, i) => {
+                            const isBookmarked = bookmarks.some(b => {
+                              const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
+                              return b.content === block?.text;
+                            });
+                            return (
+                              <CitationHoverCard
+                                key={i}
+                                citation={cite}
+                                blocks={allAvailableBlocks}
+                                onSave={handleSaveBookmark}
+                                isBookmarked={isBookmarked}
+                              />
+                            );
                           });
-                          return (
-                            <CitationHoverCard
-                              key={i}
-                              citation={cite}
-                              blocks={allAvailableBlocks}
-                              onSave={handleSaveBookmark}
-                              isBookmarked={isBookmarked}
-                            />
-                          );
-                        })}
+                      })()}
                     </div>
                   )}
 

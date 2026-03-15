@@ -37,6 +37,12 @@ export default function MermaidChart({ chart }) {
                     cleanChart = cleanChart.substring(8).trim();
                 }
 
+                // [NEW] Sanitize labels: wrap labels containing parentheses in quotes if not already quoted
+                // This fixes errors like: id[Label (with parens)] -> id["Label (with parens)"]
+                cleanChart = cleanChart.replace(/(\w+)\s*\[([^"\]]*\([^"\]]*\)[^"\]]*)\]/g, '$1["$2"]');
+                cleanChart = cleanChart.replace(/(\w+)\s*\(([^"\]]*\([^"\]]*\)[^"\]]*)\)/g, '$1("$2")');
+                cleanChart = cleanChart.replace(/(\w+)\s*\{([^"\]]*\([^"\]]*\)[^"\]]*)\}/g, '$1{"$2"}');
+
                 // First attempt to parse it strictly to catch syntax errors
                 if (await mermaid.parse(cleanChart)) {
                     const id = `mermaid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
