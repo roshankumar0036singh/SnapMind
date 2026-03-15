@@ -122,7 +122,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked }) => {
                       setTimeout(() => {
                         chrome.tabs.sendMessage(targetTab.id, {
                           type: 'HIGHLIGHT_CITATION',
-                          blockId: citation.blockId
+                          blockId: citation.blockId.replace(/^pin-[A-Z0-9]+-/, 'bi-block-')
                         });
                       }, 300);
                     });
