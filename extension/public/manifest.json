@@ -1,0 +1,44 @@
+{
+    "manifest_version": 3,
+    "name": "SnapMind Context Intelligence",
+    "version": "1.0.0",
+    "description": "Browser RAG Assistant with Visual and Text modes",
+    "permissions": [
+        "sidePanel",
+        "activeTab",
+        "scripting",
+        "storage",
+        "contextMenus"
+    ],
+    "host_permissions": [
+        "<all_urls>",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+    ],
+    "side_panel": {
+        "default_path": "src/sidepanel/index.html"
+    },
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "action": {
+        "default_title": "Open Assistant"
+    },
+    "icons": {
+        "16": "vite.svg",
+        "48": "vite.svg",
+        "128": "vite.svg"
+    }
+}
