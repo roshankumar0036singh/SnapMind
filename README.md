@@ -1,201 +1,122 @@
-# SnapMind - Browser RAG Assistant
+# 🧠 SnapMind: The Autonomous Browser Research Agent
 
-**SnapMind** is a production-grade RAG (Retrieval-Augmented Generation) system designed to run as a browser extension. It turns your browser into a context-aware AI assistant that remembers what you've read, allowing you to chat with webpages, documentation, and images using advanced LLMs and hybrid search technology.
+[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
+[![Gemini](https://img.shields.io/badge/Gemini_2.0-8E75B2?style=for-the-badge&logo=google-cloud&logoColor=white)](https://deepmind.google/technologies/gemini/)
+[![Vector DB](https://img.shields.io/badge/pgvector-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 
-## 🏗️ Architecture Overview
-
-The system follows a modern microservices architecture optimized for latency and retrieval accuracy.
-
-```mermaid
-graph TD
-    %% Nodes
-    User([User / Browser Tab])
-    
-    subgraph "Chrome Extension (Frontend)"
-        SidePanel[Side Panel UI]
-        Background[Background Service]
-        ContentScript[Content Script]
-    end
-    
-    subgraph "Backend (Python/FastAPI)"
-        API[FastAPI Server]
-        
-        subgraph "Pipeline"
-            Chunker[Semantic Chunker]
-            Embedder[Parallel Embedder]
-            Search[Hybrid Search Engine]
-        end
-        
-        subgraph "AI Services"
-            Vision[Vision Analysis]
-            LLM_Gen[Mistral Agent]
-        end
-    end
-    
-    subgraph "Data & Infrastructure"
-        DB[(Supabase / pgvector)]
-        Firecrawl[Firecrawl API]
-        Gemini[Google Gemini API]
-    end
-
-    %% Application Flow
-    User <-->|React UI| SidePanel
-    User -->|Reads| ContentScript
-    
-    %% Ingestion Flow
-    SidePanel --"/ingest"--> API
-    API --> Firecrawl
-    Firecrawl -->|Markdown| Chunker
-    Chunker -->|Chunks| Embedder
-    Embedder -->|Vectors| Gemini
-    Embedder -->|Store| DB
-    
-    %% Search Flow
-    SidePanel --"/chat"--> API
-    API --> Search
-    Search --"Hybrid (Vector + BM25)"--> DB
-    DB -->|Context| LLM_Gen
-    LLM_Gen -->|Answer| API
-    
-    %% Vision Flow
-    SidePanel --"/analyze-image"--> API
-    API --> Vision
-    Vision --> Gemini
-```
+**SnapMind** is a production-grade, autonomous RAG (Retrieval-Augmented Generation) ecosystem designed to turn your browser into a context-aware research powerhouse. It doesn't just "chat" with pages—it understands, indexes, and builds a semantic relationship map of your entire knowledge base.
 
 ---
 
-## 🚀 Core Features & Technical Implementation
+## 🏗️ System Architecture
 
-### 1. Advanced Ingestion Pipeline
-The ingestion system (`backend/rag_pipeline.py`) is robust and handles complex web content.
-*   **Crawler**: Uses **Firecrawl** to convert webpages into clean Markdown, stripping noise (headers, footers).
-*   **Semantic Chunking** (`backend/chunking.py`): 
-    *   Preserves **Code Blocks** (`` ``` ``) and **Tables** intact.
-    *   Splits by **Markdown Headers** (#, ##, ###) to maintain logical sections.
-    *   Uses intelligent overlap (20%) to prevent context loss at boundaries.
-*   **Parallel Embedding**: Uses `concurrent.futures` to embed chunks in parallel using **Google Gemini 2.0 Flash**, significantly reducing ingestion time.
+SnapMind is composed of three primary layers, optimized for low-latency retrieval and high-precision generation.
 
-### 2. Hybrid Search Engine (Vector + Keyword)
-Retrieval is handled by a custom PostgreSQL function (`backend/database_migration_phase2.sql`).
-*   **Vector Search**: Uses `pgvector` with Cosine Similarity to find semantic matches.
-*   **Keyword Search**: Uses PostgreSQL's `tsvector` and `ts_rank` (BM25 algorithm) for exact localized matches.
-*   **RRF Fusion**: Combines scores using Reciprocal Rank Fusion:
-    $$ Score = (Vector \times 0.7) + (Keyword \times 0.3) $$
+### 1. The Frontier (Chrome Extension)
+- **Sidepanel UI**: Built with React and Vite, featuring a glassmorphism design and real-time LLM streaming.
+- **Background Service**: Manages the API orchestrator and handles complex multi-step ingestion flows.
+- **Content Script**: Performs on-the-fly DOM analysis and content extraction for "Live Chat" features.
 
-### 3. Vision & Multimodal Analysis
-*   **Gemini Vision Integration**: analyzed images are processed server-side (`backend/vision.py`).
-*   **Modes**:
-    *   `qa`: General Question Answering about the image.
-    *   `extraction`: OCR and structured data extraction from screenshots.
+### 2. The Intelligence Hub (FastAPI Backend)
+- **Streaming RAG**: Uses NDJSON communication for token-by-token response rendering.
+- **Semantic Dispatcher**: Routes queries through Hybrid Search, Reranking, and Context Optimization pipelines.
+- **Vision Engine**: Specialized multimodal processing for diagrams and data-heavy screenshots.
 
-### 4. Streaming Responses
-*   Uses **server-sent events (NDJSON)** to stream LLM tokens to the frontend in real-time, providing a snappy user experience.
+### 3. The Infrastructure (Supabase & External APIs)
+- **Supabase (PostgreSQL + pgvector)**: Handles persistent storage for vector embeddings, relational metadata, and knowledge graph nodes.
+- **LLM Ensemble**: Orchestrates **Gemini 2.0 Flash** for high-speed embeddings/vision and **Mistral** for nuanced agentic reasoning.
+- **Scraper Service**: Utilizes **Firecrawl** and custom parsers for clean markdown conversion.
 
 ---
 
-## 🔌 API Reference (Backend)
+## 🛠️ Data Model & Infrastructure (Supabase)
 
-The backend runs on `http://127.0.0.1:8000`.
+SnapMind relies on a complex, highly-indexed database schema within Supabase to ensure millisecond retrieval.
 
-### `POST /ingest`
-Ingests a webpage into the knowledge base.
-```json
-{
-  "url": "https://example.com/docs",
-  "crawl_mode": "single", // "single" or "multi"
-  "max_pages": 10
-}
+### Core Schema
+- **`documents`**: Stores text chunks with `vector(3072)` embeddings and GIN-indexed full-text search.
+- **`chat_sessions`**: Persistent storage for conversation history with HNSW indexing for semantic memory retrieval.
+- **`ingestion_jobs`**: Background tracking for multi-page crawls and long-running file processing.
+- **`bookmarks`**: The "Research Notebook" storage, featuring semantic search over saved highlights.
+- **`nodes` / `edges`**: Powering the **GraphRAG** visualization, these tables track relationships discovered across different research sessions.
+
+### 🔍 Hybrid Search Algorithm (The "Secret Sauce")
+We use a custom PostgreSQL function `hybrid_search_documents` that implements a weighted fusion of semantic and keyword scores:
+
+```sql
+-- Weighted Reciprocal Rank Fusion Logic
+((COALESCE(similarity, 0) * 0.7) + (COALESCE(bm25_score, 0) * 0.3 * 10)) AS combined_score
 ```
-
-### `POST /chat`
- Standard RAG chat endpoint.
-```json
-{
-  "query": "How do I install this?",
-  "site_id": "https://example.com/docs", // Optional filter
-  "history": [{"role": "user", "content": "..."}]
-}
-```
-
-### `POST /analyze-image`
-Analyzes a base64 encoded image.
-```json
-{
-  "image_data": "data:image/jpeg;base64,...",
-  "prompt": "Explain this diagram",
-  "mode": "qa" 
-}
-```
+*   **Vector (70%)**: Captures intent and conceptual meaning via Cosine Similarity.
+*   **Keyword (30%)**: Ensures names, specific IDs, and rare terms are never missed using BM25-like ranking.
 
 ---
 
-## 🛠️ Data Model (Supabase)
+## 🏎️ Parser Ecosystem
 
-### `documents` Table
-| Column | Type | Description |
+SnapMind supports a wide array of sources through its specialized parsing layer (`backend/*_parser.py`):
+
+| Source Type | Technology | Logic |
 | :--- | :--- | :--- |
-| `id` | `bigint` | Primary Key |
-| `content` | `text` | The text chunk content |
-| `source_url` | `text` | Origin URL for filtering |
-| `embedding` | `vector(768)` | Gemini 004 vector embedding |
-| `metadata` | `jsonb` | Stores headers, chunk index, etc. |
-| `created_at` | `timestamp` | Ingestion time |
+| **YouTube** | `pytubefix` + `Invidious` | Extracts high-res transcripts, timestamps, and AI-generated video summaries. |
+| **PDF/DOCX/CSV** | `python-docx` / `PyPDF2` | Ingests complex local documentation into the cloud vector store. |
+| **GitHub** | `git` / `scrapers` | Clones and semantically indexes entire repositories for "Chat with Code" mode. |
+| **Notion** | `Notion API` | Experimental support for syncing and searching private workspaces. |
+| **Twitter (X)** | `scrapers` | Indexes tweet threads and keeps track of viral conversations. |
 
 ---
 
-## ⚙️ Configuration Guide
+## 🎨 Advanced UI/UX Features
 
-Configuration is centralized in `backend/.env` and `config.py`.
-
-### Key Environment Variables
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `SUPABASE_URL` | Supabase Project URL | - |
-| `SUPABASE_KEY` | Supabase `service_role` key | - |
-| `GOOGLE_API_KEY` | Gemini API Key for Embeddings | - |
-| `MISTRAL_API_KEY` | Mistral API Key for Chat | - |
-| `FIRECRAWL_API_KEY` | Firecrawl API for scraping | - |
-
-### Feature Flags (`backend/config.py`)
-
-| Feature | Flag | Status |
-| :--- | :--- | :--- |
-| **Semantic Chunking** | `SEMANTIC_CHUNKING_ENABLED` | ✅ Active (Phase 1) |
-| **Hybrid Search** | `SEARCH_MODE="hybrid"` | ✅ Active (Phase 2) |
-| **Reranking** | `RERANK_ENABLED` | 🚧 Planned (Phase 3) |
-| **Semantic Caching** | `CACHE_ENABLED` | 🚧 Planned (Phase 6) |
+- **Pin Tab (Multi-Source Comparison)**: Pin two or more tabs (e.g., "API Docs A" vs "API Docs B") and ask "Compare the error handling between these two."
+- **Clean Response Rendering**: Our custom markdown engine identifies and strips internal `[bi-block-X]` tags, replacing them with interactive, hoverable citation bubbles.
+- **Descriptive Bubbles**: Citations aren't just numbers—they are handles like `[SSOC 1]` or `[HW 3]`, derived from the source page titles.
+- **Graph Map**: A real-time Cytoscape.js visualization of how your research is connected conceptually.
 
 ---
 
-## � Detailed Setup Instructions
+## 🚀 Deployment Guide
 
-### 1. Clone & Prerequisites
-Ensure you have **Python 3.10+** and **Node.js 18+**.
+### 1. Database Setup (Supabase)
+Run the initialization script in the Supabase SQL Editor:
+```bash
+# Found in: backend/supabase_setup.sql
+# 1. Enable pgvector extension
+# 2. Create tables, indexes, and hybrid search functions
+```
 
-### 2. Backend Setup
-1.  Navigate to `backend/`.
-2.  Create virtual env: `python -m venv venv`.
-3.  Activate: `venv\Scripts\activate` (Win) or `source venv/bin/activate` (Mac/Linux).
-4.  Install deps: `pip install -r requirements.txt`.
-5.  **Secrets**: Copy `.env.example` to `.env` and fill in your keys.
-6.  Run: `uvicorn main:app --reload`.
+### 2. Backend Config
+Rename `.env.example` to `.env` and provide your keys:
+- `DATABASE_URL`: Your Supabase connection string.
+- `GOOGLE_API_KEY`: For Gemini embeddings.
+- `MISTRAL_API_KEY`: For the reasoning agent.
+- `FIRECRAWL_API_KEY`: For advanced web scraping.
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
 
 ### 3. Extension Setup
-1.  Navigate to `extension/`.
-2.  Install deps: `npm install`.
-3.  **Secrets**: Copy `.env.example` to `.env`. Set `VITE_BACKEND_URL=http://127.0.0.1:8000`.
-4.  Build: `npm run build`.
-5.  Load `extension/dist` key in Chrome (`chrome://extensions/` -> Load Unpacked).
+```bash
+cd extension
+npm install
+npm run build
+```
+Load the `dist/` folder via Chrome's `Developer mode` in `chrome://extensions`.
 
 ---
 
-## 🤝 Contributing
-Contributions are welcome!
-1.  Fork the repo.
-2.  Create a branch for your feature.
-3.  Submit a Pull Request.
+## 🗺️ Roadmap
+- [x] **Relational GraphRAG**: Linking entities across sources. (Completed)
+- [x] **Multi-Site Comparison**: Descriptive pin-tab citations. (Completed)
+- [ ] **Autonomous Web Agents**: Letting the AI browse the web to find answers for you.
+- [ ] **Collaborative Research**: Real-time shared notebooks for teams.
 
-## 📄 License
-This project is for educational purposes.
+---
+
+## 📄 License & Contributing
+Built for research efficiency. Contributions are welcome—please see the `CONTRIBUTING.md` for our coding standards.
