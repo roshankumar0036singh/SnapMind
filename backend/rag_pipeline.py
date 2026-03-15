@@ -218,7 +218,7 @@ def extract_semantic_tags(text: str, api_keys: dict = None) -> List[str]:
         print(f"[TAGGING] Extraction failed: {e}")
         return []
 
-def scrape_website_firecrawl(url: str, max_retries: int = 3, api_keys: dict = None) -> str:
+def scrape_website_firecrawl(url: str, max_retries: int = 3, api_keys: dict = None) -> tuple[str, str | None]:
     firecrawl_key = get_firecrawl_key(api_keys)
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {firecrawl_key}"}
     
@@ -239,12 +239,15 @@ def scrape_website_firecrawl(url: str, max_retries: int = 3, api_keys: dict = No
             
             if response.status_code == 200:
                 data = response.json()
-                content = (data.get('data', {}).get('markdown') or 
-                          data.get('data', {}).get('raw') or 
+                data_obj = data.get('data', {})
+                content = (data_obj.get('markdown') or 
+                          data_obj.get('raw') or 
                           data.get('html', ''))
                 
+                title = data_obj.get('metadata', {}).get('title')
+                
                 if content and len(content) > 200:
-                    return content
+                    return content, title
             else:
                 print(f"[SCRAPE] Firecrawl error {response.status_code}: {response.text}")
         except Exception as e:
@@ -253,7 +256,7 @@ def scrape_website_firecrawl(url: str, max_retries: int = 3, api_keys: dict = No
         time.sleep(2 ** attempt)
     
     print(f"[SCRAPE] Falling back to simple scrape for {url}")
-    return simple_scrape_fallback(url)
+    return simple_scrape_fallback(url), None
 
 
 def crawl_website_firecrawl(url: str, max_pages: int = 50, max_depth: int = 3, api_keys: dict = None) -> List[Dict[str, str]]:
@@ -313,9 +316,9 @@ def crawl_website_firecrawl(url: str, max_pages: int = 50, max_depth: int = 3, a
             print(f"[CRAWL] Response: {data}")
             # Fallback to single page
             print(f"[CRAWL] Falling back to single-page scrape")
-            content = scrape_website_firecrawl(url)
+            content, title = scrape_website_firecrawl(url)
             if content:
-                return [{'url': url, 'content': content}]
+                return [{'url': url, 'content': content, 'title': title}]
             return []
         
         print(f"[CRAWL] Job started: {job_id}")
@@ -363,7 +366,8 @@ def crawl_website_firecrawl(url: str, max_pages: int = 50, max_depth: int = 3, a
                     if markdown and len(markdown) > 200:
                         results.append({
                             'url': page_url,
-                            'content': markdown
+                            'content': markdown,
+                            'title': page.get('metadata', {}).get('title')
                         })
                 
                 print(f"[CRAWL] Completed: {len(results)} pages crawled")
@@ -380,9 +384,9 @@ def crawl_website_firecrawl(url: str, max_pages: int = 50, max_depth: int = 3, a
                 if len(results) == 0:
                     print(f"[CRAWL] WARNING: No valid pages found. Full response: {status_data}")
                     print(f"[CRAWL] Falling back to single-page scrape for: {url}")
-                    content = scrape_website_firecrawl(url)
+                    content, title = scrape_website_firecrawl(url)
                     if content:
-                        return [{'url': url, 'content': content}]
+                        return [{'url': url, 'content': content, 'title': title}]
                 
                 return results
             
@@ -454,7 +458,7 @@ def embed_single_chunk(chunk: str, api_keys: dict = None) -> Tuple[str, List[flo
         print(f"Embedding error for chunk: {e}")
         raise
 
-def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_url: str = "", api_keys: dict = None) -> List[dict]:
+def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_url: str = "", api_keys: dict = None, page_title: str = None) -> List[dict]:
     """
     Embed chunks in parallel using ThreadPoolExecutor.
     
@@ -462,6 +466,7 @@ def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_ur
         chunks: List of chunk dictionaries with 'content' and optional 'metadata'
         max_workers: Maximum number of parallel workers
         source_url: Source URL for the chunks
+        page_title: Title of the page (to be added to metadata)
         
     Returns:
         List of dictionaries ready for database insertion
@@ -487,6 +492,10 @@ def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_ur
                 content, embedding = future.result()
                 original_chunk = future_to_chunk[future][1]
                 metadata = original_chunk.get('metadata', {})
+                
+                # [NEW] Inject title if provided
+                if page_title:
+                    metadata['title'] = page_title
                 
                 data_list.append({
                     "content": content,
@@ -560,12 +569,12 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
         print(f"[INGEST] YouTube URL detected. Routing to transcript parser...")
         from youtube_parser import get_youtube_transcript
-        success, text_content, error_msg = get_youtube_transcript(url)
+        success, text_content, error_msg, yt_title = get_youtube_transcript(url)
         
         if success:
             # Pass the requested language so Lingo.dev translates the transcript
             print(f"[INGEST] Passing YouTube transcript to ingest_text_logic (target_lang={target_lang}, session={session_id})")
-            res = ingest_text_logic(normalized_url, text_content, target_lang=target_lang, api_keys=api_keys, session_id=session_id)
+            res = ingest_text_logic(normalized_url, text_content, target_lang=target_lang, api_keys=api_keys, session_id=session_id, page_title=yt_title)
             if res.get("success"):
                 update_job_status("completed", res.get("message", "Success"), res.get("chunks_count", 0))
             else:
@@ -594,7 +603,7 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
             return {"success": False, "error": f"Twitter Thread error: {error_msg}"}
     
     # 1. Extract content
-    markdown_content = scrape_website_firecrawl(url, api_keys=api_keys)
+    markdown_content, page_title = scrape_website_firecrawl(url, api_keys=api_keys)
     
     if not markdown_content or len(markdown_content) < 100:
         update_job_status("failed", "Insufficient content found (Page protected or empty)")
@@ -637,12 +646,12 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         chunk["metadata"]["original_lang"] = original_lang
         chunk["metadata"]["translated"] = is_translated
     
-    # 3. Embed chunks in parallel
     data_list = parallel_embed_chunks(
         chunks,
         max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
         source_url=normalized_url,
-        api_keys=api_keys
+        api_keys=api_keys,
+        page_title=page_title
     )
     
     if not data_list:
@@ -681,7 +690,7 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         update_job_status("failed", f"Fatal error: {str(e)}")
         return {"success": False, "error": f"Fatal ingestion error: {str(e)}"}
 
-def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", api_keys: dict = None, extra_metadata: dict = None, session_id: str = None) -> Dict[str, Any]:
+def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", api_keys: dict = None, extra_metadata: dict = None, session_id: str = None, page_title: str = None) -> Dict[str, Any]:
     """Ingest raw text content (e.g., from VLM extraction)."""
     global FeatureFlags
     try:
@@ -745,12 +754,12 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
             if extra_metadata:
                 chunk["metadata"].update(extra_metadata)
             
-        # 4. Embed
         data_list = parallel_embed_chunks(
             chunks,
             max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
             source_url=normalized_url,
-            api_keys=api_keys
+            api_keys=api_keys,
+            page_title=page_title
         )
         
         if not data_list:
@@ -785,7 +794,7 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         return {"success": False, "error": f"Fatal text ingestion error: {str(e)}"}
     
 
-def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content_type: str, target_lang: str = "auto", api_keys: dict = None, session_id: str = None) -> Dict[str, Any]:
+def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content_type: str, target_lang: str = "auto", api_keys: dict = None, session_id: str = None, page_title: str = None) -> Dict[str, Any]:
     """Parse local binary files to text, chunk, and embed them just like web text."""
     import io
     
@@ -839,7 +848,7 @@ def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content
     print(f"[INGEST_FILE] Parsed/Analyzed {len(text_content)} characters. Forwarding to text pipeline...")
     
     # Send the raw extracted text downstream to chunk & embed
-    return ingest_text_logic(source_url, text_content, target_lang=target_lang, api_keys=api_keys, extra_metadata=extra_metadata, session_id=session_id)
+    return ingest_text_logic(source_url, text_content, target_lang=target_lang, api_keys=api_keys, extra_metadata=extra_metadata, session_id=session_id, page_title=page_title or filename)
 
 def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, api_keys: dict = None, session_id: str = None) -> Dict[str, Any]:
     """
@@ -938,7 +947,8 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                     chunks,
                     max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
                     source_url=page_url,
-                    api_keys=api_keys
+                    api_keys=api_keys,
+                    page_title=page.get('title')
                 )
                 
                 # Store in database

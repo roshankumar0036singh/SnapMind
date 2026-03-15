@@ -87,8 +87,10 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked }) => {
     <HoverCard.Root openDelay={200} closeDelay={100}>
       <HoverCard.Trigger asChild>
         <button
-          onClick={() => {
+          onClick={async () => {
             console.log("Clicked citation:", citation.blockId);
+            const targetUrl = block?.url || block?.sourceURL;
+
             if (isYouTube && youtubeTimestamp) {
               chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 const activeTabUrl = tabs[0]?.url || "";
@@ -99,6 +101,8 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked }) => {
                       seconds: youtubeSeconds
                     });
                   }
+                } else if (targetUrl) {
+                  chrome.tabs.create({ url: `${targetUrl}&t=${youtubeSeconds}s` });
                 } else {
                   const vIdMatch = block?.url?.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
                   const videoId = vIdMatch ? vIdMatch[1] : '';
@@ -107,7 +111,29 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked }) => {
                   }
                 }
               });
+            } else if (targetUrl) {
+              // [NEW] Enhanced Multi-Tab Redirection
+              chrome.tabs.query({}, (tabs) => {
+                const targetTab = tabs.find(t => t.url === targetUrl || t.url?.startsWith(targetUrl));
+                if (targetTab) {
+                  chrome.tabs.update(targetTab.id, { active: true }, () => {
+                    chrome.windows.update(targetTab.windowId, { focused: true }, () => {
+                      // Small delay to ensure tab is ready
+                      setTimeout(() => {
+                        chrome.tabs.sendMessage(targetTab.id, {
+                          type: 'HIGHLIGHT_CITATION',
+                          blockId: citation.blockId
+                        });
+                      }, 300);
+                    });
+                  });
+                } else {
+                  // Fallback: Open new tab
+                  chrome.tabs.create({ url: targetUrl });
+                }
+              });
             } else {
+              // Local/Active tab fallback
               chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs[0]?.id) {
                   chrome.tabs.sendMessage(tabs[0].id, {
@@ -131,7 +157,11 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked }) => {
           ) : (
             <span className={`w-1.5 h-1.5 rounded-full transition-colors ${isBookmarked ? 'bg-amber-600' : 'bg-amber-400 group-hover:bg-amber-500'}`}></span>
           )}
-          {isYouTube ? youtubeTimestamp : (isBookmarked ? 'Saved Source' : (citation.blockId.startsWith('pin-') ? citation.blockId.split('-')[1] : 'Source'))} {!isYouTube ? citation.blockId.replace(/^(bi-block-|nb-block-|db-block-|pin-[A-Z0-9]+-)/, '') : ''}
+          {isYouTube ? youtubeTimestamp : (
+            block?.metadata?.title ? getSourceHandle(block.metadata.title) :
+              (isBookmarked ? 'Saved' :
+                (citation.blockId.startsWith('pin-') ? citation.blockId.split('-')[1] : 'Source'))
+          )} {!isYouTube ? citation.blockId.replace(/^(bi-block-|nb-block-|db-block-|pin-[A-Z0-9]+-)/, '') : ''}
         </button>
       </HoverCard.Trigger>
       <HoverCard.Portal>

@@ -38,40 +38,52 @@ Act like a RAG (Retrieval Augmented Generation) , If you Dont have Knowledge Reg
 </instructions>"""
         user_message_text = f"{system_instruction.replace('{user_prompt}', final_prompt)}\n\nUser Question: {final_prompt}"
 
-    # --- 1. Try Gemini (Primary as requested) ---
+    # --- 1. Try Gemini Models ---
+    # We try 2.0-flash first (as requested), then 1.5-flash as fallback 
+    # to handle different project quota assignments.
+    gemini_models_to_try = ["gemini-2.0-flash-lite"]
+    
     try:
         gemini_client = get_gemini_client(api_keys)
         if gemini_client:
-            print(f"[VISION] Using Gemini for {mode} mode...")
-            
-            # Using the modern google-genai SDK
-            from google.genai import types
-            
-            response = gemini_client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[
-                    user_message_text,
-                    types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-                ]
-            )
-            
-            if response.text:
-                return {
-                    "answer": response.text,
-                    "success": True,
-                    "model_used": "gemini-2.0-flash"
-                }
+            for g_model in gemini_models_to_try:
+                try:
+                    print(f"[VISION] Attempting {g_model}...")
+                    from google.genai import types
+                    
+                    response = gemini_client.models.generate_content(
+                        model=g_model,
+                        contents=[
+                            user_message_text,
+                            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+                        ]
+                    )
+                    
+                    if response.text:
+                        print(f"[VISION] Success with {g_model}")
+                        return {
+                            "answer": response.text,
+                            "success": True,
+                            "model_used": g_model
+                        }
+                except Exception as sub_e:
+                    print(f"[VISION] {g_model} failed: {str(sub_e)[:100]}...")
+                    # Continue to next Gemini model
+                    continue
     except Exception as e:
-        print(f"[VISION] Gemini failed: {e}. Falling back to Mistral...")
+        print(f"[VISION] Gemini client error: {e}")
 
     # --- 2. Fallback to Mistral (Pixtral) ---
+    print("[VISION] Falling back to Mistral...")
     client = get_mistral_client(api_keys)
     if not client:
         return {
             "success": False,
-            "answer": "Vision models failed to initialize. Check API keys.",
+            "answer": "Vision models failed to initialize or hit quota. Check API keys and Google Cloud Quota (limit 0 usually means API not enabled).",
             "model_used": "none"
         }
+
+    from mistralai.models import TextChunk, ImageURLChunk
 
     # Encode image to base64 data URL
     try:
@@ -87,18 +99,10 @@ Act like a RAG (Retrieval Augmented Generation) , If you Dont have Knowledge Reg
     model_name = "pixtral-12b-2409" 
 
     try:
-        # Build structured message content
-        # Note: If passing dicts fails with discriminator errors, 
-        # it usually means the SDK version is sensitive.
+        # Use explicit SDK chunk classes to prevent tagging/discriminator errors
         content = [
-            {
-                "type": "text",
-                "text": user_message_text
-            },
-            {
-                "type": "image_url",
-                "image_url": {"url": data_url}
-            }
+            TextChunk(text=user_message_text),
+            ImageURLChunk(image_url=data_url)
         ]
         
         chat_response = client.chat.complete(

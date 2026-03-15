@@ -21,7 +21,7 @@ def vtt_time_to_seconds(time_str: str) -> float:
         sec += float(part) * (60 ** i)
     return sec
 
-def get_youtube_transcript(url: str) -> Tuple[bool, str, str]:
+def get_youtube_transcript(url: str) -> Tuple[bool, str, str, str | None]:
     """Wrapper to handle network issues robustly, including DNS failures on certain environments."""
     import socket
     import sys
@@ -96,7 +96,7 @@ def get_youtube_transcript(url: str) -> Tuple[bool, str, str]:
     finally:
         socket.getaddrinfo = old_getaddrinfo
 
-def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str]:
+def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | None]:
     """
     Fetches the transcript for a YouTube video using a robust hybrid approach:
     1. Primary: youtube-transcript-api (Fast, official-ish API)
@@ -106,7 +106,7 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str]:
     """
     video_id = extract_video_id(url)
     if not video_id:
-        return False, "", "Invalid YouTube URL format."
+        return False, "", "Invalid YouTube URL format.", None
 
     max_retries = 2
     errors = []
@@ -149,7 +149,7 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str]:
             if data:
                 full_text = format_transcript_data(data)
                 if full_text:
-                    return True, full_text, ""
+                    return True, full_text, "", None
         else:
             print("[YOUTUBE_PARSER] Warning: YouTubeTranscriptApi class not found in module.")
             errors.append("YouTubeTranscriptApi missing in module")
@@ -208,7 +208,7 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str]:
                 if isinstance(sub_content, str):
                     full_text = parse_vtt_content(sub_content)
                     if full_text:
-                        return True, full_text, ""
+                        return True, full_text, "", info.get('title')
                 
     except Exception as e:
         err_msg = f"yt-dlp error: {e}"
@@ -248,7 +248,7 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str]:
                     full_text = parse_xml_captions(xml_captions)
                 
                 if full_text:
-                    return True, full_text, ""
+                    return True, full_text, "", getattr(yt, 'title', None)
             
             if attempt < max_retries:
                 time.sleep(1)
@@ -269,15 +269,15 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str]:
     print(f"[YOUTUBE_PARSER] Falling back to Raw InnerTube for: {video_id}")
     success, text, it_err = get_innertube_transcript(video_id)
     if success:
-        return True, text, ""
+        return True, text, "", None
     
     # --- ATTEMPT 5: Embedded Player Scraping (Last Resort) ---
     print(f"[YOUTUBE_PARSER] Falling back to Embedded Player for: {video_id}")
     success, text, embed_err = get_embedded_transcript(video_id)
     if success:
-        return True, text, ""
+        return True, text, "", None
 
-    return False, "", f"Transcript fetch failed. Errors: {combined_errors} | InnerTube: {it_err} | Embed: {embed_err}"
+    return False, "", f"Transcript fetch failed. Errors: {combined_errors} | InnerTube: {it_err} | Embed: {embed_err}", None
 
 def get_innertube_transcript(video_id: str) -> Tuple[bool, str, str]:
     """Directly call YouTube's InnerTube API with multiple client fallbacks."""
