@@ -826,7 +826,7 @@ export const apiClient = {
     async getBookmarks() {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks/`);
+            const response = await fetch(`${baseUrl}/bookmarks`);
             
             const contentType = response.headers.get("content-type");
             let data;
@@ -855,7 +855,7 @@ export const apiClient = {
     async createBookmark(content, sourceUrl, metadata = {}) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks/`, {
+            const response = await fetch(`${baseUrl}/bookmarks`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -895,7 +895,7 @@ export const apiClient = {
     async deleteBookmark(bookmarkId) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks/${bookmarkId}/`, { method: 'DELETE' });
+            const response = await fetch(`${baseUrl}/bookmarks/${bookmarkId}`, { method: 'DELETE' });
             if (!response.ok) throw new Error("Failed to delete bookmark");
             return { success: true };
         } catch (e) {
@@ -911,7 +911,7 @@ export const apiClient = {
     async getIngestionStatus(jobId) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/ingest/status/${jobId}/`, {
+            const response = await fetch(`${baseUrl}/ingest/status/${jobId}`, {
                 headers: { ...(await this.getApiKeysHeaders()) }
             });
 

@@ -21,6 +21,8 @@ def test_gemini_vision():
             print("✅ Gemini Vision test PASSED")
         else:
             print(f"❌ Gemini Vision test FAILED: {result.get('answer')}")
+            if "error" in result:
+                print(f"Raw Error: {result.get('error')}")
     except Exception as e:
         print(f"❌ Error during test: {e}")
 
