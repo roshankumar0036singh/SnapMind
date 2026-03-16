@@ -75,27 +75,45 @@ SnapMind supports diverse sources through its specialized parsing layer (`backen
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Setup Instructions
 
-The backend is already live on Hugging Face. Follow these steps to set up the extension locally:
+Follow these steps to get the full SnapMind stack running locally.
 
-### 🏗️ Local Setup
+### 1. Backend Setup (Python)
 
-#### 1. Backend Configuration
-1.  **Navigate** to the `backend/` directory.
-2.  **Install dependencies**:
+The database (Supabase) is already pre-configured in the example environment file. You do not need to create a new database for testing.
+
+1.  **Navigate** to the `backend/` directory:
+    ```bash
+    cd backend
+    ```
+2.  **Create a virtual environment**:
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    ```
+3.  **Install dependencies**:
     ```bash
     pip install -r requirements.txt
     ```
-3.  **Run backend**:
+4.  **Configure Environment**: 
+    -   Copy `backend/.env.example` to `backend/.env`.
+    -   Open `backend/.env` and fill in your API keys in the **REQUIRED - Core Services** section. 
+    -   *Note: The Supabase URL and key are already provided in the example.*
+5.  **Run the Server**:
     ```bash
     uvicorn main:app --reload
     ```
-    The backend will start at `http://localhost:8000`.
+    The backend will be available at `http://localhost:8000`.
 
-#### 2. Extension Configuration
+---
 
-1.  **Navigate** to the `extension/` directory.
+### 2. Extension Setup (React/Vite)
+
+1.  **Navigate** to the `extension/` directory:
+    ```bash
+    cd extension
+    ```
 2.  **Install dependencies**:
     ```bash
     npm install
@@ -105,13 +123,17 @@ The backend is already live on Hugging Face. Follow these steps to set up the ex
     npm run build
     ```
 4.  **Load into Chrome**:
-    - Open Chrome and navigate to `chrome://extensions/`.
-    - Enable **Developer mode**.
-    - Click **Load unpacked** and select the `extension/dist` folder.
-5.  **Set Server URL**:
-    - Open the SnapMind sidepanel.
-    - Go to **Settings**.
-    - Ensure the **Server URL** is: `http://localhost:8000`
+    -   Open Chrome and navigate to `chrome://extensions/`.
+    -   Enable **Developer mode** (top right).
+    -   Click **Load unpacked** and select the `extension/dist` folder.
+5.  **Connect to Backend**:
+    -   Open the SnapMind sidepanel.
+    -   Go to **Settings** and ensure the **Server URL** is set to `http://localhost:8000`.
+
+---
+
+### 💡 Image Analysis
+SnapMind uses **Groq** for high-speed multimodal / image analysis. Ensure your `GROQ_API_KEY` is configured in the backend `.env` to use these features.
 
 ---
 
