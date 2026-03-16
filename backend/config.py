@@ -62,11 +62,11 @@ class SearchConfig:
     """Configuration for retrieval and search"""
     
     # Vector search parameters
-    MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "0.3"))
+    MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "0.2"))
     MATCH_COUNT = int(os.getenv("MATCH_COUNT", "10"))
     
     # Search mode: 'vector_only', 'hybrid', 'keyword_only'
-    SEARCH_MODE = os.getenv("SEARCH_MODE", "vector_only")
+    SEARCH_MODE = os.getenv("SEARCH_MODE", "hybrid")
     
     # Hybrid search weights (if enabled)
     VECTOR_WEIGHT = float(os.getenv("VECTOR_WEIGHT", "0.7"))

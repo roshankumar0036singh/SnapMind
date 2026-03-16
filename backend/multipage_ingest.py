@@ -61,7 +61,15 @@ async def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int =
                         with db_pool.connection() as conn:
                             with conn.cursor() as cur:
                                 args_list = [(d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {}))) for d in embedded_chunks]
-                                cur.executemany("INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)", args_list)
+                                
+                                # [FIX] Batch insertion to prevent SSL bad length errors
+                                BATCH_SIZE = 50
+                                for i in range(0, len(args_list), BATCH_SIZE):
+                                    batch = args_list[i : i + BATCH_SIZE]
+                                    cur.executemany(
+                                        "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                                        batch
+                                    )
                             conn.commit()
                         total_chunks += len(embedded_chunks)
                         print(f"[MULTIPAGE] ✅ Stored {len(embedded_chunks)} chunks from {page_url}")

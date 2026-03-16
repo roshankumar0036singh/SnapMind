@@ -634,6 +634,7 @@ def chat_logic_stream(query: str, page_content: str | None = None, content_block
     """
     Streaming version of chat logic. Yields NDJSON chunks.
     """
+    print(f"[CHAT-STREAM] Request - Query: {query[:50]}... | Output Lang: {output_lang} | Query Lang: {query_lang}")
     import json
     
     # [NEW] Multi-Language Query Routing
@@ -682,6 +683,7 @@ CRITICAL RULES - FOLLOW STRICTLY:
 At the end of your response, suggest 2-3 short (max 10 words), engaging follow-up questions ONLY if answerable from the CONTEXT. Format as 'Suggested Follow-ups:' with each in **bold**.
 
 SPECIAL INSTRUCTION: If the user is asking about correlations or connections between bookmarks/references, you MUST look for legal, causal, or prerequisite links. e.g. "To participate in X (Bookmark A), you must comply with Y (Bookmark B)". Give a deep reasoning, not just a surface-level summary."""
+    print(f"[CHAT-STREAM] System Instruction Language Rule: {lang_instruction.strip() or 'None'}")
 
     citation_instruction = ""
     context = ""

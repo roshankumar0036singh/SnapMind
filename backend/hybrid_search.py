@@ -23,6 +23,16 @@ class HybridSearcher:
         self.search_mode = SearchConfig.SEARCH_MODE
         self.vector_weight = SearchConfig.VECTOR_WEIGHT
         self.keyword_weight = SearchConfig.KEYWORD_WEIGHT
+        # Vector search parameters
+        # The instruction implies lowering the threshold to 0.2.
+        # Assuming SearchConfig.MATCH_THRESHOLD is updated, or we override it here.
+        # The provided snippet `MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "0.2"))`
+        # looks like a config definition. If the intent is to ensure this file uses 0.2,
+        # and assuming SearchConfig is updated, the existing line is correct.
+        # If the intent is to hardcode it here, it would be:
+        # self.match_threshold = 0.2
+        # However, the snippet provided is a bit ambiguous in its placement and syntax.
+        # Sticking to the most likely interpretation given the context of `SearchConfig`.
         self.match_threshold = SearchConfig.MATCH_THRESHOLD
         self.match_count = SearchConfig.MATCH_COUNT
     
@@ -100,6 +110,7 @@ class HybridSearcher:
                     matches = cur.fetchall()
             
             # Add search metadata
+            print(f"[VECTOR-SEARCH] Found {len(matches)} matches. Top score: {matches[0]['similarity'] if matches else 'N/A'}")
             for match in matches:
                 match['search_method'] = 'vector'
                 match['score'] = match.get('similarity', 0)
@@ -201,13 +212,28 @@ class HybridSearcher:
     
     def _embed_query(self, query: str) -> List[float]:
         """
-        Generate embedding for query text.
+        Generate embedding for query text using same model as ingestion.
         """
         try:
+            from config import EmbeddingConfig
+            model_name = EmbeddingConfig.EMBEDDING_MODEL
+            
+            # 1. Mistral Embedding Flow
+            if "mistral" in model_name.lower():
+                from api_clients import get_mistral_client
+                mistral_client = get_mistral_client(self.api_keys)
+                if mistral_client:
+                    result = mistral_client.embeddings.create(
+                        model=model_name,
+                        inputs=[query]
+                    )
+                    return result.data[0].embedding
+            
+            # 2. Gemini Embedding Flow (Fallback or Default)
             from api_clients import get_gemini_client
             client = get_gemini_client(self.api_keys)
             result = client.models.embed_content(
-                model="gemini-embedding-001",
+                model="gemini-embedding-001" if "gemini" not in model_name.lower() else model_name,
                 contents=query,
             )
             return result.embeddings[0].values
