@@ -49,6 +49,11 @@ def translate_text_lingo(text: str, target_lang: str = "en", api_keys: dict = No
 
         
     try:
+        # [NEW] Skip detection if target_lang is 'auto' to avoid timeouts
+        if target_lang == "auto" or not target_lang:
+            print(f"[LINGO] target_lang is '{target_lang}', skipping detection and translation.")
+            return text, "unknown", False
+
         # 1. Detect language (single attempt, fast fail → Mistral fallback)
         src_lang = "unknown"
         try:
@@ -67,11 +72,7 @@ def translate_text_lingo(text: str, target_lang: str = "en", api_keys: dict = No
             print(f"[LINGO] Detection timed out (5s). Falling back to Mistral for translation to {target_lang}.")
             return translate_text_mistral(text, target_lang, api_keys)
 
-
-        # Skip translation if already in target language or auto
-        if target_lang == "auto":
-            print(f"[LINGO] target_lang is 'auto', skipping translation.")
-            return text, src_lang, False
+        # Skip translation if already in target language
         if src_lang == target_lang and src_lang != "unknown":
             print(f"[LINGO] Source ({src_lang}) == Target ({target_lang}), skipping translation.")
             return text, src_lang, False
