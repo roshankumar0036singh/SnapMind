@@ -1,13 +1,3 @@
----
-title: SnapMind Backend
-emoji: 🧠
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # 🧠 SnapMind: The Autonomous Browser Research Agent
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
