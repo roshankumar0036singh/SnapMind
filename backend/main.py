@@ -11,6 +11,13 @@ from search import chat_logic
 
 load_dotenv()
 
+# --- Suppress Verbose Logging ---
+import logging
+logging.getLogger("google").setLevel(logging.WARNING)
+logging.getLogger("google.ai").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("google_auth_httplib2").setLevel(logging.WARNING)
+
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
