@@ -17,3 +17,4 @@ python-multipart
 pytubefix
 yt-dlp
 youtube-transcript-api
+httpx[http2]

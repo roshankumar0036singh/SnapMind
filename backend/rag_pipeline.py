@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from typing import List, Tuple, Dict, Any
 import concurrent.futures
 import requests
+import httpx
 import time
 from api_clients import get_gemini_client, get_mistral_client, get_firecrawl_key, get_lingo_key, genai
 
@@ -31,6 +32,43 @@ from custom_crawler import extract_links_from_page, crawl_multiple_pages_custom
 # Import Agentic Chunking
 from agentic_chunking import run_agentic_chunking
 
+def is_unreliable_translation_skip(text: str, src_lang: str, target_lang: str) -> bool:
+    """
+    Returns True if we should NOT skip translation even if src_lang == target_lang.
+    This happens when Lingo.dev incorrectly detects English as another language.
+    """
+    if not text or len(text) < 10:
+        return False
+        
+    if src_lang == target_lang and src_lang in ['es', 'fr', 'de', 'it', 'pt', 'nl']:
+        # Technical/ASCII-heavy English is often misdetected as Romance languages by some engines
+        # We use a larger list and check for word boundaries to avoid false positives in substrings
+        import re
+        english_words = [
+            'the', 'and', 'with', 'from', 'this', 'that', 'have', 'for', 'not', 
+            'you', 'was', 'but', 'are', 'indexing', 'content', 'repo', 'github',
+            'agreement', 'protection', 'policy', 'privacy', 'data'
+        ]
+        lower_text = text[:3000].lower()
+        
+        # Refined check with word boundaries
+        matches = 0
+        for word in english_words:
+            if re.search(r'\b' + re.escape(word) + r'\b', lower_text):
+                matches += 1
+                
+        # If we find 3+ distinct English words, it's English
+        if matches >= 3:
+            return True
+            
+        # Also check for mostly ASCII characters (Romance languages use more accents)
+        # If it's 100% ASCII and has at least one common English word
+        is_pure_ascii = all(ord(c) < 128 for c in lower_text if not c.isspace())
+        if is_pure_ascii and matches >= 2:
+            return True
+
+    return False
+
 def translate_text_lingo(text: str, target_lang: str = "en", api_keys: dict = None) -> tuple[str, str, bool]:
     """
     Translates text to a target language using the Lingo.dev API via direct REST.
@@ -49,72 +87,62 @@ def translate_text_lingo(text: str, target_lang: str = "en", api_keys: dict = No
 
         
     try:
-        # [NEW] Skip detection if target_lang is 'auto' to avoid timeouts
+        # [NEW] Phase 20: Rapid English Pre-Check
+        # If text is clearly English and target is English, skip everything immediately.
+        if target_lang == "en" and text and len(text.strip()) > 0:
+            import re
+            # Check for common English words at the start
+            common_en = r"\b(the|and|with|from|this|that|have|for|not|you|was|but|are|what|is|how)\b"
+            if re.search(common_en, text[:200].lower()):
+                print(f"[LINGO] Rapid Check: Text identified as English. Skipping translation to {target_lang}.")
+                return text, "en", False
+
+        # [NEW] Skip detection if target_lang is 'auto' or not provided
         if target_lang == "auto" or not target_lang:
-            print(f"[LINGO] target_lang is '{target_lang}', skipping detection and translation.")
+            print(f"[LINGO] target_lang is '{target_lang}', skipping translation.")
             return text, "unknown", False
 
-        # 1. Detect language (single attempt, fast fail → Mistral fallback)
-        src_lang = "unknown"
-        try:
-            detect_resp = requests.post(
-                "https://engine.lingo.dev/recognize",
-                headers={"Authorization": f"Bearer {lingo_key}", "Content-Type": "application/json; charset=utf-8"},
-                json={"text": text[:5000]},
-                timeout=5
-            )
-            if detect_resp.status_code == 200:
-                src_lang = detect_resp.json().get("locale", "unknown")
-                print(f"[LINGO] Detected source language: {src_lang}")
-            else:
-                print(f"[LINGO] Detection API returned {detect_resp.status_code}: {detect_resp.text[:200]}")
-        except requests.exceptions.Timeout:
-            print(f"[LINGO] Detection timed out (5s). Falling back to Mistral for translation to {target_lang}.")
-            return translate_text_mistral(text, target_lang, api_keys)
-
-        # Skip translation if already in target language
-        if src_lang == target_lang and src_lang != "unknown":
-            print(f"[LINGO] Source ({src_lang}) == Target ({target_lang}), skipping translation.")
-            return text, src_lang, False
-
-        # 2. Translate
-        import uuid
-        # When src_lang is unknown, omit "source" to let Lingo auto-detect
-        locale_payload = {"target": target_lang}
-        if src_lang != "unknown":
-            locale_payload["source"] = src_lang
+        # [OPTIMIZATION] One-Shot Translation
+        # We skip the separate /recognize call entirely because it is currently the bottleneck (~45s delay).
+        # Lingo's /i18n endpoint performs auto-detection internally if "source" is omitted.
         
+        import uuid
         request_data = {
             "params": {"workflowId": str(uuid.uuid4()), "fast": True},
-            "locale": locale_payload,
+            "locale": {"target": target_lang}, # Omit "source" to trigger internal auto-detect
             "data": {"text": text},
         }
         
-        print(f"[LINGO] Sending translation request: src={src_lang}, target={target_lang}, text_len={len(text)}")
+        print(f"[LINGO] Sending 'One-Shot' translation request (auto-detecting source): target={target_lang}, text_len={len(text)}")
         
         translated_text = text
         is_trans = False
         try:
-            trans_resp = requests.post(
-                "https://engine.lingo.dev/i18n",
-                headers={"Authorization": f"Bearer {lingo_key}", "Content-Type": "application/json; charset=utf-8"},
-                json=request_data,
-                timeout=30
-            )
+            # Use HTTP/2 client with 90s timeout for translation
+            with httpx.Client(http2=True, timeout=90.0) as client:
+                trans_resp = client.post(
+                    "https://engine.lingo.dev/i18n",
+                    headers={"Authorization": f"Bearer {lingo_key}", "Content-Type": "application/json; charset=utf-8"},
+                    json=request_data
+                )
             if trans_resp.status_code == 200:
                 data = trans_resp.json().get("data", {})
                 translated_text = data.get("text", text)
-                # Use text comparison as primary indicator - if the text changed, it was translated
+                
+                # Check metrics for detection result if available
+                metrics = trans_resp.json().get("metrics", {})
+                detected_lang = metrics.get("sourceLocale", "unknown")
+                
+                # If the text changed, it was translated
                 is_trans = (translated_text != text and len(translated_text) > 0)
-                print(f"[LINGO] Translation success: is_trans={is_trans}, output_len={len(translated_text)}")
-                if is_trans:
-                    print(f"[LINGO] Translation preview: '{translated_text[:100]}...'")
+                print(f"[LINGO] One-Shot Success: detected={detected_lang}, is_trans={is_trans}, output_len={len(translated_text)}")
+                return translated_text, detected_lang, is_trans
             else:
                 print(f"[LINGO] Translation API returned {trans_resp.status_code}: {trans_resp.text[:300]}")
                 print(f"[LINGO] Falling back to Mistral for translation to {target_lang}.")
                 return translate_text_mistral(text, target_lang, api_keys)
-        except requests.exceptions.Timeout:
-            print(f"[LINGO] Translation timed out (30s). Falling back to Mistral for translation to {target_lang}.")
+        except (httpx.TimeoutException, httpx.RequestError) as e:
+            print(f"[LINGO] Translation failed/timed out: {e}. Falling back to Mistral for translation to {target_lang}.")
             return translate_text_mistral(text, target_lang, api_keys)
                 
         return translated_text, src_lang, is_trans
@@ -671,11 +699,16 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
                     (d["content"], d["source_url"], d["embedding"], json.dumps(d["metadata"]))
                     for d in data_list
                 ]
-                cur.executemany(
-                    "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
-                    args_list,
-                    returning=False
-                )
+                
+                # [FIX] Batch insertion to prevent SSL bad length errors
+                BATCH_SIZE = 50
+                for i in range(0, len(args_list), BATCH_SIZE):
+                    batch = args_list[i : i + BATCH_SIZE]
+                    cur.executemany(
+                        "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                        batch,
+                        returning=False
+                    )
             conn.commit()
             
         return {
@@ -775,11 +808,16 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
                     (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
                     for d in data_list
                 ]
-                cur.executemany(
-                    "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
-                    args_list,
-                    returning=False
-                )
+                
+                # [FIX] Batch insertion to prevent SSL bad length errors
+                BATCH_SIZE = 50
+                for i in range(0, len(args_list), BATCH_SIZE):
+                    batch = args_list[i : i + BATCH_SIZE]
+                    cur.executemany(
+                        "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                        batch,
+                        returning=False
+                    )
             conn.commit()
             
         return {
@@ -961,10 +999,15 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                                     (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
                                     for d in embedded_chunks
                                 ]
-                                cur.executemany(
-                                    "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
-                                    args_list
-                                )
+                                
+                                # [FIX] Batch insertion to prevent SSL bad length errors
+                                BATCH_SIZE = 50
+                                for i in range(0, len(args_list), BATCH_SIZE):
+                                    batch = args_list[i : i + BATCH_SIZE]
+                                    cur.executemany(
+                                        "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                                        batch
+                                    )
                             conn.commit()
                         total_chunks += len(embedded_chunks)
                         print(f"[MULTIPAGE] ✅ Stored {len(embedded_chunks)} chunks from {page_url}")
