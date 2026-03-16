@@ -10,6 +10,14 @@
 
 ---
 
+## 🏆 Hackathon Showcase
+
+*   **Demo Video**: [Watch on YouTube](https://youtu.be/nNg8kVpigPU)
+*   **Deep Dive Article**: [Read on Medium](https://medium.com/p/da1ee44bc340?postPublishedType=initial)
+*   **Community Post**: [Reddit: r/lingodotdev](https://www.reddit.com/r/lingodotdev/comments/1rvhvz0/snapmind_an_ai_powered_rag_based_comprehensive/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button)
+
+---
+
 ## 🏗️ System Architecture
 
 SnapMind is composed of three primary layers, optimized for low-latency retrieval and high-precision generation.
