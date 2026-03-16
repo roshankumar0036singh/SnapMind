@@ -9,20 +9,37 @@
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 // Default to env var if available, else empty (user must set it in settings)
 const DEFAULT_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-const BACKEND_URL = "https://roshan123478-snapmind-backend.hf.space";
+const DEFAULT_BACKEND_URL = "http://localhost:8000";
+const DEFAULT_HF_TOKEN = "";
 
 export const apiClient = {
+    /**
+     * Retrieves the backend base URL from storage or returns default.
+     */
+    async getBaseUrl() {
+        // Prioritize Environment Variable (Vite) -> then hardcoded default
+        return import.meta.env.VITE_BACKEND_URL || DEFAULT_BACKEND_URL;
+    },
+
     /**
      * Retrieves all custom API keys from extension storage to pass to the backend.
      */
     async getApiKeysHeaders() {
         return new Promise((resolve) => {
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey'], (res) => {
+            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey'], (res) => {
                 const headers = {};
                 if (res.geminiApiKey) headers['x-gemini-key'] = res.geminiApiKey;
                 if (res.mistralApiKey) headers['x-mistral-key'] = res.mistralApiKey;
                 if (res.lingodevApiKey) headers['x-lingodev-key'] = res.lingodevApiKey;
                 if (res.firecrawlApiKey) headers['x-firecrawl-key'] = res.firecrawlApiKey;
+                
+                // HF token is now optional for local development
+                if (DEFAULT_HF_TOKEN) {
+                    headers['Authorization'] = `Bearer ${DEFAULT_HF_TOKEN}`;
+                    headers['x-hf-token'] = DEFAULT_HF_TOKEN;
+                }
+                
+                if (res.groqApiKey) headers['x-groq-key'] = res.groqApiKey;
                 resolve(headers);
             });
         });
@@ -34,8 +51,6 @@ export const apiClient = {
     async translateText(text, targetLang = 'en') {
         const res = await new Promise(r => chrome.storage.local.get(['lingodevApiKey'], r));
         const apiKey = res.lingodevApiKey;
-        const backendUrl = BACKEND_URL;
-
         if (!text) {
             return { translatedText: text, originalLang: 'unknown', isTranslated: false };
         }
@@ -49,7 +64,8 @@ export const apiClient = {
         try {
             console.log(`[Lingo.dev] Translating via backend API: "${text.substring(0, 30)}..."`);
             const apiKeysHeaders = await this.getApiKeysHeaders();
-            const response = await fetch(`${backendUrl.replace(/\/$/, '')}/translate`, {
+            const baseUrl = await this.getBaseUrl();
+            const response = await fetch(`${baseUrl}/translate`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -66,7 +82,18 @@ export const apiClient = {
                 return { translatedText: text, originalLang: 'unknown', isTranslated: false };
             }
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                console.error("[Lingo.dev] Expected JSON but got:", textBody.substring(0, 100));
+                return { translatedText: text, originalLang: 'unknown', isTranslated: false };
+            }
             return data;
         } catch (error) {
             console.error("[Lingo.dev] Backend fetch error:", error);
@@ -95,7 +122,7 @@ export const apiClient = {
      */
     async analyzeImage(base64Image, prompt, mode = "qa") {
         // Get Backend URL from storage
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
 
         try {
             console.log(`[API] Sending image to ${baseUrl}/analyze-image (Mode: ${mode})...`);
@@ -113,10 +140,24 @@ export const apiClient = {
                 })
             });
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type");
+            let data;
+            
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error(`Invalid Response Format: ${textBody.substring(0, 100)}...`);
+            }
 
             if (!response.ok) {
-                throw new Error(data.detail || `Backend Error: ${response.status}`);
+                throw new Error(data.detail || data.error || `Backend Error: ${response.status}`);
             }
 
             return {
@@ -145,7 +186,7 @@ export const apiClient = {
         const fullText = blocks.map(b => b.text).join('\n\n');
 
         // Get Backend URL from storage
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         const chatEndpoint = `${baseUrl}/chat`;
 
         try {
@@ -174,7 +215,24 @@ export const apiClient = {
                 throw new Error(`Server returned ${response.status}: ${errorText}`);
             }
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>")) {
+                    throw new Error("Backend returned HTML instead of JSON. Check your Hugging Face space status and authentication token.");
+                }
+                throw new Error("Invalid backend response format.");
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || `Backend Error: ${response.status}`);
+            }
 
             // Extract citations from the answer text
             // Regex to find [bi-block-X], [db-block-X], or [pin-HANDLE-X]
@@ -219,13 +277,20 @@ export const apiClient = {
      * @returns {Promise<string[]>} Array of tags.
      */
     async getTags() {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         const tagsEndpoint = `${baseUrl}/tags`;
 
         try {
-            const response = await fetch(tagsEndpoint);
+            const response = await fetch(tagsEndpoint, {
+                headers: await this.getApiKeysHeaders()
+            });
+            if (!response.ok) return [];
+            
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) return [];
+
             const data = await response.json();
-            if (response.ok && data.success) {
+            if (data.success) {
                 return data.tags || [];
             }
             return [];
@@ -243,7 +308,7 @@ export const apiClient = {
      * @returns {Promise<string[]>} Array of suggestion strings.
      */
     async getSuggestions(pageContent, url, siteId) {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         const suggestEndpoint = `${baseUrl}/chat/suggest`;
 
         try {
@@ -259,7 +324,18 @@ export const apiClient = {
                     site_id: siteId
                 })
             });
-            const data = await response.json();
+            
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                return [];
+            }
+
             if (response.ok && data.suggestions) {
                 return data.suggestions;
             }
@@ -272,7 +348,7 @@ export const apiClient = {
 
     async ingestPage(url, crawl_mode = 'single', max_pages = 10, max_depth = 3, target_lang = 'auto', session_id = null) {
         // Get Backend URL from storage
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         const ingestEndpoint = `${baseUrl}/ingest`;
 
         try {
@@ -293,10 +369,23 @@ export const apiClient = {
                 })
             });
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error("Backend returned non-JSON response.");
+            }
 
             if (!response.ok) {
-                throw new Error(data.detail || `Ingest failed: ${response.status}`);
+                throw new Error(data.detail || data.error || `Ingest failed: ${response.status}`);
             }
 
             return { success: true, message: data.message, ...data };
@@ -320,8 +409,8 @@ export const apiClient = {
      */
     async ingestText(url, text, session_id = null) {
         // Get Backend URL from storage
-        const baseUrl = BACKEND_URL;
-        const ingestEndpoint = `${baseUrl}/ingest`; // Assuming the same ingest endpoint handles text content
+        const baseUrl = await this.getBaseUrl();
+        const ingestEndpoint = `${baseUrl}/ingest`; // Match backend route
 
         try {
             console.log(`[API] Ingesting text for ${url} (Session: ${session_id}) to ${ingestEndpoint}...`);
@@ -338,10 +427,23 @@ export const apiClient = {
                 })
             });
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error("Backend returned non-JSON response.");
+            }
 
             if (!response.ok) {
-                throw new Error(data.detail || `Text Ingestion failed: ${response.status}`);
+                throw new Error(data.detail || data.error || `Text Ingestion failed: ${response.status}`);
             }
 
             return { success: true, message: data.message };
@@ -365,7 +467,7 @@ export const apiClient = {
      */
     async ingestFile(file, siteUrl = null, targetLanguage = "auto", sessionId = null) {
         // Get Backend URL from storage
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         const ingestEndpoint = `${baseUrl}/ingest/file`;
 
         try {
@@ -386,10 +488,23 @@ export const apiClient = {
                 body: formData
             });
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error("Backend returned non-JSON response.");
+            }
 
             if (!response.ok) {
-                throw new Error(data.detail || `File Upload failed: ${response.status}`);
+                throw new Error(data.detail || data.error || `File Upload failed: ${response.status}`);
             }
 
             return { success: true, message: data.message };
@@ -411,7 +526,7 @@ export const apiClient = {
      * @param {string} [targetLanguage="auto"] - Optional language to translate comments/docs to.
      */
     async ingestGithub(repoUrl, targetLanguage = "auto", sessionId = null) {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         const ingestEndpoint = `${baseUrl}/ingest/github`;
 
         try {
@@ -429,10 +544,23 @@ export const apiClient = {
                 })
             });
 
-            const data = await response.json();
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error("Backend returned non-JSON response.");
+            }
 
             if (!response.ok) {
-                throw new Error(data.detail || `GitHub Ingestion failed: ${response.status}`);
+                throw new Error(data.detail || data.error || `GitHub Ingestion failed: ${response.status}`);
             }
 
             return { success: true, message: data.message, job_id: data.job_id };
@@ -449,16 +577,34 @@ export const apiClient = {
     },
 
     async getGraphData(sessionId = null) {
+        const baseUrl = await this.getBaseUrl();
         const endpoint = sessionId 
-            ? `${BACKEND_URL}/graph/session/${sessionId}`
-            : `${BACKEND_URL}/graph/data`;
+            ? `${baseUrl}/graph/session/${sessionId}`
+            : `${baseUrl}/graph/data`;
 
         try {
             const response = await fetch(endpoint, {
                 headers: await this.getApiKeysHeaders()
             });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.detail || "Failed to fetch graph data");
+
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error("Backend returned non-JSON response.");
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || `Failed to fetch graph data: ${response.status}`);
+            }
             return data;
         } catch (error) {
             console.error("Graph Data Fetch Error:", error);
@@ -467,14 +613,32 @@ export const apiClient = {
     },
 
     async getGraphSessions() {
-        const endpoint = `${BACKEND_URL}/graph/sessions`;
+        const baseUrl = await this.getBaseUrl();
+        const endpoint = `${baseUrl}/graph/sessions`;
 
         try {
             const response = await fetch(endpoint, {
                 headers: await this.getApiKeysHeaders()
             });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.detail || "Failed to fetch graph sessions");
+            
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                return []; // Silent fallback for list fetch if not HTML error
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || `Failed to fetch graph sessions: ${response.status}`);
+            }
             return data;
         } catch (error) {
             console.error("Graph Sessions Fetch Error:", error);
@@ -491,7 +655,7 @@ export const apiClient = {
      */
     async streamQueryRag(blocks, question, onChunk, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false) {
         console.log('[API] Stream RAG request...', siteId ? `(Site: ${siteId})` : '', queryNotebook ? '(Notebook ON)' : '');
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
 
         try {
             const response = await fetch(`${baseUrl}/chat/stream`, {
@@ -571,11 +735,28 @@ export const apiClient = {
     },
     // --- Phase 3: Site Management ---
     async getSites() {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/sites`);
-            if (!response.ok) throw new Error("Failed to fetch sites");
-            const data = await response.json();
+            const response = await fetch(`${baseUrl}/sites/`);
+            
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                return [];
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || `Failed to fetch sites: ${response.status}`);
+            }
             return data.sites || [];
         } catch (e) {
             console.error("Get Sites Error", e);
@@ -583,9 +764,9 @@ export const apiClient = {
         }
     },
     async deleteSite(siteId) {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/sites/${siteId}`, { method: 'DELETE' });
+            const response = await fetch(`${baseUrl}/sites/${siteId}/`, { method: 'DELETE' });
             if (!response.ok) throw new Error("Failed to delete site");
             return { success: true };
         } catch (e) {
@@ -601,7 +782,7 @@ export const apiClient = {
      */
     async exportSite(siteUrl, format = 'json') {
         const encodedUrl = encodeURIComponent(siteUrl);
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         const url = `${baseUrl}/export/${encodedUrl}?format=${format}`;
 
         try {
@@ -628,11 +809,28 @@ export const apiClient = {
 
     // --- Phase 19: Bookmarking ---
     async getBookmarks() {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks`);
-            if (!response.ok) throw new Error("Failed to fetch bookmarks");
-            const data = await response.json();
+            const response = await fetch(`${baseUrl}/bookmarks/`);
+            
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                return [];
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || `Failed to fetch bookmarks: ${response.status}`);
+            }
             return data.bookmarks || [];
         } catch (e) {
             console.error("Get Bookmarks Error", e);
@@ -640,9 +838,9 @@ export const apiClient = {
         }
     },
     async createBookmark(content, sourceUrl, metadata = {}) {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks`, {
+            const response = await fetch(`${baseUrl}/bookmarks/`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -654,17 +852,35 @@ export const apiClient = {
                     metadata
                 })
             });
-            if (!response.ok) throw new Error("Failed to create bookmark");
-            return await response.json();
+
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error("Backend returned non-JSON response.");
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || `Failed to create bookmark: ${response.status}`);
+            }
+            return data;
         } catch (e) {
             console.error("Create Bookmark Error", e);
             return { success: false, error: e.message };
         }
     },
     async deleteBookmark(bookmarkId) {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks/${bookmarkId}`, { method: 'DELETE' });
+            const response = await fetch(`${baseUrl}/bookmarks/${bookmarkId}/`, { method: 'DELETE' });
             if (!response.ok) throw new Error("Failed to delete bookmark");
             return { success: true };
         } catch (e) {
@@ -678,13 +894,31 @@ export const apiClient = {
      * @returns {Promise<Object>} { status: 'processing'|'completed'|'failed', message, files_processed, chunks_count }
      */
     async getIngestionStatus(jobId) {
-        const baseUrl = BACKEND_URL;
+        const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/ingest/status/${jobId}`, {
+            const response = await fetch(`${baseUrl}/ingest/status/${jobId}/`, {
                 headers: { ...(await this.getApiKeysHeaders()) }
             });
-            if (!response.ok) throw new Error(`Status fetch failed: ${response.status}`);
-            return await response.json();
+
+            const contentType = response.headers.get("content-type");
+            let data;
+            try {
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Not JSON");
+                }
+                data = await response.json();
+            } catch (e) {
+                const textBody = await response.text();
+                if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
+                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                }
+                throw new Error("Backend returned non-JSON response.");
+            }
+
+            if (!response.ok) {
+                throw new Error(data.detail || data.error || `Status fetch failed: ${response.status}`);
+            }
+            return data;
         } catch (e) {
             console.error("[API] getIngestionStatus Error:", e);
             return { status: 'processing', message: e.message };

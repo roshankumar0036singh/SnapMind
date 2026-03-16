@@ -1,14 +1,14 @@
 import os
 import base64
+import requests
 from dotenv import load_dotenv
+from api_clients import get_groq_key, get_hf_token
 
 load_dotenv()
 
-from api_clients import get_mistral_client, get_gemini_client
-
 def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str = "qa", api_keys: dict = None) -> dict:
     """
-    Analyzes an image using Vision models (Gemini by default, Mistral as fallback).
+    Analyzes an image using Vision models (HF as primary, Groq as fallback).
     
     mode: "qa" (Default) or "extraction" (OCR-like)
     """
@@ -38,100 +38,72 @@ Act like a RAG (Retrieval Augmented Generation) , If you Dont have Knowledge Reg
 </instructions>"""
         user_message_text = f"{system_instruction.replace('{user_prompt}', final_prompt)}\n\nUser Question: {final_prompt}"
 
-    # --- 1. Try Gemini Models ---
-    # We try 2.0-flash first (as requested), then 1.5-flash as fallback 
-    # to handle different project quota assignments.
-    gemini_models_to_try = ["gemini-2.0-flash-lite"]
-    
-    try:
-        gemini_client = get_gemini_client(api_keys)
-        if gemini_client:
-            for g_model in gemini_models_to_try:
-                try:
-                    print(f"[VISION] Attempting {g_model}...")
-                    from google.genai import types
-                    
-                    response = gemini_client.models.generate_content(
-                        model=g_model,
-                        contents=[
-                            user_message_text,
-                            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
-                        ]
-                    )
-                    
-                    if response.text:
-                        print(f"[VISION] Success with {g_model}")
-                        return {
-                            "answer": response.text,
-                            "success": True,
-                            "model_used": g_model
-                        }
-                except Exception as sub_e:
-                    print(f"[VISION] {g_model} failed: {str(sub_e)[:100]}...")
-                    # Continue to next Gemini model
-                    continue
-    except Exception as e:
-        print(f"[VISION] Gemini client error: {e}")
-
-    # --- 2. Fallback to Mistral (Pixtral) ---
-    print("[VISION] Falling back to Mistral...")
-    client = get_mistral_client(api_keys)
-    if not client:
-        return {
-            "success": False,
-            "answer": "Vision models failed to initialize or hit quota. Check API keys and Google Cloud Quota (limit 0 usually means API not enabled).",
-            "model_used": "none"
-        }
-
-    from mistralai.models import TextChunk, ImageURLChunk
+    # Detect MIME type
+    mime_type = "image/jpeg"  # Default
+    if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        mime_type = "image/png"
+    elif image_bytes.startswith(b"GIF87a") or image_bytes.startswith(b"GIF89a"):
+        mime_type = "image/gif"
+    elif image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
+        mime_type = "image/webp"
 
     # Encode image to base64 data URL
     try:
         base64_image = base64.b64encode(image_bytes).decode('utf-8')
-        data_url = f"data:image/jpeg;base64,{base64_image}"
+        data_url = f"data:{mime_type};base64,{base64_image}"
+        print(f"[VISION] Detected MIME type: {mime_type}")
     except Exception as e:
         return {
             "success": False,
             "answer": f"Error encoding image: {str(e)}",
+            "error": str(e),
             "model_used": "none"
         }
-    
-    model_name = "pixtral-12b-2409" 
 
-    try:
-        # Use explicit SDK chunk classes to prevent tagging/discriminator errors
-        content = [
-            TextChunk(text=user_message_text),
-            ImageURLChunk(image_url=data_url)
-        ]
-        
-        chat_response = client.chat.complete(
-            model=model_name,
-            messages=[
-                {
-                    "role": "user",
-                    "content": content
+    # --- Primary: Groq (Llama 4 Scout Vision) ---
+    groq_key = get_groq_key(api_keys)
+    if groq_key:
+        print("[VISION] Attempting Groq (Primary)...")
+        # Llama 4 Scout as a preview multimodal model
+        groq_model = "meta-llama/llama-4-scout-17b-16e-instruct"
+        try:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {groq_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": groq_model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_message_text},
+                            {"type": "image_url", "image_url": {"url": data_url}}
+                        ]
+                    }
+                ],
+                "max_tokens": 1024
+            }
+            res = requests.post(url, headers=headers, json=payload, timeout=30)
+            res_data = res.json()
+            if res.status_code == 200:
+                answer = res_data["choices"][0]["message"]["content"]
+                print(f"[VISION] Success with {groq_model}")
+                return {
+                    "answer": answer,
+                    "success": True,
+                    "model_used": groq_model
                 }
-            ]
-        )
-        
-        answer = chat_response.choices[0].message.content
-        
-        return {
-            "answer": answer,
-            "success": True,
-            "model_used": model_name
-        }
+            else:
+                error_msg = res_data.get("error", {}).get("message", res.text)
+                print(f"[VISION] Groq failed ({res.status_code}): {error_msg[:100]}")
+        except Exception as e:
+            print(f"[VISION] Groq error: {e}")
 
-    except Exception as e:
-        error_msg = str(e)
-        # Log error
-        with open("vision_error.log", "a", encoding="utf-8") as f:
-            f.write(f"\n[Error] Mistral Vision ({model_name}): {error_msg}\n")
-        print(f"Mistral Vision Error ({model_name}): {error_msg}")
-        
-        return {
-            "success": False,
-            "answer": f"Error analyzing image: {error_msg}",
-            "model_used": model_name
-        }
+    return {
+        "success": False,
+        "answer": "All vision models failed (HF, Groq). Check availability and quotas.",
+        "error": "All vision models failed",
+        "model_used": "none"
+    }

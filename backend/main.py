@@ -75,9 +75,14 @@ class BookmarkRequest(BaseModel):
 
 @app.get("/")
 def health_check():
+    """Minimal health check for Hugging Face health monitor."""
+    return {"status": "ok", "service": "Snapmind Backend"}
+
+@app.get("/debug/health")
+def health_check_debug():
+    """Detailed diagnostics for debugging."""
     import sys
     import os
-    import subprocess
     import pkgutil
     import importlib.metadata
     from typing import Any
@@ -396,7 +401,8 @@ def analyze_image_endpoint(request: AnalyzeImageRequest, req: Request):
     result = analyze_image_logic(image_bytes, request.prompt, request.mode, api_keys=api_keys)
     
     if not result.get("success", False):
-        raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+        error_detail = result.get("error") or result.get("answer") or "Unknown vision error"
+        raise HTTPException(status_code=500, detail=error_detail)
         
     return result
 
@@ -691,7 +697,7 @@ def debug_list_urls():
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    # Hugging Face Spaces expects port 7860
-    port = int(os.getenv("PORT", 7860))
+    # Local development uses port 8000
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
 

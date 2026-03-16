@@ -36,10 +36,13 @@ def test_chat():
 
 def test_vision():
     print("Testing Vision (/analyze-image)...", end=" ")
-    # 1x1 white pixel base64
-    dummy_image = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+    image_path = "test_pixel.png"
     try:
-        payload = {"image_data": dummy_image, "prompt": "What color is this?"}
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+        image_data = base64.b64encode(image_bytes).decode('utf-8')
+        
+        payload = {"image_data": image_data, "prompt": "What color is this?"}
         r = requests.post(f"{BASE_URL}/analyze-image", json=payload)
         if r.status_code == 200:
             print("✅ OK")
