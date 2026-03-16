@@ -17,8 +17,22 @@ export const apiClient = {
      * Retrieves the backend base URL from storage or returns default.
      */
     async getBaseUrl() {
-        // Prioritize Environment Variable (Vite) -> then hardcoded default
-        return import.meta.env.VITE_BACKEND_URL || DEFAULT_BACKEND_URL;
+        console.log("[DEBUG] getBaseUrl() called");
+        // 1. Prioritize user-configured URL from storage
+        const storage = await new Promise(r => chrome.storage.local.get(['backendUrl'], r));
+        if (storage.backendUrl) {
+            console.log("[DEBUG] Found configured backendUrl in storage:", storage.backendUrl);
+            return storage.backendUrl.replace(/\/$/, ""); 
+        }
+
+        // 2. Fallback to Environment Variable (Vite)
+        const envUrl = import.meta.env.VITE_BACKEND_URL;
+        console.log("[DEBUG] Fallback to env VITE_BACKEND_URL:", envUrl);
+        if (envUrl) return envUrl.replace(/\/$/, "");
+
+        // 3. Last resort hardcoded default
+        console.log("[DEBUG] Last resort: DEFAULT_BACKEND_URL:", DEFAULT_BACKEND_URL);
+        return DEFAULT_BACKEND_URL.replace(/\/$/, "");
     },
 
     /**
@@ -125,8 +139,8 @@ export const apiClient = {
         const baseUrl = await this.getBaseUrl();
 
         try {
-            console.log(`[API] Sending image to ${baseUrl}/analyze-image (Mode: ${mode})...`);
-
+            console.log(`[API] analyzeImage calling: ${baseUrl}/analyze-image (Mode: ${mode})`);
+            
             const response = await fetch(`${baseUrl}/analyze-image`, {
                 method: "POST",
                 headers: {
@@ -142,22 +156,23 @@ export const apiClient = {
 
             const contentType = response.headers.get("content-type");
             let data;
-            
+            const textBody = await response.text();
+
             try {
-                if (!contentType || !contentType.includes("application/json")) {
+                if (contentType && contentType.includes("application/json")) {
+                    data = JSON.parse(textBody);
+                } else {
                     throw new Error("Not JSON");
                 }
-                data = await response.json();
             } catch (e) {
-                const textBody = await response.text();
                 if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
-                    throw new Error("Backend returned an HTML page (Hugging Face login or error). Check your Token and Space status.");
+                    throw new Error(`Backend returned HTML instead of JSON. Ensure your Backend URL is correct and not hitting a dev server or proxy. (URL: ${baseUrl}/analyze-image)`);
                 }
-                throw new Error(`Invalid Response Format: ${textBody.substring(0, 100)}...`);
+                throw new Error(`Invalid Response: ${textBody.substring(0, 100)}...`);
             }
 
             if (!response.ok) {
-                throw new Error(data.detail || data.error || `Backend Error: ${response.status}`);
+                throw new Error(data?.detail || data?.error || `Backend Error: ${response.status}`);
             }
 
             return {
@@ -737,7 +752,7 @@ export const apiClient = {
     async getSites() {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/sites/`);
+            const response = await fetch(`${baseUrl}/sites`);
             
             const contentType = response.headers.get("content-type");
             let data;
@@ -766,7 +781,7 @@ export const apiClient = {
     async deleteSite(siteId) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/sites/${siteId}/`, { method: 'DELETE' });
+            const response = await fetch(`${baseUrl}/sites/${siteId}`, { method: 'DELETE' });
             if (!response.ok) throw new Error("Failed to delete site");
             return { success: true };
         } catch (e) {
