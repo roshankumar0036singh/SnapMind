@@ -10,7 +10,7 @@ import requests
 import httpx
 import time
 from api_clients import get_gemini_client, get_mistral_client, get_firecrawl_key, get_lingo_key, genai
-from graph_logic import db_retry
+from database import get_db_pool, db_retry
 from psycopg import errors
 
 # 1. Load Environment Variables
@@ -726,7 +726,7 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
             return {"success": False, "error": "Database not configured on server."}
         
         # [NEW] Inner function for retryable insertion
-        @db_retry(max_retries=5, initial_delay=2)
+        @db_retry(initial_delay=2)
         def perform_bulk_insert(args):
             with db_pool.connection() as conn:
                 with conn.cursor() as cur:
@@ -783,9 +783,35 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
             text_content = translated_text
 
         # 2. Chunk the (possibly translated) text
+        # [NEW] Page-Aware Chunking for PDFs
+        if "--- SNAPMIND_PAGE_" in text_content:
+            print("[INGEST_TEXT] Page markers detected. Processing PDF segments...")
+            all_chunks = []
+            segments = re.split(r'--- SNAPMIND_PAGE_(\d+) ---', text_content)
+            
+            # re.split with groups returns [prefix, group1, suffix1, group2, suffix2, ...]
+            # The first element is text BEFORE the first marker (usually empty or header)
+            # The rest are pairs of (page_num, page_content)
+            
+            # Initial text before any markers (if any)
+            if segments[0].strip():
+                initial_chunks = chunk_text(segments[0], max_chars=ChunkingConfig.TARGET_CHUNK_SIZE, source_url=normalized_url, use_semantic=True)
+                all_chunks.extend(initial_chunks)
+            
+            for i in range(1, len(segments), 2):
+                page_num = int(segments[i])
+                page_content = segments[i+1]
+                if not page_content.strip(): continue
+                
+                page_chunks = chunk_text(page_content, max_chars=ChunkingConfig.TARGET_CHUNK_SIZE, source_url=normalized_url, use_semantic=True)
+                for c in page_chunks:
+                    if "metadata" not in c: c["metadata"] = {}
+                    c["metadata"]["page"] = page_num
+                all_chunks.extend(page_chunks)
+            chunks = all_chunks
         # [SPEED OPTIMIZATION] Use Agentic Chunking only for reasonably sized text.
         # Massive papers (> 80k chars) take too long with Agentic Chunking.
-        if FeatureFlags.PHASE_15_AGENTIC_CHUNKING and len(text_content) < 80000:
+        elif FeatureFlags.PHASE_15_AGENTIC_CHUNKING and len(text_content) < 80000:
             print("[INGEST_TEXT] Using Agentic Semantic Chunking...")
             chunks = run_agentic_chunking(
                 text_content, 
@@ -850,48 +876,31 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
             return {"success": False, "message": "Failed to create embeddings."}
 
         # 5. Bulk insert with retries for connection stability
-        if not db_pool:
-            update_job_status(session_id, "failed", "Database not configured")
-            return {"success": False, "message": "Database not configured"}
-            
-        MAX_RETRIES = 3
-        for attempt in range(MAX_RETRIES):
-            try:
-                with db_pool.connection() as conn:
-                    with conn.cursor() as cur:
-                        args_list = [
-                            (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
-                            for d in data_list
-                        ]
-                        
-                        # [FIX] Small batch size to prevent SSL bad length errors on large embedding payloads
-                        BATCH_SIZE = 5
-                        for i in range(0, len(args_list), BATCH_SIZE):
-                            batch = args_list[i : i + BATCH_SIZE]
-                            cur.executemany(
-                                "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
-                                batch,
-                                returning=False
-                            )
-                    conn.commit()
-                break # Success!
-            except (psycopg.OperationalError, psycopg.InterfaceError) as e:
-                if attempt == MAX_RETRIES - 1:
-                    print(f"[INGEST_TEXT FATAL ERROR] All {MAX_RETRIES} attempts failed: {e}")
-                    update_job_status(session_id, "failed", f"DB insertion failed after {MAX_RETRIES} retries: {e}")
-                    return {"success": False, "message": f"DB insertion failed after {MAX_RETRIES} retries: {e}"}
-                wait = (attempt + 1) * 3  # Exponential backoff: 3s, 6s
-                print(f"[INGEST_TEXT] DB Attempt {attempt+1} failed: {e}. Retrying in {wait}s...")
-                time.sleep(wait)
-                # Force pool to check connections before next attempt
-                try:
-                    db_pool.check()
-                except Exception:
-                    pass
-            except Exception as e:
-                print(f"[INGEST_TEXT ERROR] Non-retryable error: {e}")
-                update_job_status(session_id, "failed", f"DB error: {e}")
-                return {"success": False, "message": f"DB error: {e}"}
+        @db_retry(initial_delay=3)
+        def perform_bulk_text_insert(args):
+            with db_pool.connection() as conn:
+                with conn.cursor() as cur:
+                    BATCH_SIZE = 5
+                    for i in range(0, len(args), BATCH_SIZE):
+                        batch = args[i : i + BATCH_SIZE]
+                        cur.executemany(
+                            "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                            batch,
+                            returning=False
+                        )
+                conn.commit()
+
+        args_list = [
+            (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
+            for d in data_list
+        ]
+        
+        try:
+            perform_bulk_text_insert(args_list)
+        except Exception as e:
+            print(f"[INGEST_TEXT FATAL ERROR] All retries failed: {e}")
+            update_job_status(session_id, "failed", f"DB insertion failed after retries: {e}")
+            return {"success": False, "message": f"DB insertion failed after retries: {e}"}
             
         update_job_status(session_id, "completed", f"Successfully ingested {len(data_list)} chunks.", 100)
         return {
@@ -919,8 +928,12 @@ def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content
         if content_type == "application/pdf" or filename.endswith(".pdf"):
             import PyPDF2
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
-            for page in pdf_reader.pages:
-                text_content += page.extract_text() + "\n\n"
+            for i, page in enumerate(pdf_reader.pages):
+                page_text = page.extract_text()
+                if page_text:
+                    # Inject a robust marker that survives translation/chunking
+                    text_content += f"\n\n--- SNAPMIND_PAGE_{i+1} ---\n\n"
+                    text_content += page_text + "\n"
                 
         elif content_type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"] or filename.endswith(".docx"):
             import docx
@@ -1068,28 +1081,29 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                 )
                 
                 # Store in database
-                if embedded_chunks:
-                    if db_pool:
+                if embedded_chunks and db_pool:
+                    @db_retry(initial_delay=2)
+                    def perform_multipage_insert(args):
                         with db_pool.connection() as conn:
                             with conn.cursor() as cur:
-                                args_list = [
-                                    (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
-                                    for d in embedded_chunks
-                                ]
-                                
-                                # [FIX] Batch insertion to prevent SSL bad length errors
                                 BATCH_SIZE = 20
-                                for i in range(0, len(args_list), BATCH_SIZE):
-                                    batch = args_list[i : i + BATCH_SIZE]
+                                for i in range(0, len(args), BATCH_SIZE):
+                                    batch = args[i : i + BATCH_SIZE]
                                     cur.executemany(
                                         "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
-                                        batch
+                                        batch,
+                                        returning=False
                                     )
                             conn.commit()
-                        total_chunks += len(embedded_chunks)
-                        print(f"[MULTIPAGE] ✅ Stored {len(embedded_chunks)} chunks from {page_url}")
-                    else:
+                    
+                    perform_multipage_insert(args_list)
+                    total_chunks += len(embedded_chunks)
+                    print(f"[MULTIPAGE] ✅ Stored {len(embedded_chunks)} chunks from {page_url}")
+                else:
+                    if not db_pool:
                         print(f"[MULTIPAGE] ❌ DB connection not configured for {page_url}")
+                    else:
+                        print(f"[MULTIPAGE] ⚠️ No chunks to store for {page_url}")
                 
             except Exception as e:
                 print(f"[MULTIPAGE] ❌ Failed to process {page_url}: {e}")

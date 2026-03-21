@@ -94,7 +94,8 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
               const snippet = block?.highlight_snippet || (block?.text ? cleanSnippetText(block.text) : '');
               console.log(`[Citation] Highlighting ${citation.blockId} with snippet: "${snippet.substring(0, 50)}..."`);
 
-              onHighlight(citation.blockId, highlightUrl, snippet);
+               const pageNum = block?.metadata?.page || block?.page;
+              onHighlight(citation.blockId, highlightUrl, snippet, pageNum);
             } else {
               // Local/Active tab fallback (same page)
               chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -208,13 +209,10 @@ const getFlagEmoji = (langCode) => {
 
 const getSourceHandle = (title) => {
   if (!title) return 'PIN';
-  // Extract uppercase letters or first letter of words
-  const words = title.trim().split(/\s+/);
-  if (words.length >= 2) {
-    const handle = words.map(w => w[0]).join('').toUpperCase().substring(0, 4);
-    return handle.length >= 2 ? handle : title.substring(0, 3).toUpperCase();
-  }
-  return title.substring(0, 3).toUpperCase();
+  // Use up to 3 words to ensure uniqueness (e.g. SWOC and SSOC are already unique, but helps generally)
+  const words = title.trim().split(/\s+/).slice(0, 3);
+  const handle = words.map(w => w.toUpperCase().replace(/[^A-Z0-9]/g, '')).filter(Boolean).join('-');
+  return handle || 'PIN';
 };
 
 const SiteList = ({ onContextSelect }) => {
@@ -471,7 +469,7 @@ function App() {
   const inputRef = useRef(null); // For Ctrl+K focus
   const fileInputRef = useRef(null); // Used by manual generic file clicks
 
-  const handleCitationHighlight = (blockId, url, snippet = "") => {
+  const handleCitationHighlight = (blockId, url, snippet = "", pageNum = null) => {
     if (!url) {
       console.warn("handleCitationHighlight: No URL for block", blockId);
       return;
@@ -479,7 +477,15 @@ function App() {
     
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
-      const highlightUrl = url;
+      let highlightUrl = url;
+
+      // [NEW] PDF Page Navigation
+      if (url.toLowerCase().endsWith('.pdf') && pageNum) {
+        // Append #page=N to PDF URL for direct navigation
+        highlightUrl = url.includes('#') ? url.split('#')[0] : url;
+        highlightUrl += `#page=${pageNum}`;
+        console.log(`[Citation] PDF detected, navigating to page ${pageNum}: ${highlightUrl}`);
+      }
 
       // Helper: wait for a tab to finish loading, then send highlight
       const sendHighlightAfterLoad = (tabId) => {
@@ -515,15 +521,19 @@ function App() {
           }
         }
 
-        const highlightBase = highlightUrlObj ? (highlightUrlObj.origin + highlightUrlObj.pathname) : highlightUrl.split('#')[0];
+        // [NEW] Prioritize exact URL match for multi-tab accuracy
+        let existingTab = tabs.find(t => t.url === highlightUrl);
         
-        const existingTab = tabs.find(t => {
-          if (!t.url) return false;
-          try {
-            const tabUrlObj = new URL(t.url);
-            return (tabUrlObj.origin + tabUrlObj.pathname) === highlightBase;
-          } catch (e) { return false; }
-        });
+        if (!existingTab) {
+          const highlightBase = highlightUrlObj ? (highlightUrlObj.origin + highlightUrlObj.pathname) : highlightUrl.split('#')[0];
+          existingTab = tabs.find(t => {
+            if (!t.url) return false;
+            try {
+              const tabUrlObj = new URL(t.url);
+              return (tabUrlObj.origin + tabUrlObj.pathname) === highlightBase;
+            } catch (e) { return false; }
+          });
+        }
 
         if (existingTab) {
           // Tab already open (at least the same base page)
@@ -590,11 +600,12 @@ function App() {
           ...(contentBlocks || []),
           ...pinnedTabs.flatMap(t => t.blocks || [])
         ];
-        const block = allBlocks.find(b => b.id === blockId);
-        if (block) {
-          handleCitationHighlight(blockId, block.url || block.sourceURL, block.highlight_snippet || "");
+         if (block) {
+          const pageNum = block?.metadata?.page || block?.page;
+          handleCitationHighlight(blockId, block.url || block.sourceURL, block.highlight_snippet || "", pageNum);
         } else {
-          const msgWithCites = messages.findLast(m => m.citations?.some(c => m.id === aiMsgId && c.blockId === blockId));
+          // Find the message that cited this block without the crashing aiMsgId check
+          const msgWithCites = messages.findLast(m => m.citations?.some(c => c.blockId === blockId));
           const citeData = msgWithCites?.citations?.find(c => c.blockId === blockId);
           if (citeData?.url) {
             handleCitationHighlight(blockId, citeData.url, "");
@@ -606,109 +617,7 @@ function App() {
     return () => document.removeEventListener('click', handleGlobalClick, true);
   }, [contentBlocks, pinnedTabs, messages]);
 
-  // [PROFESSIONALISM] Custom Markdown Components moved inside App for closure access
-  const MarkdownComponents = useMemo(() => ({
-    // Links: Open in new tab securely OR handle professional citations
-    a: ({ href, children }) => {
-      // Catch both [●](cite:id) and fragment-based [●](#snap-cite-id)
-      if (href?.includes('cite:') || href?.includes('#snap-cite-')) {
-        const parts = href.split(href.includes('snap-cite-') ? 'snap-cite-' : 'cite:');
-        const blockId = parts[parts.length - 1].replace(/^[#/]+/, '');
-        
-        return (
-          <span 
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              
-              console.log("[Citation] Intercepted click for block:", blockId);
-
-              // 1. [FIX] Prioritize finding the block in the specific message that cited it
-              // This avoids ID collisions (e.g. db-block-1 pointing to different URLs in different turns)
-              const msgWithBlocks = messages.findLast(m => m.citations?.some(c => c.blockId === blockId));
-              let block = msgWithBlocks?.contextBlocks?.find(b => b.id === blockId);
-
-              // 2. Fallback to global context pools (pinned tabs, active tab)
-              if (!block) {
-                const globalBlocks = [
-                  ...(contentBlocks || []),
-                  ...pinnedTabs.flatMap(t => t.blocks || [])
-                ];
-                block = globalBlocks.find(b => b.id === blockId);
-              }
-              
-              if (block) {
-                const snippet = block.highlight_snippet || "";
-                handleCitationHighlight(blockId, block.url || block.sourceURL, snippet);
-              } else {
-                console.warn("[Markdown] Block not found for citation:", blockId);
-                // Last ditch fallback: AI-provided citation data
-                const citeData = msgWithBlocks?.citations?.find(c => c.blockId === blockId);
-                if (citeData?.url) {
-                  handleCitationHighlight(blockId, citeData.url, "");
-                }
-              }
-            }}
-            className="citation-dot cursor-pointer transition-all hover:scale-125 select-none"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '12px',
-              height: '14px',
-              color: 'var(--primary-400)',
-              fontSize: '14px',
-              marginLeft: '2px',
-              fontWeight: 'bold',
-              verticalAlign: 'baseline',
-            }}
-            title="Click to view source on page"
-          >
-            ●
-          </span>
-        );
-      }
-      return (
-        <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">
-          {children}
-        </a>
-      );
-    },
-    // Code Blocks: Styled
-    code: ({ node, inline, className, children, ...props }) => {
-      const match = /language-(\w+)/.exec(className || '');
-      if (!inline && match && match[1] === 'mermaid') {
-        return <MermaidChart chart={String(children).replace(/\n$/, '')} />;
-      }
-      return inline ? (
-        <code className="bg-slate-100 text-slate-800 px-1 py-0.5 rounded text-xs font-mono" {...props}>
-          {children}
-        </code>
-      ) : (
-        <code className={`block bg-slate-800 text-white p-3 rounded-lg text-xs overflow-x-auto font-mono my-2 ${className || ''}`} {...props}>
-          {children}
-        </code>
-      );
-    },
-    // Tables: Bordered
-    table: ({ children }) => (
-      <div className="overflow-x-auto my-3 border border-slate-200 rounded-lg">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          {children}
-        </table>
-      </div>
-    ),
-    thead: ({ children }) => <thead className="bg-slate-50">{children}</thead>,
-    th: ({ children }) => <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{children}</th>,
-    tbody: ({ children }) => <tbody className="bg-white divide-y divide-slate-200">{children}</tbody>,
-    tr: ({ children }) => <tr className="hover:bg-slate-50">{children}</tr>,
-    td: ({ children }) => <td className="px-3 py-2 whitespace-normal text-slate-700">{children}</td>,
-    // Lists
-    ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1">{children}</ul>,
-    ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1">{children}</ol>,
-    // Paragraphs
-    p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
-  }), [contentBlocks, pinnedTabs]); // Re-memoize if blocks change
+  // [REMOVED] Legacy global MarkdownComponents - now defined per-message in the render loop for closure accuracy
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1757,6 +1666,8 @@ function App() {
       setCropPreview(null);
     }
     setIsLoading(true);
+    // Clear global blocks to prevent citation cross-pollination from previous turns
+    setContentBlocks([]);
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -1924,6 +1835,11 @@ function App() {
           },
           targetSiteId, currentSessionId, search_query, query_lang, outputLang, queryNotebook);
 
+        // 3.5 Handle empty or failed stream
+        if (!streamResult.success || isFirstToken) {
+          throw new Error(streamResult.error || "The AI failed to generate a response. Please check your connection or try a different query.");
+        }
+ 
         // 4. Extract Citations (Post-Stream)
         // Find block IDs even if they are comma-separated like [db-block-1, db-block-3]
         console.log("[Stream] Generation complete. Extracting citations from text...");
@@ -2033,7 +1949,7 @@ function App() {
 
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 text-sm font-sans antialiased text-slate-900 selection:bg-indigo-100">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 text-sm font-sans antialiased text-slate-900 selection:bg-indigo-100 overflow-x-hidden max-w-full">
 
       {/* Offline Banner */}
       {isOffline && (
@@ -2534,7 +2450,7 @@ function App() {
       {/* Chat Container */}
       {
         view === 'chat' && (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" style={{ background: 'var(--bg-secondary)' }}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 scroll-smooth" style={{ background: 'var(--bg-secondary)', maxWidth: '100%' }}>
             {/* Ingestion Progress Indicator */}
             {ingestStatus && (ingestStatus.status === 'processing' || ingestStatus.status === 'completed') && (
               <div className="mb-4 p-3 bg-white border border-indigo-100 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-2">
@@ -2614,32 +2530,125 @@ function App() {
                   <div style={{
                     fontSize: 'var(--text-sm)',
                     lineHeight: 'var(--leading-relaxed)',
-                    color: msg.role === 'user' ? 'var(--primary-700)' : 'var(--text-primary)'
+                    color: msg.role === 'user' ? 'var(--primary-700)' : 'var(--text-primary)',
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere'
                   }}>
-                    {msg.role === 'user'
-                      ? (<div>{msg.text}</div>)
-                      : (
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeHighlight]}
-                          components={MarkdownComponents}
-                        >
-                          {/* [PROFESSIONALISM] Remove numeric [1], [2] markers. Replace block IDs with a subtle bullet separator or nothing.
-                          We keep the logic for handleCitationHighlight but make the UI less obtrusive. */}
-                          {(() => {
-                            const citationRegex = /(?:bi|nb|db|br)-block-[\d-]+|pin-[A-Z0-9]+-\d+/g;
+                    {msg.role === 'user' ? (
+                      <div>{msg.text}</div>
+                    ) : (
+                      (() => {
+                        // [NEW] Dynamically create components for THIS message context
+                        const components = {
+                          a: ({ href, children }) => {
+                            const blockId = href?.replace('#snap-cite-', '');
+                            if (href?.startsWith('#snap-cite-')) {
+                              return (
+                                <span
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    
+                                    console.log("[Citation] Intercepted click for block:", blockId);
+ 
+                                    // 1. [FIX] EXCLUSIVELY use this message's blocks
+                                    let block = msg.contextBlocks?.find(b => b.id === blockId);
+ 
+                                    // 2. Fallback to global context pools (pinned tabs, active tab)
+                                    if (!block) {
+                                      const globalBlocks = [
+                                        ...(contentBlocks || []),
+                                        ...pinnedTabs.flatMap(t => t.blocks || [])
+                                      ];
+                                      block = globalBlocks.find(b => b.id === blockId);
+                                    }
+                                    
+                                    if (block || citeData) {
+                                      const url = block?.url || block?.sourceURL || citeData?.url;
+                                      const snippet = block?.highlight_snippet || block?.text || "";
+                                      
+                                      if (url) {
+                                        const pageNum = block?.metadata?.page || block?.page || citeData?.page;
+                                        handleCitationHighlight(blockId, url, snippet, pageNum);
+                                      } else {
+                                        console.warn("[Markdown] No URL found for citation:", blockId);
+                                      }
+                                    } else {
+                                      console.warn("[Markdown] No metadata found for citation:", blockId);
+                                    }
+                                  }}
+                                  className="citation-dot cursor-pointer transition-all hover:scale-125 select-none text-indigo-500 font-serif font-bold align-super ml-0.5 text-sm"
+                                >
+                                  {children || '●'}
+                                </span>
+                              );
+                            }
+                            return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+                          },
+                          code: ({ node, inline, className, children, ...props }) => {
+                            const match = /language-(\w+)/.exec(className || '');
+                            const lang = match ? match[1] : '';
                             
-                            return msg.text.replace(citationRegex, (id) => {
-                              const index = msg.citations?.findIndex(c => c.blockId === id) ?? -1;
-                              if (index === -1) return ""; 
-                              
-                              // Replace ID with a fragment-based markdown link to prevent redirects
-                              return `[●](#snap-cite-${id})`;
-                            });
-                          })()}
-                        </ReactMarkdown>
-                      )
-                    }
+                            if (!inline && lang === 'mermaid') {
+                              return <MermaidChart code={String(children).replace(/\n$/, '')} />;
+                            }
+ 
+                            return !inline ? (
+                              <div className="relative group/code">
+                                <pre className={`${className} p-4 rounded-xl overflow-x-auto bg-slate-900/50 backdrop-blur-sm border border-slate-800 text-[13px] leading-relaxed shadow-lg mb-4`} {...props}>
+                                  <code>{children}</code>
+                                </pre>
+                                <button
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(String(children));
+                                    toast.success("Code copied to clipboard!");
+                                  }}
+                                  className="absolute top-3 right-3 p-2 bg-slate-800/80 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg opacity-0 group-hover/code:opacity-100 transition-all border border-slate-700/50 backdrop-blur-sm"
+                                  title="Copy Code"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
+                                  </svg>
+                                </button>
+                              </div>
+                            ) : (
+                              <code className="px-1.5 py-0.5 bg-slate-100 text-indigo-600 rounded-md font-medium" {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                          table: ({ children }) => (
+                            <div className="overflow-x-auto mb-4 border border-slate-200 rounded-lg shadow-sm">
+                              <table className="min-w-full divide-y divide-slate-200 text-xs">
+                                {children}
+                              </table>
+                            </div>
+                          ),
+                          thead: ({ children }) => <thead className="bg-slate-50/80">{children}</thead>,
+                          th: ({ children }) => <th className="px-3 py-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">{children}</th>,
+                          td: ({ children }) => <td className="px-3 py-2 text-slate-600 border-b border-slate-100">{children}</td>
+                        };
+ 
+                        const citationRegex = /\[?(?:bi|nb|db|br)-block-[\d-]+\]?|\[?pin-[A-Z0-9]+-\d+\]?/g;
+                        const processedText = msg.text.replace(citationRegex, (match) => {
+                          // Extract the base ID without brackets
+                          const id = match.replace(/[\[\]]/g, '');
+                          const index = msg.citations?.findIndex(c => c.blockId === id) ?? -1;
+                          if (index === -1) return ""; 
+                          return `[●](#snap-cite-${id})`;
+                        });
+ 
+                        return (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            rehypePlugins={[rehypeHighlight]}
+                            components={components}
+                          >
+                            {processedText}
+                          </ReactMarkdown>
+                        );
+                      })()
+                    )}
                   </div>
 
                   {/* Citations Grid */}
@@ -2819,197 +2828,190 @@ function App() {
 
       {/* Footer Input */}
       {view === 'chat' && (
-        <footer className="relative p-4 bg-white/80 backdrop-blur-md border-t border-slate-200/60 transition-all focus-within:bg-white focus-within:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.1)]">
+        <div className="relative">
+          {/* Active Context and Pinned Tabs Area - Floating above footer */}
+          <div 
+            className="absolute bottom-full right-4 flex flex-col items-end gap-2 mb-3 pointer-events-none transition-all duration-300"
+            style={{ zIndex: 15 }}
+          >
+            {/* Active Context Indicator */}
+            {activeContext && activeContext.type === 'file' && (
+              <div className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg cursor-pointer group hover:-translate-y-0.5 pointer-events-auto"
+                onClick={() => setActiveContext({ type: 'url', id: currentUrl, name: 'Current Page' })}
+                title="Click to clear and revert to web page"
+              >
+                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-[pulse_2s_ease-in-out_infinite]"></div>
+                <span className="text-[11px] font-bold text-indigo-700 max-w-[150px] truncate uppercase tracking-wider">Chatting with {activeContext.name}</span>
+                <span className="text-indigo-400 group-hover:text-red-500 ml-1 font-bold text-sm">×</span>
+              </div>
+            )}
 
-        {/* Active Context and Pinned Tabs Area - Moved into flow for stability */}
-        <div className="flex flex-col items-end gap-2 mb-2 transition-all">
-
-          {/* Active Context Indicator */}
-          {activeContext && activeContext.type === 'file' && (
-            <div className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm cursor-pointer group hover:-translate-y-0.5"
-              onClick={() => setActiveContext({ type: 'url', id: currentUrl, name: 'Current Page' })}
-              title="Click to clear and revert to web page"
-            >
-              <div className="w-2 h-2 rounded-full bg-indigo-500 animate-[pulse_2s_ease-in-out_infinite]"></div>
-              <span className="text-[11px] font-bold text-indigo-700 max-w-[150px] truncate uppercase tracking-wider">Chatting with {activeContext.name}</span>
-              <span className="text-indigo-400 group-hover:text-red-500 ml-1 font-bold text-sm">×</span>
-            </div>
-          )}
-
-          {/* [NEW] Pin Tab Button */}
-          {(!activeContext || activeContext.type === 'url') && currentUrl && !pinnedTabs.find(t => t.url === currentUrl) && mode === 'rag' && (
-            <div className="bg-[#fffdf0] border-2 border-[#fde047] px-4 py-1.5 rounded-full flex items-center justify-center gap-2 shadow-sm cursor-pointer hover:-translate-y-0.5 transition-all w-fit self-end"
-              onClick={async () => {
-                // Ensure we have the blocks before pinning
-                let blocks = contentBlocks;
-                if (blocks.length === 0) {
-                  try {
-                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                    const extResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
-                    if (extResponse && extResponse.data) {
-                      blocks = extResponse.data.blocks;
-                      setContentBlocks(blocks);
+            {/* [NEW] Pin Tab Button */}
+            {(!activeContext || activeContext.type === 'url') && currentUrl && !pinnedTabs.find(t => t.url === currentUrl) && mode === 'rag' && (
+              <div className="bg-[#fffdf0] border-2 border-[#fde047] px-4 py-1.5 rounded-full flex items-center justify-center gap-2 shadow-lg cursor-pointer hover:-translate-y-0.5 transition-all w-fit pointer-events-auto"
+                onClick={async () => {
+                  // Ensure we have the blocks before pinning
+                  let blocks = contentBlocks;
+                  if (blocks.length === 0) {
+                    try {
+                      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                      const extResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
+                      if (extResponse && extResponse.data) {
+                        blocks = extResponse.data.blocks;
+                        setContentBlocks(blocks);
+                      }
+                    } catch (e) {
+                      console.error("Pin Tab Error:", e);
+                      toast.error("Could not extract page. Please REFRESH this page and try again!");
+                      return;
                     }
-                  } catch (e) {
-                    console.error("Pin Tab Error:", e);
-                    toast.error("Could not extract page. Please REFRESH this page and try again!");
-                    return;
                   }
-                }
-                const handle = getSourceHandle(currentTabTitle);
-                const pinId = `pin-${handle}-`;
-                const blocksWithUniqueIds = blocks.map(b => ({ 
-                  ...b, 
-                  id: pinId + b.id.replace(/^bi-block-/, ''),
-                  url: currentUrl // Inject URL for filtering
-                }));
-                setPinnedTabs(prev => [...prev, { title: currentTabTitle || 'Pinned Tab', url: currentUrl, blocks: blocksWithUniqueIds }]);
-                toast.success("Tab pinned for Multi-Tab AI");
-              }}
-            >
-              <span className="text-[13px] font-black text-[#92400e] uppercase tracking-wider font-sans">PIN TAB</span>
-            </div>
-          )}
-
-          {/* Pinned Tabs List */}
-          {pinnedTabs.length > 0 && (
-            <div className="flex gap-2 mb-1 flex-wrap justify-end">
-              {pinnedTabs.map((tab, idx) => (
-                <div key={idx} className="bg-amber-100 border border-amber-300 px-3 py-1 rounded flex items-center gap-1 shadow-sm opacity-90 hover:opacity-100 text-[10px] font-semibold text-amber-800 tracking-wider uppercase">
-                  {tab.title.substring(0, 15)}...
-                  <button className="ml-2 hover:text-red-600" onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}>×</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        {/* Preview Area for Crop */}
-        {cropPreview && (
-          <div className="mb-3 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
-            <img src={cropPreview} className="h-12 w-auto rounded-lg border border-slate-100" alt="Selection" />
-            <div className="flex-1 text-xs text-slate-500">
-              Region Selected. Ask a question about it below.
-            </div>
-            <button onClick={() => setCropPreview(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
-              ✕
-            </button>
-          </div>
-        )}
-
-        {/* Preview Area for Pending File Attachment */}
-        {pendingFile && (
-          <div className="mb-3 flex flex-col gap-2 bg-white p-3 rounded-xl border border-indigo-200 shadow-sm animate-in slide-in-from-bottom-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 overflow-hidden">
-                <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
-                <div className="flex flex-col min-w-0">
-                  <span className="text-sm font-semibold text-slate-700 truncate">{pendingFile.name}</span>
-                  <span className="text-xs text-slate-400 pl-0.5">{(pendingFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                </div>
-              </div>
-              <button type="button" onClick={() => setPendingFile(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 transition" disabled={isLoading}>
-                ✕
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-              <select
-                value={fileTargetLang}
-                onChange={(e) => setFileTargetLang(e.target.value)}
-                disabled={isLoading}
-                className="text-xs bg-slate-50 border border-slate-200 text-slate-600 rounded px-2 py-1 outline-none"
+                  const handle = getSourceHandle(currentTabTitle);
+                  const pinId = `pin-${handle}-`;
+                  const blocksWithUniqueIds = blocks.map(b => ({ 
+                    ...b, 
+                    id: pinId + b.id.replace(/^bi-block-/, ''),
+                    url: currentUrl // Inject URL for filtering
+                  }));
+                  setPinnedTabs(prev => [...prev, { title: currentTabTitle || 'Pinned Tab', url: currentUrl, blocks: blocksWithUniqueIds }]);
+                  toast.success("Tab pinned for Multi-Tab AI");
+                }}
               >
-                <option value="auto">Keep Original Lang</option>
-                <option value="en">Translate to EN</option>
-                <option value="es">Translate to ES</option>
-                <option value="fr">Translate to FR</option>
-                <option value="de">Translate to DE</option>
-                <option value="ja">Translate to JA</option>
-                <option value="zh">Translate to ZH</option>
-              </select>
-              <button
-                type="button"
-                onClick={() => handleFileUpload(pendingFile)}
-                disabled={isLoading}
-                className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition"
-              >
-                {isLoading ? 'Uploading...' : 'Upload & Index'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Input Wrapper */}
-        <div className="relative flex flex-col pt-1 pb-1">
-          {/* Premium Chat Control Bar - Redesigned to match screenshot */}
-          {(mode === 'rag' || mode === 'browser' || mode === 'visual') && (
-            <div className="flex items-center justify-between px-3 py-1.5 mx-4 mb-2 bg-white/80 backdrop-blur-xl border border-slate-200/40 rounded-full shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] translate-y-1">
-              <div className="flex items-center gap-1 pr-2 border-r border-slate-200/80">
-                <div className="flex gap-0.5">
-                  {['auto', 'en', 'es', 'fr', 'de', 'it', 'ja'].map(lang => (
-                    <button
-                      key={lang}
-                      onClick={() => setOutputLang(lang)}
-                      className={`px-2 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all flex-shrink-0 ${outputLang === lang
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105'
-                        : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
-                        }`}
-                    >
-                      {lang === 'auto' ? 'AUTO' : lang}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-[13px] font-black text-[#92400e] uppercase tracking-wider font-sans">PIN TAB</span>
               </div>
+            )}
 
-              <div className="flex items-center pl-2 pr-1">
-                <button
-                  type="button"
-                  onClick={() => setQueryNotebook(!queryNotebook)}
-                  title={queryNotebook ? "Searching Research Notebook" : "Searching Global Knowledge"}
-                  className={`p-2.5 rounded-full transition-all duration-300 ${queryNotebook
-                    ? 'bg-amber-100 text-amber-600 shadow-md shadow-amber-100 scale-105 ring-2 ring-amber-50'
-                    : 'bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-                    }`}
-                >
-                  <Bookmark className="w-4 h-4" />
+            {/* Pinned Tabs List */}
+            {pinnedTabs.length > 0 && (
+              <div className="flex gap-2 mb-1 flex-wrap justify-end pointer-events-auto">
+                {pinnedTabs.map((tab, idx) => (
+                  <div key={idx} className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-lg opacity-95 hover:opacity-100 text-[10px] font-bold text-amber-800 tracking-wider uppercase backdrop-blur-sm animate-in slide-in-from-right-2">
+                    {tab.title.substring(0, 15)}...
+                    <button className="ml-2 hover:text-red-600 font-bold p-1" onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <footer className="relative p-4 bg-white/80 backdrop-blur-md border-t border-slate-200/60 transition-all focus-within:bg-white focus-within:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.1)]">
+            {/* Preview Area for Crop */}
+            {cropPreview && (
+              <div className="mb-3 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
+                <img src={cropPreview} className="h-12 w-auto rounded-lg border border-slate-100" alt="Selection" />
+                <div className="flex-1 text-xs text-slate-500">
+                  Region Selected. Ask a question about it below.
+                </div>
+                <button onClick={() => setCropPreview(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                  ✕
                 </button>
               </div>
+            )}
+
+            {/* Preview Area for Pending File Attachment */}
+            {pendingFile && (
+              <div className="mb-3 flex flex-col gap-2 bg-white p-3 rounded-xl border border-indigo-200 shadow-sm animate-in slide-in-from-bottom-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-semibold text-slate-700 truncate">{pendingFile.name}</span>
+                      <span className="text-xs text-slate-400 pl-0.5">{(pendingFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setPendingFile(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 transition" disabled={isLoading}>
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                  <select
+                    value={fileTargetLang}
+                    onChange={(e) => setFileTargetLang(e.target.value)}
+                    disabled={isLoading}
+                    className="text-xs bg-slate-50 border border-slate-200 text-slate-600 rounded px-2 py-1 outline-none"
+                  >
+                    <option value="auto">Keep Original Lang</option>
+                    <option value="en">Translate to EN</option>
+                    <option value="es">Translate to ES</option>
+                    <option value="fr">Translate to FR</option>
+                    <option value="de">Translate to DE</option>
+                    <option value="ja">Translate to JA</option>
+                    <option value="zh">Translate to ZH</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleFileUpload(pendingFile)}
+                    disabled={isLoading}
+                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition"
+                  >
+                    {isLoading ? 'Uploading...' : 'Upload & Index'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Input Wrapper */}
+            <div className="relative flex flex-col pt-1 pb-1">
+              {/* Premium Chat Control Bar */}
+              {(mode === 'rag' || mode === 'browser' || mode === 'visual') && (
+                <div className="flex items-center justify-between px-3 py-1.5 mx-4 mb-2 bg-white/80 backdrop-blur-xl border border-slate-200/40 rounded-full shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] translate-y-1">
+                  <div className="flex items-center gap-1 pr-2 border-r border-slate-200/80">
+                    <div className="flex gap-0.5">
+                      {['auto', 'en', 'es', 'fr', 'de', 'it', 'ja'].map(lang => (
+                        <button
+                          key={lang}
+                          onClick={() => setOutputLang(lang)}
+                          className={`px-2 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all ${outputLang === lang
+                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105'
+                            : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
+                            }`}
+                        >
+                          {lang === 'auto' ? 'AUTO' : lang}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center pl-2 pr-1">
+                    <button
+                      type="button"
+                      onClick={() => setQueryNotebook(!queryNotebook)}
+                      title={queryNotebook ? "Searching Research Notebook" : "Searching Global Knowledge"}
+                      className={`p-2.5 rounded-full transition-all duration-300 ${queryNotebook
+                        ? 'bg-amber-100 text-amber-600 shadow-md shadow-amber-100 scale-105 ring-2 ring-amber-50'
+                        : 'bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                        }`}
+                    >
+                      <Bookmark className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                className="relative flex items-center group mt-2"
+              >
+                <input
+                  autoFocus
+                  type="text"
+                  className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
+                  placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  disabled={!input.trim() || isLoading}
+                  className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </form>
             </div>
-          )}
-
-          <div className="flex items-end gap-2 px-3">
-            <button
-              type="button"
-              disabled
-              className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-all"
-              style={{ display: 'none' }}
-            >
-              +
-            </button>
-          </div>
+          </footer>
         </div>
-
-        <form
-          onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-          className="relative flex items-center group"
-        >
-          <input
-            autoFocus
-            type="text"
-            className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
-            placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isLoading}
-            className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
-        </footer>
       )}
       <Toaster richColors position="top-center" />
 

@@ -173,10 +173,16 @@ class BrowserOrchestrator:
         self.searcher = SearchAgent(get_firecrawl_key(api_keys))
         self.ranker = RankerAgent(api_keys)
         self.slicer = SlicerAgent(api_keys)
-        self.scraper = FirecrawlScraper(get_firecrawl_key(api_keys))
-
-    def run(self, user_query: str) -> dict:
+        self.scraper = FirecrawlScraper(get_firecrawl_key(api_keys))    def run(self, user_query: str) -> dict:
         print(f"[BrowserOrchestrator] Starting for query: {user_query}")
+        
+        # [FIX] Initialize missing variables
+        scraped_contexts = []
+        citations = []
+        blocks = []
+        
+        # Generates a unique run ID to avoid block collisions in the frontend
+        run_id = int(time.time()) % 10000
         
         # 0. Handle Multimodal Image Data using Groq
         if self.image_data:
@@ -219,7 +225,7 @@ class BrowserOrchestrator:
                         "highlightUrl": b.get("highlightUrl", b.get("url", ""))
                     })
                     blocks.append(b)
-
+ 
         # Skip web search if we have significant local context (> 4000 chars)
         skip_web_search = len(notebook_str) > 4000
         
@@ -229,78 +235,63 @@ class BrowserOrchestrator:
             raw_results = []
             for q in search_queries:
                 raw_results.extend(self.searcher.search(q))
-                
-        system_prompt = f"""You are a professional AI research orchestrator. Your goal is to synthesize information from multiple web sources into a high-quality, executive-level response.
-
-CRITICAL RULES:
-1. **Tone & Style**: Adopt a professional, objective, and analytical tone. Use clear headings, bold key terms, and bullet points. Avoid conversational filler.
-2. **Contextual Grounding**: ONLY answer using provided research blocks. Do not use external knowledge.
-3. **Citations**: Integrate citations ([db-block-X]) at the end of relevant sentences to ground your facts. Use EXACT block IDs from the context.
-4. **No Information**: If the context doesn't have the answer, state that the research did not provide sufficient information.
-5. **Formatting**: Use Markdown for structure.
-
-At the end of your response, suggest 2-3 concise, professional follow-up questions."""
-
-        from rag_pipeline import ingest_text_logic
-        import threading
-        # Generate a unique run ID to avoid block collisions in the frontend
-        import time
-        run_id = int(time.time()) % 10000
-        
-        print(f"[BrowserOrchestrator] Found {len(raw_results)} total raw results")
-        
-        # 4. Rank Results
-        top_urls = self.ranker.rank(user_query, raw_results)
-        print(f"[BrowserOrchestrator] Ranked to top URLs: {top_urls}")
-        
-        # 5. Scrape & Background Ingest
-        global_chunk_counter = 1
+ 
+            print(f"[BrowserOrchestrator] Found {len(raw_results)} total raw results")
             
-        for idx, url in enumerate(top_urls):
-            print(f"[BrowserOrchestrator] Scraping {url}...")
-            data = self.scraper.extract(url)
+            # 4. Rank Results
+            top_urls = self.ranker.rank(user_query, raw_results)
+            print(f"[BrowserOrchestrator] Ranked to top URLs: {top_urls}")
             
-            # [NEW] Check for scraping errors (including 502/504 Bad Gateway)
-            if not data or "Error" in data:
-                print(f"[BrowserOrchestrator] Skipping {url} due to scraping issues.")
-                continue
-
-            if len(data) > 200:
-                # [NEW] Clean markdown before chunking to remove navigation noise
-                data = clean_scraped_markdown(data)
+            # 5. Scrape & Background Ingest
+            global_chunk_counter = 1
+            from rag_pipeline import ingest_text_logic
+            import threading
                 
-                # Chunk the data so the LLM cites specific sections, enabling accurate highlighting
-                short_data = data[:30000] # Broader coverage limit
-                import urllib.parse
+            for idx, url in enumerate(top_urls):
+                print(f"[BrowserOrchestrator] Scraping {url}...")
+                data = self.scraper.extract(url)
                 
-                c_chunks = chunk_at_word_boundary(short_data, 2000)
-                for c_text in c_chunks:
-                    if len(c_text) < 50:
-                        continue
-                        
-                    sub_block_id = f"br-block-{run_id}-{global_chunk_counter}"
-                    global_chunk_counter += 1
-                    scraped_contexts.append(f"[{sub_block_id}] Source URL: {url}\n{c_text}")
+                # [NEW] Check for scraping errors (including 502/504 Bad Gateway)
+                if not data or "Error" in data:
+                    print(f"[BrowserOrchestrator] Skipping {url} due to scraping issues.")
+                    continue
+ 
+                if len(data) > 200:
+                    # [NEW] Clean markdown before chunking to remove navigation noise
+                    data = clean_scraped_markdown(data)
                     
-                    # Extract a clean prose snippet for accurate page highlighting
-                    h_snippet = extract_highlight_snippet(c_text)
-                    safe_h_snippet = urllib.parse.quote(h_snippet[:80])  # Fragment URLs have length limits
-                    highlight_url = f"{url}#:~:text={safe_h_snippet}"
-
-                    citations.append({"blockId": sub_block_id, "snippet": url, "highlightUrl": highlight_url})
-                    blocks.append({"id": sub_block_id, "text": c_text, "highlight_snippet": h_snippet, "url": highlight_url})
-                
-                # Background ingest into vector DB
-                threading.Thread(
-                    target=ingest_text_logic,
-                    args=(url, data),
-                    kwargs={
-                        "api_keys": self.api_keys, 
-                        "session_id": self.session_id,
-                        "extra_metadata": {"source_type": "browser_search"}
-                    },
-                    daemon=True
-                ).start()
+                    # Chunk the data so the LLM cites specific sections, enabling accurate highlighting
+                    short_data = data[:30000] # Broader coverage limit
+                    import urllib.parse
+                    
+                    c_chunks = chunk_at_word_boundary(short_data, 2000)
+                    for c_text in c_chunks:
+                        if len(c_text) < 50:
+                            continue
+                            
+                        sub_block_id = f"br-block-{run_id}-{global_chunk_counter}"
+                        global_chunk_counter += 1
+                        scraped_contexts.append(f"[{sub_block_id}] Source URL: {url}\n{c_text}")
+                        
+                        # Extract a clean prose snippet for accurate page highlighting
+                        h_snippet = extract_highlight_snippet(c_text)
+                        safe_h_snippet = urllib.parse.quote(h_snippet[:80])  # Fragment URLs have length limits
+                        highlight_url = f"{url}#:~:text={safe_h_snippet}"
+ 
+                        citations.append({"blockId": sub_block_id, "snippet": url, "highlightUrl": highlight_url})
+                        blocks.append({"id": sub_block_id, "text": c_text, "highlight_snippet": h_snippet, "url": highlight_url})
+                    
+                    # Background ingest into vector DB
+                    threading.Thread(
+                        target=ingest_text_logic,
+                        args=(url, data),
+                        kwargs={
+                            "api_keys": self.api_keys, 
+                            "session_id": self.session_id,
+                            "extra_metadata": {"source_type": "browser_search"}
+                        },
+                        daemon=True
+                    ).start()
         else:
             print("[BrowserOrchestrator] Skipping web search. Found sufficient local memory.")
 
@@ -340,8 +331,9 @@ At the end of your response, suggest 2-3 concise, professional follow-up questio
         context_str = "\n\n---\n\n".join(final_contexts)
         prompt = f"""You are an advanced Browser Assistant.
 Answer the user's query comprehensively using ONLY the provided scraped web context.
-When you use information from a source, append the unique block ID tag inline exactly like `[br-block-{run_id}-1]` as found in the Context headings.
-DO NOT use standard Markdown footnotes (e.g. `[1]`, `[2]`). You MUST strictly output the raw tag exactly as provided.
+When you use information from a source, append the unique block ID tag inline exactly like [br-block-{run_id}-1] as found in the Context headings.
+DO NOT use backticks for citations. DO NOT use standard Markdown footnotes (e.g. [1], [2]). 
+You MUST strictly output the raw tag exactly as provided.
 Do not make up URLs.{lang_instruction}
         
 Context:

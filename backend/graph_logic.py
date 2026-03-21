@@ -7,35 +7,11 @@ from typing import List, Dict, Any
 import psycopg
 from psycopg import errors
 from api_clients import get_mistral_client
-from database import get_db_pool
+from database import get_db_pool, db_retry
+import threading
 
 # Global lock to serialize database writes for the graph (prevents deadlocks between threads)
 GRAPH_LOCK = threading.Lock()
-
-def db_retry(max_retries=15, initial_delay=3): # Increased for extreme robustness
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            delay = initial_delay
-            for i in range(max_retries):
-                try:
-                    return func(*args, **kwargs)
-                except (errors.DeadlockDetected, psycopg.OperationalError, psycopg.Error) as e:
-                    # Catch broad psycopg errors including 'cursor is closed'
-                    print(f"[DB_RETRY] Database error: {type(e).__name__} - {str(e)}")
-                    
-                    if i == max_retries - 1:
-                        raise e
-                    
-                    # Randomized exponential backoff with jitter
-                    # (2 * 1) + jitter, (2 * 2) + jitter, etc.
-                    sleep_time = (delay * (i + 1)) + random.uniform(0.5, 1.5)
-                    print(f"[DB_RETRY] Recovering connection... Sleep {sleep_time:.2f}s (Attempt {i+1}/{max_retries})...")
-                    time.sleep(sleep_time)
-                except Exception as e:
-                    # Non-retryable error
-                    raise e
-        return wrapper
-    return decorator
 
 def extract_graph_data(text: str, api_keys: dict = None) -> Dict[str, Any]:
     """

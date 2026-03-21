@@ -22,21 +22,27 @@ export class Highlighter {
         if (blockId && !blockId.startsWith('br-block-') && !blockId.startsWith('db-block-') && !blockId.startsWith('nb-block-') && !blockId.startsWith('pin-')) {
             element = document.querySelector(`[data-bi-block-id="${blockId}"]`);
         }
-        
-        if (!element && text) {
-            console.log('[Highlighter] Attempting DOM text search for:', text.substring(0, 60));
+                if (!element && text) {
+            console.log('[Highlighter] Attempting text search for snippet:', text.substring(0, 60));
             
-            // Try progressively shorter snippets for resilient matching
-            const attempts = [
-                text,                                                    // Full text
-                text.substring(0, Math.min(text.length, 200)),           // First 200 chars
-                text.substring(0, Math.min(text.length, 100)),           // First 100 chars
-                // Middle section (avoids header/footer noise)
-                text.substring(
-                    Math.floor(text.length * 0.2), 
-                    Math.floor(text.length * 0.2) + Math.min(100, Math.floor(text.length * 0.5))
-                ),
-            ];
+            // 1. Build list of progressive attempts (sentences, then fragments)
+            const attempts = [];
+            
+            // Add full text if short enough
+            if (text.length < 500) attempts.push(text);
+            
+            // Add sentences (very reliable for anchors)
+            const sentences = text.split(/[.!?]+\s+/).filter(s => s.length > 20 && s.length < 300);
+            if (sentences.length > 0) {
+                // Try first, middle, and last sentences
+                attempts.push(sentences[0]);
+                if (sentences.length > 1) attempts.push(sentences[Math.floor(sentences.length / 2)]);
+                if (sentences.length > 2) attempts.push(sentences[sentences.length - 1]);
+            }
+            
+            // Add fixed-length fragments as fallback
+            attempts.push(text.substring(0, Math.min(text.length, 120)));
+            attempts.push(text.substring(Math.max(0, text.length - 120)));
             
             for (const snippet of attempts) {
                 const trimmed = snippet.trim();
@@ -44,25 +50,21 @@ export class Highlighter {
                 
                 const matchedBlock = this._findBlockByText(trimmed);
                 if (matchedBlock) {
-                    console.log(`[Highlighter] Found matching block (${matchedBlock.tagName}) with ${trimmed.length}-char snippet`);
+                    console.log(`[Highlighter] Match found logic: "${trimmed.substring(0, 30)}..." in ${matchedBlock.tagName}`);
                     matchedBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     this._applyBlockHighlight(matchedBlock);
                     return true;
                 }
             }
-
-            // [NEW] Second Pass: Search including hidden content (e.g. inactive tabs)
+ 
+            // [NEW] Second Pass: Hidden content search
             console.log('[Highlighter] Visible search failed. Trying hidden content search...');
             for (const snippet of attempts) {
                 const trimmed = snippet.trim();
-                if (trimmed.length < 15) continue;
-                
                 const hiddenBlock = this._findBlockByText(trimmed, { includeHidden: true });
                 if (hiddenBlock) {
-                    console.log(`[Highlighter] Found hidden match in ${hiddenBlock.tagName}. Attempting tab switch...`);
+                    console.log(`[Highlighter] Hidden match found in ${hiddenBlock.tagName}.`);
                     this._triggerTabSwitch(hiddenBlock);
-                    
-                    // Give the UI a moment to transition, then highlight
                     setTimeout(() => {
                         hiddenBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         this._applyBlockHighlight(hiddenBlock);
@@ -71,20 +73,21 @@ export class Highlighter {
                 }
             }
             
-            // Final fallback: word-overlap block search
-            console.log('[Highlighter] Text search failed. Trying word-overlap fallback...');
-            const words = this._normalize(text).split(/\s+/).filter(w => w.length > 1);
+            // Final fallback: Robust word-overlap search
+            console.log('[Highlighter] Precise search failed. Calculating word overlap...');
+            const words = this._normalize(text).split(/\s+/).filter(w => w.length > 3);
             const bestBlock = this._findBestMatchingBlock(words);
             if (bestBlock) {
-                console.log('[Highlighter] Found best matching block via word overlap:', bestBlock.tagName);
+                console.log('[Highlighter] Best candidate via overlap:', bestBlock.tagName);
                 bestBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 this._applyBlockHighlight(bestBlock);
                 return true;
             }
-
-            console.warn('[Highlighter] No match found for:', text.substring(0, 60));
+ 
+            console.warn('[Highlighter] Highlights failed for:', text.substring(0, 40));
             return false;
         }
+
 
         if (!element) {
             console.warn(`[Highlighter] Block not found: ${blockId}`);

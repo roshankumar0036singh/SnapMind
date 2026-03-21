@@ -1,7 +1,11 @@
 import os
 import threading
+import time
+import random
 from pgvector.psycopg import register_vector
 from psycopg_pool import ConnectionPool
+import psycopg
+from psycopg import errors
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,6 +14,25 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 _db_pool = None
 _pool_lock = threading.Lock()
+
+def db_retry(max_retries=15, initial_delay=3): # Consistency across backend
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for i in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except (errors.DeadlockDetected, psycopg.OperationalError, psycopg.Error) as e:
+                    print(f"[DB_RETRY] Database error: {type(e).__name__} - {str(e)}")
+                    if i == max_retries - 1:
+                        raise e
+                    sleep_time = (delay * (i + 1)) + random.uniform(0.5, 1.5)
+                    print(f"[DB_RETRY] Recovering connection... Sleep {sleep_time:.2f}s (Attempt {i+1}/{max_retries})...")
+                    time.sleep(sleep_time)
+                except Exception as e:
+                    raise e
+        return wrapper
+    return decorator
 
 def get_db_pool():
     global _db_pool
@@ -33,10 +56,10 @@ def get_db_pool():
                     configure=configure_connection,
                     min_size=5,       
                     max_size=50,      
-                    max_idle=30,      
-                    max_lifetime=1200, # 20 mins
+                    max_idle=10,      # Further improved for SSL stability
+                    max_lifetime=120, # Reduced to 2 mins to prevent EOF detected
                     check=ConnectionPool.check_connection, 
-                    timeout=60.0,     # Extremely patient for parallel bursts
+                    timeout=60.0,     
                     kwargs={
                         "prepare_threshold": None,
                         "keepalives": 1,
