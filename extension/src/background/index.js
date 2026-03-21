@@ -130,8 +130,10 @@ async function handleQuery(payload) {
                 dataUrl = lastCapturedImage;
             }
 
-            // 2. Send to Visual API (Pass backendMode if provided)
-            const result = await apiClient.analyzeImage(dataUrl, text, backendMode);
+            // 2. Send to Visual API (Pass backendMode and outputLang if provided)
+            const result = await apiClient.analyzeImage(dataUrl, text, backendMode, {
+                outputLang: payload.outputLang
+            });
             return { success: true, ...result };
         }
         else if (mode === 'rag' || mode === 'github') {

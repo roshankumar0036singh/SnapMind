@@ -17,7 +17,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     else if (request.type === 'HIGHLIGHT_CITATION') {
         console.log('[Content] Highlighting block:', request.blockId);
-        const success = highlighter.highlight(request.blockId);
+        const success = highlighter.highlight(request.blockId, request.text);
         sendResponse({ success });
     }
     else if (request.type === 'START_SELECTION') {

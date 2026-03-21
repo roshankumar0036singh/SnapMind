@@ -6,7 +6,7 @@ from api_clients import get_groq_key, get_hf_token
 
 load_dotenv()
 
-def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str = "qa", api_keys: dict = None) -> dict:
+def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str = "qa", api_keys: dict = None, target_lang: str = "auto") -> dict:
     """
     Analyzes an image using Vision models (HF as primary, Groq as fallback).
     
@@ -90,6 +90,13 @@ Act like a RAG (Retrieval Augmented Generation) , If you Dont have Knowledge Reg
             if res.status_code == 200:
                 answer = res_data["choices"][0]["message"]["content"]
                 print(f"[VISION] Success with {groq_model}")
+                # [NEW] Post-process translation via Lingo.dev if target_lang is specified
+                if target_lang and target_lang != "auto":
+                    from rag_pipeline import translate_text_lingo
+                    print(f"[VISION] Translating result to {target_lang}...")
+                    translated_answer, _, _ = translate_text_lingo(answer, target_lang, api_keys)
+                    answer = translated_answer
+
                 return {
                     "answer": answer,
                     "success": True,

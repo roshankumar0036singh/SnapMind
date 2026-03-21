@@ -18,3 +18,4 @@ pytubefix
 yt-dlp
 youtube-transcript-api
 httpx[http2]
+sentence-transformers

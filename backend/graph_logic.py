@@ -1,8 +1,41 @@
 import json
 import traceback
+import time
+import random
+import threading
 from typing import List, Dict, Any
+import psycopg
+from psycopg import errors
 from api_clients import get_mistral_client
 from database import get_db_pool
+
+# Global lock to serialize database writes for the graph (prevents deadlocks between threads)
+GRAPH_LOCK = threading.Lock()
+
+def db_retry(max_retries=15, initial_delay=3): # Increased for extreme robustness
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            for i in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except (errors.DeadlockDetected, psycopg.OperationalError, psycopg.Error) as e:
+                    # Catch broad psycopg errors including 'cursor is closed'
+                    print(f"[DB_RETRY] Database error: {type(e).__name__} - {str(e)}")
+                    
+                    if i == max_retries - 1:
+                        raise e
+                    
+                    # Randomized exponential backoff with jitter
+                    # (2 * 1) + jitter, (2 * 2) + jitter, etc.
+                    sleep_time = (delay * (i + 1)) + random.uniform(0.5, 1.5)
+                    print(f"[DB_RETRY] Recovering connection... Sleep {sleep_time:.2f}s (Attempt {i+1}/{max_retries})...")
+                    time.sleep(sleep_time)
+                except Exception as e:
+                    # Non-retryable error
+                    raise e
+        return wrapper
+    return decorator
 
 def extract_graph_data(text: str, api_keys: dict = None) -> Dict[str, Any]:
     """
@@ -44,6 +77,7 @@ Output strictly in JSON format:
         print(f"[GRAPH] Extraction error: {e}")
         return {"nodes": [], "edges": []}
 
+@db_retry(max_retries=15, initial_delay=3)
 def insert_graph_data(graph_data: Dict[str, Any], source_url: str, session_id: str = None):
     """
     Inserts extracted nodes and edges into the database.
@@ -53,51 +87,50 @@ def insert_graph_data(graph_data: Dict[str, Any], source_url: str, session_id: s
         return
 
     try:
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                # 1. Insert Nodes and get their IDs
-                node_id_map = {}
-                for node in graph_data.get("nodes", []):
-                    name = node.get("name")
-                    etype = node.get("type", "concept")
-                    if not name: continue
+        # SERIALIZE: Ensure only one thread is writing to the graph at a time
+        with GRAPH_LOCK:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    node_id_map = {}
+                    nodes = graph_data.get("nodes", [])
                     
-                    # upsert node
-                    cur.execute(
-                        """
-                        INSERT INTO nodes (name, entity_type) 
-                        VALUES (%s, %s) 
-                        ON CONFLICT (name) DO UPDATE SET entity_type = EXCLUDED.entity_type
-                        RETURNING id
-                        """,
-                        (name, etype)
-                    )
-                    node_id = cur.fetchone()[0]
-                    node_id_map[name] = node_id
-                
-                # 2. Insert Edges
-                for edge in graph_data.get("edges", []):
-                    src_name = edge.get("source")
-                    tgt_name = edge.get("target")
-                    relation = edge.get("relation") or "related_to"
+                    # Sort nodes by name to prevent lock-order deadlocks
+                    nodes.sort(key=lambda x: x.get("name", ""))
                     
-                    if src_name in node_id_map and tgt_name in node_id_map:
-                        src_id = node_id_map[src_name]
-                        tgt_id = node_id_map[tgt_name]
-                        
+                    # 1. Insert Nodes
+                    for node in nodes:
+                        name = node.get("name")
+                        etype = node.get("type", "concept")
+                        if not name: continue
                         cur.execute(
-                            """
-                            INSERT INTO edges (source_node_id, target_node_id, relation, source_url, session_id)
-                            VALUES (%s, %s, %s, %s, %s)
-                            """,
-                            (src_id, tgt_id, relation, source_url, session_id)
+                            "INSERT INTO nodes (name, entity_type) VALUES (%s, %s) "
+                            "ON CONFLICT (name) DO UPDATE SET entity_type = EXCLUDED.entity_type RETURNING id",
+                            (name, etype)
                         )
-            conn.commit()
-            print(f"[GRAPH] Successfully inserted {len(graph_data.get('nodes', []))} nodes and {len(graph_data.get('edges', []))} edges (Session: {session_id}).")
-            
+                        node_id = cur.fetchone()[0]
+                        node_id_map[name] = node_id
+                    
+                    # 2. Insert Edges (MUST be inside cursor block)
+                    edges = graph_data.get("edges", [])
+                    for edge in edges:
+                        src_name = edge.get("source")
+                        tgt_name = edge.get("target")
+                        relation = edge.get("relation") or "related_to"
+                        if src_name in node_id_map and tgt_name in node_id_map:
+                            cur.execute(
+                                "INSERT INTO edges (source_node_id, target_node_id, relation, source_url, session_id) "
+                                "VALUES (%s, %s, %s, %s, %s)",
+                                (node_id_map[src_name], node_id_map[tgt_name], relation, source_url, session_id)
+                            )
+                    
+                conn.commit()
+                print(f"[GRAPH] Successfully inserted {len(nodes)} nodes and {len(edges)} edges.")
+    except (errors.DeadlockDetected, psycopg.OperationalError, psycopg.Error) as e:
+        # Reraise to trigger @db_retry
+        raise e
     except Exception as e:
-        print(f"[GRAPH] DB Insert error: {e}")
-        traceback.print_exc()
+        print(f"[GRAPH] DB Insert FATAL error: {e}")
+        # traceback.print_exc()
 
 def get_graph_context(query: str, api_keys: dict = None) -> str:
     """

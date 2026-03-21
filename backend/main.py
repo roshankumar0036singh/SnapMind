@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Request, status
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -39,6 +40,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class BrowserRequest(BaseModel):
+    query: str
+    session_id: str | None = None
+    output_lang: str = "auto"
+    query_notebook: bool = False
+    image_data: str | None = None
 
 class IngestRequest(BaseModel):
     url: str
@@ -122,6 +130,73 @@ def health_check_debug():
             "supabase_url": "SET" if os.getenv("DATABASE_URL") else "MISSING"
         }
     }
+
+@app.post("/browser/query")
+def browser_query_endpoint(request: BrowserRequest, req: Request):
+    """
+    Multi-Agent Browser Mode Entry Point
+    """
+    api_keys = {
+        "gemini": req.headers.get("x-gemini-key"),
+        "mistral": req.headers.get("x-mistral-key"),
+        "lingodev": req.headers.get("x-lingodev-key"),
+        "firecrawl": req.headers.get("x-firecrawl-key"),
+        "groq": req.headers.get("x-groq-key"),
+    }
+    from browser_agents import BrowserOrchestrator
+    orchestrator = BrowserOrchestrator(
+        api_keys=api_keys, 
+        session_id=request.session_id,
+        output_lang=request.output_lang,
+        query_notebook=request.query_notebook,
+        image_data=request.image_data
+    )
+    result = orchestrator.run(request.query)
+    
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+        
+    return result
+
+class ReportRequest(BaseModel):
+    session_id: str
+    query: str
+
+@app.post("/browser/generate_report")
+async def generate_report_endpoint(request: ReportRequest, req: Request):
+    """
+    Generate and download a comprehensive research report.
+    """
+    api_keys = {
+        "mistral": req.headers.get("x-mistral-key"),
+        "gemini": req.headers.get("x-gemini-key")
+    }
+    from report_generator import ReportGenerator
+    generator = ReportGenerator(api_keys)
+    
+    file_path = generator.generate(request.session_id, request.query)
+    
+    from fastapi import Response, status
+    if file_path == "INGESTION_PENDING":
+        return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content={"status": "pending", "message": "Research ingestion is still in progress. Please wait a moment and try again."})
+        
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=500, detail="Failed to generate report")
+        
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=file_path,
+        filename=f"SnapMind_Report_{request.session_id}.docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+@app.get("/browser/ingest_status/{session_id}")
+async def get_ingest_status(session_id: str):
+    """
+    Check real-time status of background research ingestion.
+    """
+    from rag_pipeline import get_job_status
+    return get_job_status(session_id)
 
 @app.post("/ingest")
 async def ingest_endpoint(request: IngestRequest, req: Request):
@@ -376,6 +451,7 @@ class AnalyzeImageRequest(BaseModel):
     image_data: str # Base64 string
     prompt: str | None = None
     mode: str = "qa" # [NEW] "qa" or "extraction"
+    target_lang: str = "auto" # [NEW] Support for translation
 
 @app.post("/analyze-image")
 def analyze_image_endpoint(request: AnalyzeImageRequest, req: Request):
@@ -405,7 +481,7 @@ def analyze_image_endpoint(request: AnalyzeImageRequest, req: Request):
         "lingodev": req.headers.get("x-lingodev-key"),
     }
     
-    result = analyze_image_logic(image_bytes, request.prompt, request.mode, api_keys=api_keys)
+    result = analyze_image_logic(image_bytes, request.prompt, request.mode, api_keys=api_keys, target_lang=request.target_lang)
     
     if not result.get("success", False):
         error_detail = result.get("error") or result.get("answer") or "Unknown vision error"

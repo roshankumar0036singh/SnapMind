@@ -94,20 +94,32 @@ class HybridSearcher:
         
         try:
             from psycopg.rows import dict_row
-            with self.db_pool.connection() as conn:
-                with conn.cursor(row_factory=dict_row) as cur:
-                    query_sql = """
-                        SELECT 
-                            id, content, source_url, metadata,
-                            1 - (embedding <=> %(query_embedding)s::vector) AS similarity
-                        FROM documents
-                        WHERE (%(filter_source_url)s::text IS NULL OR source_url LIKE %(filter_source_url)s::text || '%%')
-                          AND 1 - (embedding <=> %(query_embedding)s::vector) > %(match_threshold)s
-                        ORDER BY embedding <=> %(query_embedding)s::vector
-                        LIMIT %(match_count)s
-                    """
-                    cur.execute(query_sql, params)
-                    matches = cur.fetchall()
+            MAX_RETRIES = 2
+            matches = []
+            for attempt in range(MAX_RETRIES):
+                try:
+                    with self.db_pool.connection() as conn:
+                        with conn.cursor(row_factory=dict_row) as cur:
+                            query_sql = """
+                                SELECT 
+                                    id, content, source_url, metadata,
+                                    1 - (embedding <=> %(query_embedding)s::vector) AS similarity
+                                FROM documents
+                                WHERE (%(filter_source_url)s::text IS NULL OR source_url LIKE %(filter_source_url)s::text || '%%')
+                                  AND 1 - (embedding <=> %(query_embedding)s::vector) > %(match_threshold)s
+                                ORDER BY embedding <=> %(query_embedding)s::vector
+                                LIMIT %(match_count)s
+                            """
+                            cur.execute(query_sql, params)
+                            matches = cur.fetchall()
+                    break # Success
+                except Exception as e:
+                    if attempt < MAX_RETRIES - 1:
+                        print(f"[VECTOR-SEARCH] Attempt {attempt+1} failed: {e}. Retrying...")
+                        import time
+                        time.sleep(1)
+                    else:
+                        raise e
             
             # Add search metadata
             print(f"[VECTOR-SEARCH] Found {len(matches)} matches. Top score: {matches[0]['similarity'] if matches else 'N/A'}")
@@ -238,6 +250,10 @@ class HybridSearcher:
             )
             return result.embeddings[0].values
         except Exception as e:
+            error_msg = str(e)
+            if "403" in error_msg and ("leaked" in error_msg.lower() or "permission_denied" in error_msg.lower()):
+                print(f"[SEARCH-EMBED] CRITICAL: API Key leaked/invalid! Using neutral vector.")
+                return [0.0] * 768
             print(f"Embedding error: {e}")
             return []
     

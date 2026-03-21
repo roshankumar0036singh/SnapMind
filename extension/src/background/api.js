@@ -134,7 +134,7 @@ export const apiClient = {
      * @param {string} mode - "qa" or "extraction".
      * @returns {Promise<Object>} The analysis result.
      */
-    async analyzeImage(base64Image, prompt, mode = "qa") {
+    async analyzeImage(base64Image, prompt, mode = "qa", options = {}) {
         // Get Backend URL from storage
         const baseUrl = await this.getBaseUrl();
 
@@ -150,7 +150,8 @@ export const apiClient = {
                 body: JSON.stringify({
                     image_data: base64Image,
                     prompt: prompt,
-                    mode: mode
+                    mode: mode,
+                    target_lang: options.outputLang || "auto"
                 })
             });
 
@@ -185,7 +186,7 @@ export const apiClient = {
             const isNetworkError = error.message.includes("Failed to fetch");
             return {
                 answer: isNetworkError
-                    ? `❌ **Connection Refused**: Cannot reach \`${baseUrl}\`.\n\nEnsure \`uvicorn main:app --reload\` is running.`
+                    ? `**Connection Refused**: Cannot reach \`${baseUrl}\`.`
                     : `Error analyzing image: ${error.message}`
             };
         }
@@ -250,8 +251,8 @@ export const apiClient = {
             }
 
             // Extract citations from the answer text
-            // Regex to find [bi-block-X], [db-block-X], or [pin-HANDLE-X]
-            const citationRegex = /\[(bi-block-\d+|nb-block-\d+|db-block-\d+|pin-[A-Z0-9]+-\d+)\]/g;
+            // Regex to find bi-block-X, db-block-X, or pin-HANDLE-X anywhere
+            const citationRegex = /((?:bi|nb|db|br)-block-[\d-]+|pin-[A-Z0-9]+-\d+)/g;
             const citations = [];
             let match;
 
@@ -280,8 +281,8 @@ export const apiClient = {
 
             return {
                 answer: isNetworkError
-                    ? `❌ **Connection Refused**: Cannot reach \`${baseUrl}\`. \n\n**Possible Fixes**:\n1. Ensure Backend is running: \`uvicorn main:app --reload\`\n2. Check the **Server URL** in Extension Settings.`
-                    : `❌ **Backend Error**: ${error.message}`,
+                    ? `**Connection Refused**: Cannot reach \`${baseUrl}\`.`
+                    : `**Backend Error**: ${error.message}`,
                 citations: []
             };
         }
@@ -661,14 +662,97 @@ export const apiClient = {
         }
     },
 
+    async downloadReport(sessionId, query) {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/browser/generate_report`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(await this.getApiKeysHeaders())
+            },
+            body: JSON.stringify({ session_id: sessionId, query: query })
+        });
+
+        if (response.status === 202) {
+            return { status: 'pending' };
+        }
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: "Failed to generate report" }));
+            throw new Error(err.detail || "Server Error");
+        }
+
+        return await response.blob();
+    },
+
+    async getIngestStatus(sessionId) {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/browser/ingest_status/${sessionId}`, {
+            headers: await this.getApiKeysHeaders()
+        });
+        if (!response.ok) return { status: 'unknown' };
+        return await response.json();
+    },
+
+    /**
+     * Queries the Multi-Agent Browser orchestrator.
+     * @param {string} question - User query.
+     * @param {string} sessionId - Session ID.
+     * @returns {Promise<Object>} Final answer and citations.
+     */
+    async queryBrowserMode(question, sessionId = null, options = {}) {
+        console.log('[API] Sending Browser Query to Backend...', { question, ...options });
+        const baseUrl = await this.getBaseUrl();
+        const endpoint = `${baseUrl}/browser/query`;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(await this.getApiKeysHeaders())
+                },
+                body: JSON.stringify({
+                    query: question,
+                    session_id: sessionId,
+                    output_lang: options.outputLang || 'auto',
+                    query_notebook: !!options.queryNotebook,
+                    image_data: options.imagePayload || null
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server returned ${response.status}: ${errorText}`);
+            }
+
+            const data = await response.json();
+            return {
+                answer: data.answer || "No response generated.",
+                citations: data.citations || [],
+                blocks: data.blocks || []
+            };
+
+        } catch (error) {
+            console.error("Browser Backend Error:", error);
+            const isNetworkError = error.message.includes("Failed to fetch");
+            return {
+                answer: isNetworkError
+                    ? `**Connection Refused**: Cannot reach \`${baseUrl}\`.`
+                    : `**Backend Error**: ${error.message}`,
+                citations: []
+            };
+        }
+    },
+
     /**
      * Streams RAG query response using NDJSON.
      * @param {Array} blocks - Content blocks.
      * @param {string} question - User query.
-     * @param {function} onChunk - Callback(text) for each token.
+     * @param {function} onBlocks - Callback(blocks) for metadata blocks.
      * @returns {Promise<Object>} Final result/metadata.
      */
-    async streamQueryRag(blocks, question, onChunk, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false) {
+    async streamQueryRag(blocks, question, onChunk, onBlocks, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false) {
         console.log('[API] Stream RAG request...', siteId ? `(Site: ${siteId})` : '', queryNotebook ? '(Notebook ON)' : '');
         const baseUrl = await this.getBaseUrl();
 
@@ -717,6 +801,8 @@ export const apiClient = {
                         const data = JSON.parse(trimmedLine);
                         if (data.type === 'token') {
                             onChunk(data.text);
+                        } else if (data.type === 'retrieved_blocks') {
+                            if (onBlocks) onBlocks(data.blocks);
                         } else if (data.type === 'usage' || data.type === 'error') {
                             finalMetadata = data;
                         }
@@ -733,6 +819,8 @@ export const apiClient = {
                     const data = JSON.parse(trimmedLine);
                     if (data.type === 'token') {
                         onChunk(data.text);
+                    } else if (data.type === 'retrieved_blocks') {
+                        if (onBlocks) onBlocks(data.blocks);
                     } else if (data.type === 'usage' || data.type === 'error') {
                         finalMetadata = data;
                     }

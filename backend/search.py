@@ -160,8 +160,10 @@ def get_relevant_context(query: str, match_threshold: float = None, site_id: str
                     
                     # Log reranking quality
                     for idx, doc in enumerate(matches[:3]):
+                        r_score = doc.get('rerank_score')
+                        score_display = f"{r_score:.4f}" if r_score is not None else "[MISSING]"
                         print(f"[RERANK] Result {idx+1}:")
-                        print(f"  Rerank score: {doc.get('rerank_score', 0):.4f}")
+                        print(f"  Rerank score: {score_display}")
                         print(f"  Original rank: {doc.get('original_rank', 'N/A')}")
                 else:
                     print("[RERANK] Reranker not available, using original order")
@@ -174,7 +176,9 @@ def get_relevant_context(query: str, match_threshold: float = None, site_id: str
             for idx, doc in enumerate(matches[:3]):
                 print(f"[SEARCH] Match {idx+1}:")
                 if 'rerank_score' in doc:
-                    print(f"  Rerank: {doc.get('rerank_score', 0):.4f}")
+                    r_score = doc.get('rerank_score')
+                    score_display = f"{r_score:.4f}" if r_score is not None else "[MISSING]"
+                    print(f"  Rerank: {score_display}")
                 print(f"  Combined: {doc.get('score', 0):.4f}")
                 print(f"  Vector: {doc.get('vector_score', 0):.4f}")
                 print(f"  Keyword: {doc.get('keyword_score', 0):.4f}")
@@ -217,6 +221,10 @@ def get_relevant_context(query: str, match_threshold: float = None, site_id: str
             )
         
         full_context = "\n\n---\n\n".join(context_parts) + graph_context
+        # [NEW] Strict Context Slicing to 8000 chars as requested
+        if len(full_context) > 8000:
+            full_context = full_context[:8000] + "... [Truncated for Context Limit]"
+            
         print(f"[SEARCH] Final context: {len(matches)} chunks, {len(full_context)} chars")
         
         return full_context, matches
@@ -300,9 +308,10 @@ def get_all_tags(limit: int = 50) -> list[str]:
         print(f"[TAGS] Error retrieving global tags: {e}")
         return []
 
-def get_notebook_context(query: str, api_keys: dict = None, limit: int = 15) -> tuple[str, list[dict]]:
+def get_notebook_context(query: str, session_id: str = None, api_keys: dict = None, limit: int = 15) -> tuple[str, list[dict]]:
     """
     Retrieves relevant snippets from the research notebook (bookmarks table).
+    Supports session-id filtering, relaxed semantic search, and keyword fallback.
     Returns (formatted_text, structured_blocks).
     """
     if not db_pool:
@@ -314,23 +323,79 @@ def get_notebook_context(query: str, api_keys: dict = None, limit: int = 15) -> 
         
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
-                # [NEW] Vector search on bookmarks for semantic correlation
-                cur.execute(
-                    "SELECT id, content, source_url, created_at, (embedding <=> %s::halfvec) as distance "
-                    "FROM bookmarks "
-                    "ORDER BY distance ASC LIMIT %s",
-                    (embedding, limit)
-                )
+                # [NEW] Hybrid Search for Bookmarks: Vector + Keyword + Session Filtering
+                # 1. Primary: Vector Search (Relaxed threshold 0.5 for better recall)
+                query_sql = """
+                    SELECT id, content, source_url, created_at, (embedding <=> %s::halfvec) as distance, metadata
+                    FROM bookmarks 
+                    WHERE 1=1
+                """
+                params = [embedding]
+                
+                if session_id:
+                    query_sql += " AND (metadata->>'session_id' = %s) "
+                    params.append(session_id)
+                
+                query_sql += " AND (embedding <=> %s::halfvec) < 0.50 ORDER BY distance ASC LIMIT %s"
+                params.extend([embedding, limit])
+                
+                cur.execute(query_sql, tuple(params))
                 rows = cur.fetchall()
                 
+                # 2. Key-word Fallback: if vector search is too restrictive for short/slang queries
+                if not rows and query and len(query) > 3:
+                    print(f"[NOTEBOOK] Vector search failed (dist > 0.5), trying Keyword fallback...")
+                    kw_query = f"""
+                        SELECT id, content, source_url, created_at, 0 as distance, metadata
+                        FROM bookmarks
+                        WHERE (content ILIKE %s OR metadata->>'tags' ILIKE %s)
+                    """
+                    kw_params = [f"%{query}%", f"%{query}%"]
+                    if session_id:
+                        kw_query += " AND (metadata->>'session_id' = %s) "
+                        kw_params.append(session_id)
+                    
+                    kw_query += " ORDER BY created_at DESC LIMIT %s"
+                    kw_params.append(limit)
+                    
+                    cur.execute(kw_query, tuple(kw_params))
+                    rows = cur.fetchall()
+
+                # 3. Generative Fallback: if specifically asking "what is in my notebook" or similar
+                general_phrases = ["what is in my", "show my", "latest", "notebook", "research", "saved", "bookmarks"]
+                is_general = any(p in query.lower() for p in general_phrases) or not query.strip()
+                
+                if not rows and is_general:
+                    print(f"[NOTEBOOK] General query detected, returning most recent session bookmarks.")
+                    recent_query = "SELECT id, content, source_url, created_at, 0.9 as distance, metadata FROM bookmarks WHERE 1=1 "
+                    recent_params = []
+                    if session_id:
+                        recent_query += " AND (metadata->>'session_id' = %s) "
+                        recent_params.append(session_id)
+                    recent_query += " ORDER BY created_at DESC LIMIT 5"
+                    cur.execute(recent_query, tuple(recent_params))
+                    rows = cur.fetchall()
+
                 if not rows:
                     return "", []
                 
+                import urllib.parse
+                from browser_agents import extract_highlight_snippet
                 parts = []
                 blocks = []
-                for i, (b_id, content, url, created_at, dist) in enumerate(rows):
-                    # Use a consistent pseudo-ID for the AI to cite
+                for i, (b_id, content, url, created_at, dist, meta) in enumerate(rows):
                     pseudo_id = f"nb-block-{i+1}"
+                    
+                    # Prefer stored metadata if available (from RagPipeline or handleSaveBookmark)
+                    h_snippet = meta.get("highlight_snippet") if meta else None
+                    if not h_snippet:
+                        h_snippet = extract_highlight_snippet(content)
+                        
+                    highlight_url = meta.get("highlightUrl") if meta else None
+                    if not highlight_url and url:
+                        safe_h_snippet = urllib.parse.quote(h_snippet[:80])
+                        highlight_url = f"{url}#:~:text={safe_h_snippet}"
+
                     parts.append(
                         f"BOOKMARK [{pseudo_id}]\n"
                         f"Source: {url}\n"
@@ -340,7 +405,9 @@ def get_notebook_context(query: str, api_keys: dict = None, limit: int = 15) -> 
                     blocks.append({
                         "id": pseudo_id,
                         "text": content,
+                        "highlight_snippet": h_snippet,
                         "url": url,
+                        "highlightUrl": highlight_url,
                         "type": "bookmark",
                         "original_id": b_id
                     })
@@ -383,7 +450,7 @@ def chat_logic(query: str, page_content: str | None = None, content_blocks: list
 CRITICAL RULES - FOLLOW STRICTLY:
 1. ONLY answer using information from the provided CONTEXT.
 2. DO NOT use external knowledge, training data, or make assumptions.
-3. If the CONTEXT lacks the answer to the user's question, output ONLY: "I don't have that information in the indexed content". Do not output anything else.
+3. If the available CONTEXT (including current page and pinned tabs) lacks the answer to the user's question, output ONLY: "I don't have that information in the current research context". Do not output anything else.
 4. DO NOT hallucinate, invent, or provide general knowledge.
 5. DO NOT write code examples unless they exist in the CONTEXT.
 6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram to visualize it. Wrap it strictly in a ```mermaid\n ... \n``` block.
@@ -467,6 +534,9 @@ The user wants to compare distinct websites/pages in different languages. You ha
                     continue
                 block_id = block.get("id", "unknown")
                 text = block.get("text", "")
+                # [NEW] Scrub numeric footnotes from individual context blocks
+                import re
+                text = re.sub(r'\[\d{1,3}\]', '', text)
                 context_parts.append(f"[{block_id}] {text}")
 
     if lingo_feature_prompt:
@@ -528,12 +598,11 @@ The user wants to compare distinct websites/pages in different languages. You ha
         
         citation_instruction = f"""{notebook_priority}
 CITATION RULES:
-1. You MUST cite the source block ID in brackets, e.g. {example_str}, for EVERY fact you use from the context.
-2. ONLY cite using IDs explicitly provided in the CONTEXT above (e.g., [db-block-1], [nb-block-1], or [SSOC-1]). 
-3. DO NOT invent, hallucinate, or guess any block IDs. DO NOT use prefixes like 'bi-block' unless specifically provided in the context (it might be a source handle like [SSOC-1]).
-4. If a piece of information is not tagged with an ID, do not cite it.
-5. Attach citations to the specific sentences or phrases they support.
-6. Use at most 4 distinct citations per response.
+1. You MUST cite the source block ID in brackets (e.g., {example_str}) for EVERY fact used.
+2. ONLY use IDs provided in the CONTEXT. DO NOT invent or guess IDs. 
+3. Attach citations to the end of the sentence or paragraph they support.
+4. Keep citations subtle; do not let them interrupt the flow of the professional summary.
+5. NEVER use numeric citations like [1], [2]. Use the full block IDs.
 """
 
     # Force Language constraint if translated
@@ -586,7 +655,11 @@ Question: {query}
             model="mistral-small-latest",
             messages=final_messages,
         )
-        answer = chat_response.choices[0].message.content
+        final_answer = chat_response.choices[0].message.content
+        
+        # [NEW] Post-process to strip any leaked numeric footnotes [19], [1]
+        import re
+        final_answer = re.sub(r'\[\d{1,3}\]', '', final_answer)
         
         # [NEW] Post-Translation via Lingo.dev if output_lang is specified
         print(f"[CHAT] Post-generation check: output_lang={output_lang}")
@@ -662,7 +735,7 @@ def chat_logic_stream(query: str, page_content: str | None = None, content_block
 CRITICAL RULES - FOLLOW STRICTLY:
 1. ONLY answer using information from the provided CONTEXT.
 2. DO NOT use external knowledge, training data, or make assumptions.
-3. If the CONTEXT lacks the answer to the user's question, output ONLY: "I don't have that information in the indexed content". Do not output anything else.
+3. If the available CONTEXT (including current page and pinned tabs) lacks the answer to the user's question, output ONLY: "I don't have that information in the current research context". Do not output anything else.
 4. DO NOT hallucinate, invent, or provide general knowledge.
 5. DO NOT write code examples unless they exist in the CONTEXT.
 6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram to visualize it. Wrap it strictly in a ```mermaid\n ... \n``` block.
@@ -747,6 +820,8 @@ The user wants to compare distinct websites/pages in different languages. You ha
                     continue
                 block_id = block.get("id", "unknown")
                 text = block.get("text", "")
+                import re
+                text = re.sub(r'\[\d{1,3}\]', '', text)
                 context_parts.append(f"[{block_id}] {text}")
 
     if lingo_feature_prompt:
@@ -771,47 +846,80 @@ The user wants to compare distinct websites/pages in different languages. You ha
              text = "\n".join(current_chunk)
              context_parts.append(f"ID: [db-block-{block_count}]\n{text}")
 
+    # --- STEP 4: DATABASE RETRIEVAL (Historical Context) ---
+    db_context = ""
+    retrieved_raw_blocks = []
+    if site_id:
+        print(f"[CHAT-STREAM] Querying database for site_id: {site_id}...")
+        from hybrid_search import hybrid_search
+        # Use the search_query (English) for vector search
+        retrieved_raw_blocks = hybrid_search(db_pool, search_query, site_id=site_id)
+        
+        # [NEW] Phase 5: Optimize retrieved context
+        from context_optimizer import optimize_context
+        optimized = optimize_context(retrieved_raw_blocks, query=search_query)
+        db_context = optimized.content
+
     # 3. Research Notebook Context
     notebook_context = ""
     notebook_blocks = []
     if query_notebook:
         print(f"[CHAT-STREAM] Notebook correlation requested. Querying bookmarks...")
-        notebook_context, notebook_blocks = get_notebook_context(search_query, api_keys=api_keys)
+        notebook_context, notebook_blocks = get_notebook_context(search_query, session_id=session_id, api_keys=api_keys)
 
-    # 4. Handle Vector DB Search and Live Blocks
-    db_context, retrieved_raw_blocks = get_relevant_context(search_query, site_id=site_id, api_keys=api_keys)
-    
+    # --- CONTEXT ASSEMBLY (Prioritize Live/Pinned at TOP) ---
     context_str = ""
+    
+    if context_parts:
+        context_str += "LIVE PAGE / PINNED TABS CONTEXT (CURRENT FOCUS):\n" + "\n\n".join(context_parts) + "\n\n"
+        is_direct_context = True
+
     if notebook_context:
         context_str += "RESEARCH NOTEBOOK CONTEXT (MOST RELEVANT BOOKMARKS):\n" + notebook_context + "\n\n"
         
     if db_context:
-        context_str += "DATABASE CONTEXT:\n" + db_context + "\n\n"
+        context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n" + db_context + "\n\n"
         if retrieved_raw_blocks:
+            from browser_agents import extract_highlight_snippet
             for i, doc in enumerate(retrieved_raw_blocks):
                 content_blocks = content_blocks or []
+                c_text = doc.get('content', '')
+                h_snippet = extract_highlight_snippet(c_text)
                 content_blocks.append({
                     "id": f"db-block-{i+1}",
-                    "text": doc.get('content', ''),
+                    "text": c_text,
+                    "highlight_snippet": h_snippet,
                     "url": doc.get('source_url', '')
                 })
 
-    if context_parts:
-        context_str += "LIVE PAGE / PINNED TABS CONTEXT (with IDs):\n" + "\n\n".join(context_parts)
-        is_direct_context = True
+    context = context_str.strip()
+    
+    # Increase context capacity for complex research
+    MAX_CHARS = 20000 
+    if len(context) > MAX_CHARS:
+         context = context[:MAX_CHARS] + f"... [Truncated for Context Limit exceeding {MAX_CHARS} chars]"
+
+    print(f"[CHAT-STREAM] Final context capacity: {len(context)} / {MAX_CHARS} chars")
 
     # [NEW] Merge Notebook Blocks for streaming response metadata
     if notebook_blocks:
         content_blocks = content_blocks or []
         content_blocks.extend(notebook_blocks)
 
-    context = context_str.strip()
+    # Note: Truncation happened above at line 886
     print(f"[DEBUG CONTEXT] Final context length: {len(context)} chars")
     if len(context) > 0:
         print(f"[DEBUG CONTEXT] Preview: {context[:500]}...")
 
     citation_instruction = ""
     if context:
+        # [NEW] Yield all available blocks (pinned, current page, database, and notebook)
+        # This ensures the frontend has metadata for all citations used in this response.
+        yield json.dumps({
+            "type": "retrieved_blocks",
+            "blocks": content_blocks or []
+        }) + "\n"
+        
         cite_examples = []
         if query_notebook:
             cite_examples.append("[nb-block-1]")
@@ -902,10 +1010,14 @@ Question: {query}
              translated_answer, _, was_translated = translate_text_lingo(full_response, target_lang=output_lang, api_keys=api_keys)
              if translated_answer and was_translated:
                  full_response = translated_answer
+                 import re
+                 full_response = re.sub(r'\[\d{1,3}\]', '', full_response)
                  print(f"[CHAT-STREAM] Translation applied successfully ({len(full_response)} chars)")
              elif translated_answer:
                  # Lingo returned something but is_trans was False — use it anyway since user explicitly asked
                  full_response = translated_answer
+                 import re
+                 full_response = re.sub(r'\[\d{1,3}\]', '', full_response)
                  print(f"[CHAT-STREAM] Translation returned text but marked as not-translated. Using Mistral output_lang instruction instead.")
              else:
                  print(f"[CHAT-STREAM] Translation returned empty. Yielding original English response.")
@@ -921,12 +1033,11 @@ Question: {query}
             except Exception as e:
                 print(f"[MEMORY] Error saving stream turn: {e}")
         
-        # Final Metadata
+        # Final Metadata (Usage and final status)
         yield json.dumps({
             "type": "usage",
             "context_found": bool(context),
-            "model_used": "mistral-small-latest",
-            "retrieved_blocks": content_blocks or []
+            "model_used": "mistral-small-latest"
         }) + "\n"
         return
         

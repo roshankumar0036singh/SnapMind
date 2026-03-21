@@ -22,6 +22,15 @@
     --secondary-500: #3B82F6;
     --secondary-600: #2563EB;
 
+    /* Colors - Indigo (Standard Tailwind) */
+    --indigo-600: #4F46E5;
+
+    /* Tab Switcher Tokens */
+    --tab-active-bg: var(--bg-primary);
+    --tab-active-color: var(--primary-600);
+    --tab-hover-bg: var(--primary-50);
+    --tab-hover-color: var(--primary-600);
+
     /* Colors - Text */
     --text-primary: #111827;
     --text-secondary: #6B7280;

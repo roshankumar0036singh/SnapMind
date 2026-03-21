@@ -3,7 +3,7 @@ import requests
 import json
 
 def test_graph_endpoints():
-    base_url = "http://localhost:7860"
+    base_url = "http://localhost:8000"
     
     print("--- Testing /graph/sessions ---")
     try:

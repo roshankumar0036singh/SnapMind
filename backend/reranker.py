@@ -73,7 +73,7 @@ class CohereReranker(BaseReranker):
         except ImportError:
             raise ImportError(
                 "Cohere package not installed. "
-                "Install with: pip install cohere"
+                "Please run: pip install cohere"
             )
     
     def rerank(
@@ -146,7 +146,7 @@ class LocalCrossEncoderReranker(BaseReranker):
         except ImportError:
             raise ImportError(
                 "sentence-transformers not installed. "
-                "Install with: pip install sentence-transformers"
+                "Please run: pip install sentence-transformers"
             )
     
     def rerank(
@@ -306,7 +306,7 @@ class Reranker:
                     print(f"[RERANK] Fallback failed: {fallback_error}")
             
             # If all reranking fails, return original documents
-            print("[RERANK] All rerankers failed, returning original order")
+            print(f"[RERANK] Warning: All rerankers failed ({e}). Returning original order.")
             return documents[:top_k]
 
 

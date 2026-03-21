@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import psycopg
 from database import get_db_pool
 from dotenv import load_dotenv
 from typing import List, Tuple, Dict, Any
@@ -9,6 +10,8 @@ import requests
 import httpx
 import time
 from api_clients import get_gemini_client, get_mistral_client, get_firecrawl_key, get_lingo_key, genai
+from graph_logic import db_retry
+from psycopg import errors
 
 # 1. Load Environment Variables
 load_dotenv()
@@ -29,7 +32,22 @@ from chunking import chunk_text
 # Import custom crawler
 from custom_crawler import extract_links_from_page, crawl_multiple_pages_custom
 
-# Import Agentic Chunking
+# Global Job Status Tracker for Sessions
+JOB_STATUS = {}
+
+def update_job_status(session_id: str, status: str, message: str, progress: int = 0):
+    if not session_id: return
+    JOB_STATUS[session_id] = {
+        "status": status,
+        "message": message,
+        "progress": progress,
+        "timestamp": time.time()
+    }
+    print(f"[JOB_STATUS] {session_id} -> {status}: {message} ({progress}%)")
+
+def get_job_status(session_id: str):
+    return JOB_STATUS.get(session_id, {"status": "unknown", "message": "No active job found."})
+
 from agentic_chunking import run_agentic_chunking
 
 def is_unreliable_translation_skip(text: str, src_lang: str, target_lang: str) -> bool:
@@ -118,8 +136,8 @@ def translate_text_lingo(text: str, target_lang: str = "en", api_keys: dict = No
         translated_text = text
         is_trans = False
         try:
-            # Use HTTP/2 client with 90s timeout for translation
-            with httpx.Client(http2=True, timeout=90.0) as client:
+            # Use stable HTTP/1.1 client with 90s timeout for translation
+            with httpx.Client(http2=False, timeout=90.0) as client:
                 trans_resp = client.post(
                     "https://engine.lingo.dev/i18n",
                     headers={"Authorization": f"Bearer {lingo_key}", "Content-Type": "application/json; charset=utf-8"},
@@ -452,15 +470,15 @@ def simple_scrape_fallback(url: str) -> str:
     except:
         return ""
 
-def embed_single_chunk(chunk: str, api_keys: dict = None) -> Tuple[str, List[float]]:
+def embed_single_chunk(chunk: str, api_keys: dict = None, client=None) -> Tuple[str, List[float]]:
     try:
         model_name = EmbeddingConfig.EMBEDDING_MODEL
         
         # 1. Mistral Embedding Flow
         if "mistral" in model_name.lower():
-            mistral_client = get_mistral_client(api_keys)
+            # [FIX] Use provided client if available to prevent redundant pool creation
+            mistral_client = client or get_mistral_client(api_keys)
             if mistral_client:
-                # Mistral SDK usage: mistral_client.embeddings.create(model="mistral-embed", inputs=[chunk])
                 result = mistral_client.embeddings.create(
                     model=model_name,
                     inputs=[chunk]
@@ -471,7 +489,8 @@ def embed_single_chunk(chunk: str, api_keys: dict = None) -> Tuple[str, List[flo
                 return (chunk, embedding)
         
         # 2. Gemini Embedding Flow (Fallback or Default)
-        gemini_client = get_gemini_client(api_keys)
+        gemini_client = client or get_gemini_client(api_keys)
+        # Gemini usually requires its own client type, so we use it here
         result = gemini_client.models.embed_content(
             model="gemini-embedding-001" if "gemini" not in model_name.lower() else model_name,
             contents=chunk,
@@ -484,47 +503,44 @@ def embed_single_chunk(chunk: str, api_keys: dict = None) -> Tuple[str, List[flo
         
         return (chunk, embedding)
     except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg and ("leaked" in error_msg.lower() or "permission_denied" in error_msg.lower()):
+            print(f"[EMBED] CRITICAL: Google API Key reported as leaked or invalid! Returning neutral embedding.")
+            # Return a zero-vector so indexing can proceed without vector features
+            return (chunk, [0.0] * 768)
         print(f"Embedding error for chunk: {e}")
         raise
 
 def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_url: str = "", api_keys: dict = None, page_title: str = None) -> List[dict]:
     """
     Embed chunks in parallel using ThreadPoolExecutor.
-    
-    Args:
-        chunks: List of chunk dictionaries with 'content' and optional 'metadata'
-        max_workers: Maximum number of parallel workers
-        source_url: Source URL for the chunks
-        page_title: Title of the page (to be added to metadata)
-        
-    Returns:
-        List of dictionaries ready for database insertion
     """
     if max_workers is None:
         max_workers = EmbeddingConfig.MAX_EMBEDDING_WORKERS
     
     data_list = []
     
+    # [FIX] Initialize a single client instance to reuse across all worker threads
+    # This prevents the "NoneType build_request" errors caused by redundant httpx pools.
+    client = None
+    if "mistral" in EmbeddingConfig.EMBEDDING_MODEL.lower():
+        client = get_mistral_client(api_keys)
+    elif "gemini" in EmbeddingConfig.EMBEDDING_MODEL.lower():
+        client = get_gemini_client(api_keys)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Extract content from chunks
-        chunk_contents = [chunk.get('content', '') for chunk in chunks]
-        
-        # Submit all embedding tasks
+        # Submit all tasks sharing the same client
         future_to_chunk = {
-            executor.submit(embed_single_chunk, content, api_keys): (content, chunks[i])
-            for i, content in enumerate(chunk_contents)
+            executor.submit(embed_single_chunk, chunk.get('content', ''), api_keys, client): chunk
+            for chunk in chunks
         }
         
-        # Collect results
         for future in concurrent.futures.as_completed(future_to_chunk):
             try:
                 content, embedding = future.result()
-                original_chunk = future_to_chunk[future][1]
+                original_chunk = future_to_chunk[future]
                 metadata = original_chunk.get('metadata', {})
-                
-                # [NEW] Inject title if provided
-                if page_title:
-                    metadata['title'] = page_title
+                if page_title: metadata['title'] = page_title
                 
                 data_list.append({
                     "content": content,
@@ -634,6 +650,13 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
     # 1. Extract content
     markdown_content, page_title = scrape_website_firecrawl(url, api_keys=api_keys)
     
+    if markdown_content:
+        # [NEW] Strip common navigation boilerplate to improve RAG quality
+        boilerplate_terms = ["skip to main content", "skip to content", "menu", "sign in", "log in", "cookies", "privacy policy"]
+        lines = markdown_content.split('\n')
+        filtered = [l for l in lines if not any(term in l.lower() and len(l) < 150 for term in boilerplate_terms)]
+        markdown_content = '\n'.join(filtered)
+    
     if not markdown_content or len(markdown_content) < 100:
         update_job_status("failed", "Insufficient content found (Page protected or empty)")
         return {"success": False, "error": "Insufficient content found. The page might be protected or empty."}
@@ -674,6 +697,15 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         chunk["metadata"]["tags"] = extracted_tags
         chunk["metadata"]["original_lang"] = original_lang
         chunk["metadata"]["translated"] = is_translated
+        if session_id:
+            chunk["metadata"]["session_id"] = session_id
+            
+        # [NEW] Generate high-quality citation metadata during ingestion
+        from browser_agents import extract_highlight_snippet, generate_highlight_url
+        c_text = chunk.get("content", "")
+        h_snippet = extract_highlight_snippet(c_text)
+        chunk["metadata"]["highlight_snippet"] = h_snippet
+        chunk["metadata"]["highlightUrl"] = generate_highlight_url(normalized_url, h_snippet)
     
     data_list = parallel_embed_chunks(
         chunks,
@@ -692,25 +724,30 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         if not db_pool:
             update_job_status("failed", "Database not configured on server")
             return {"success": False, "error": "Database not configured on server."}
-            
-        with db_pool.connection() as conn:
-            with conn.cursor() as cur:
-                args_list = [
-                    (d["content"], d["source_url"], d["embedding"], json.dumps(d["metadata"]))
-                    for d in data_list
-                ]
-                
-                # [FIX] Batch insertion to prevent SSL bad length errors
-                BATCH_SIZE = 50
-                for i in range(0, len(args_list), BATCH_SIZE):
-                    batch = args_list[i : i + BATCH_SIZE]
-                    cur.executemany(
-                        "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
-                        batch,
-                        returning=False
-                    )
-            conn.commit()
-            
+        
+        # [NEW] Inner function for retryable insertion
+        @db_retry(max_retries=5, initial_delay=2)
+        def perform_bulk_insert(args):
+            with db_pool.connection() as conn:
+                with conn.cursor() as cur:
+                    BATCH_SIZE = 20
+                    for i in range(0, len(args), BATCH_SIZE):
+                        batch = args[i : i + BATCH_SIZE]
+                        cur.executemany(
+                            "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                            batch,
+                            returning=False
+                        )
+                conn.commit()
+
+        args_list = [
+            (d["content"], d["source_url"], d["embedding"], json.dumps(d["metadata"]))
+            for d in data_list
+        ]
+        
+        perform_bulk_insert(args_list)
+        
+        update_job_status("completed", f"Successfully ingested {len(data_list)} chunks.", len(data_list))
         return {
             "success": True, 
             "message": f"Successfully ingested {len(data_list)} chunks.",
@@ -720,7 +757,7 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
     except Exception as e:
         import traceback
         print(f"[INGEST FATAL ERROR] {e}")
-        traceback.print_exc()
+        # traceback.print_exc()
         update_job_status("failed", f"Fatal error: {str(e)}")
         return {"success": False, "error": f"Fatal ingestion error: {str(e)}"}
 
@@ -729,6 +766,7 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
     global FeatureFlags
     try:
         normalized_url = normalize_url(url)
+        update_job_status(session_id, "processing", f"Ingesting {normalized_url}...", 10)
         print(f"[INGEST_TEXT] Processing text for: {normalized_url}")
         
         if not text_content or len(text_content.strip()) < 10:
@@ -740,11 +778,14 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         
         # Use translated text for everything else
         if is_translated:
+            update_job_status(session_id, "processing", f"Translated {original_lang} -> {target_lang}", 30)
             print(f"[INGEST_TEXT] Translated from {original_lang} to {target_lang}.")
             text_content = translated_text
 
         # 2. Chunk the (possibly translated) text
-        if FeatureFlags.PHASE_15_AGENTIC_CHUNKING:
+        # [SPEED OPTIMIZATION] Use Agentic Chunking only for reasonably sized text.
+        # Massive papers (> 80k chars) take too long with Agentic Chunking.
+        if FeatureFlags.PHASE_15_AGENTIC_CHUNKING and len(text_content) < 80000:
             print("[INGEST_TEXT] Using Agentic Semantic Chunking...")
             chunks = run_agentic_chunking(
                 text_content, 
@@ -752,14 +793,19 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
                 target_chunk_size=ChunkingConfig.AGENTIC_CHUNKING_TARGET_SIZE
             )
         else:
+            if len(text_content) >= 80000:
+                print(f"[INGEST_TEXT] Document too large ({len(text_content)} chars). Falling back to standard Semantic Chunking for speed.")
             chunks = chunk_text(
                 text_content,
                 max_chars=ChunkingConfig.TARGET_CHUNK_SIZE,
                 source_url=normalized_url,
-                use_semantic=FeatureFlags.PHASE_1_SEMANTIC_CHUNKING
+                use_semantic=True # Forced true for large docs
             )
         
+        update_job_status(session_id, "processing", f"Created {len(chunks)} chunks", 60)
+        
         if not chunks:
+            update_job_status(session_id, "failed", "No valid chunks created from text.")
             return {"success": False, "error": "No valid chunks created from text."}
         
         print(f"[INGEST_TEXT] Created {len(chunks)} chunks")
@@ -774,6 +820,7 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
             from graph_logic import extract_graph_data, insert_graph_data
             graph_data = extract_graph_data(text_content, api_keys=api_keys)
             if graph_data.get("nodes") or graph_data.get("edges"):
+                update_job_status(session_id, "processing", "Extracting Knowledge Graph...", 80)
                 insert_graph_data(graph_data, normalized_url, session_id=session_id)
         
         # Inject tags and translation data into the chunks BEFORE embedding
@@ -783,6 +830,8 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
             chunk["metadata"]["tags"] = extracted_tags
             chunk["metadata"]["original_lang"] = original_lang
             chunk["metadata"]["translated"] = is_translated
+            if session_id:
+                chunk["metadata"]["session_id"] = session_id
             
             # [NEW] Phase 14: Merge extra metadata (e.g. source_type: image)
             if extra_metadata:
@@ -797,29 +846,54 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         )
         
         if not data_list:
+            update_job_status(session_id, "failed", "Failed to create embeddings.")
             return {"success": False, "message": "Failed to create embeddings."}
 
-        # 5. Bulk insert
-        if not db_pool: return {"success": False, "message": "Database not configured"}
+        # 5. Bulk insert with retries for connection stability
+        if not db_pool:
+            update_job_status(session_id, "failed", "Database not configured")
+            return {"success": False, "message": "Database not configured"}
             
-        with db_pool.connection() as conn:
-            with conn.cursor() as cur:
-                args_list = [
-                    (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
-                    for d in data_list
-                ]
-                
-                # [FIX] Batch insertion to prevent SSL bad length errors
-                BATCH_SIZE = 50
-                for i in range(0, len(args_list), BATCH_SIZE):
-                    batch = args_list[i : i + BATCH_SIZE]
-                    cur.executemany(
-                        "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
-                        batch,
-                        returning=False
-                    )
-            conn.commit()
+        MAX_RETRIES = 3
+        for attempt in range(MAX_RETRIES):
+            try:
+                with db_pool.connection() as conn:
+                    with conn.cursor() as cur:
+                        args_list = [
+                            (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
+                            for d in data_list
+                        ]
+                        
+                        # [FIX] Small batch size to prevent SSL bad length errors on large embedding payloads
+                        BATCH_SIZE = 5
+                        for i in range(0, len(args_list), BATCH_SIZE):
+                            batch = args_list[i : i + BATCH_SIZE]
+                            cur.executemany(
+                                "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                                batch,
+                                returning=False
+                            )
+                    conn.commit()
+                break # Success!
+            except (psycopg.OperationalError, psycopg.InterfaceError) as e:
+                if attempt == MAX_RETRIES - 1:
+                    print(f"[INGEST_TEXT FATAL ERROR] All {MAX_RETRIES} attempts failed: {e}")
+                    update_job_status(session_id, "failed", f"DB insertion failed after {MAX_RETRIES} retries: {e}")
+                    return {"success": False, "message": f"DB insertion failed after {MAX_RETRIES} retries: {e}"}
+                wait = (attempt + 1) * 3  # Exponential backoff: 3s, 6s
+                print(f"[INGEST_TEXT] DB Attempt {attempt+1} failed: {e}. Retrying in {wait}s...")
+                time.sleep(wait)
+                # Force pool to check connections before next attempt
+                try:
+                    db_pool.check()
+                except Exception:
+                    pass
+            except Exception as e:
+                print(f"[INGEST_TEXT ERROR] Non-retryable error: {e}")
+                update_job_status(session_id, "failed", f"DB error: {e}")
+                return {"success": False, "message": f"DB error: {e}"}
             
+        update_job_status(session_id, "completed", f"Successfully ingested {len(data_list)} chunks.", 100)
         return {
             "success": True, 
             "message": f"Successfully ingested {len(data_list)} chunks.",
@@ -830,6 +904,7 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         import traceback
         print(f"[INGEST_TEXT FATAL ERROR] {e}")
         traceback.print_exc()
+        update_job_status(session_id, "failed", f"Fatal text ingestion error: {str(e)}")
         return {"success": False, "error": f"Fatal text ingestion error: {str(e)}"}
     
 
@@ -980,6 +1055,8 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                     if "metadata" not in chunk:
                         chunk["metadata"] = {}
                     chunk["metadata"]["tags"] = extracted_tags
+                    if session_id:
+                        chunk["metadata"]["session_id"] = session_id
                 
                 # Embed chunks
                 embedded_chunks = parallel_embed_chunks(
@@ -1001,7 +1078,7 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                                 ]
                                 
                                 # [FIX] Batch insertion to prevent SSL bad length errors
-                                BATCH_SIZE = 50
+                                BATCH_SIZE = 20
                                 for i in range(0, len(args_list), BATCH_SIZE):
                                     batch = args_list[i : i + BATCH_SIZE]
                                     cur.executemany(

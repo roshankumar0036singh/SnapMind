@@ -164,8 +164,8 @@ class QueryConfig:
 class ContextConfig:
     """Configuration for context optimization"""
     
-    # Maximum context length (in tokens)
-    MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "4000"))
+    # Maximum context length (in characters, approx 10k as requested)
+    MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "8000"))
     
     # Enable compression
     ENABLE_COMPRESSION = os.getenv("ENABLE_COMPRESSION", "true").lower() == "true"
@@ -174,7 +174,7 @@ class ContextConfig:
     ENABLE_DEDUPLICATION = os.getenv("ENABLE_DEDUPLICATION", "true").lower() == "true"
     
     # Minimum relevance score for filtering
-    MIN_RELEVANCE_SCORE = float(os.getenv("MIN_RELEVANCE_SCORE", "0.000001"))
+    MIN_RELEVANCE_SCORE = float(os.getenv("MIN_RELEVANCE_SCORE", "0.0"))
 
 
 # ============================================================================
