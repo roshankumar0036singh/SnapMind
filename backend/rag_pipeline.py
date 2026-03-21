@@ -1082,6 +1082,11 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                 
                 # Store in database
                 if embedded_chunks and db_pool:
+                    args_list = [
+                        (c["content"], page_url, c["embedding"], json.dumps(c["metadata"]))
+                        for c in embedded_chunks
+                    ]
+                    
                     @db_retry(initial_delay=2)
                     def perform_multipage_insert(args):
                         with db_pool.connection() as conn:

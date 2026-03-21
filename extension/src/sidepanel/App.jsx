@@ -2562,6 +2562,7 @@ function App() {
                                       ];
                                       block = globalBlocks.find(b => b.id === blockId);
                                     }
+                                    const citeData = msg.citations?.find(c => c.blockId === blockId);
                                     
                                     if (block || citeData) {
                                       const url = block?.url || block?.sourceURL || citeData?.url;
