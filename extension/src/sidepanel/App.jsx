@@ -1731,9 +1731,13 @@ function App() {
           pinnedTabs.forEach((pinnedTab) => {
             if (pinnedTab.blocks && pinnedTab.blocks.length > 0) {
               // Add a source header block so the AI knows which tab is which
-              const headerBlock = { id: `source-${pinnedTab.url}`, text: `\n\n--- Source: ${pinnedTab.title} (${pinnedTab.url}) ---\n\n` };
-              // Create a new array reference so React state and AI context combines correctly
-              blocks = [...blocks, headerBlock, ...pinnedTab.blocks];
+              const headerBlock = { id: `source-${pinnedTab.url}`, text: `\n\n--- Source: ${pinnedTab.title} (${pinnedTab.url}) ---\n\n`, url: pinnedTab.url };
+              // [FIX] Inject parent URL into each child block so citations can navigate
+              const enrichedBlocks = pinnedTab.blocks.map(b => ({
+                ...b,
+                url: b.url || pinnedTab.url,
+              }));
+              blocks = [...blocks, headerBlock, ...enrichedBlocks];
             }
           });
           console.log("Multi-tab context injected! Total chunks:", blocks.length);

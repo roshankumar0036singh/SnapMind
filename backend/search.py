@@ -479,8 +479,9 @@ SPECIAL INSTRUCTION: If the user is asking about correlations or connections bet
     context_parts = []
     
     # [NEW] Cross-Lingual Comparison Logic
-    has_pinned_sources = any(b.get("id", "").startswith(("source-", "pin-")) for b in (content_blocks or []))
-    is_comparison_query = ("compare" in query.lower() or "contrast" in query.lower() or has_pinned_sources)
+    # [FIX] Only trigger expensive translation path on explicit comparison keywords
+    query_lower = query.lower()
+    is_comparison_query = any(kw in query_lower for kw in ["compare", "contrast", "difference between", "vs ", "versus"])
     lingo_feature_prompt = ""
     
     if content_blocks and isinstance(content_blocks, list):
@@ -615,7 +616,16 @@ The user wants to compare distinct websites/pages in different languages. You ha
         context_str += "RESEARCH NOTEBOOK CONTEXT (MOST RELEVANT BOOKMARKS):\n" + notebook_context + "\n\n"
         
     if db_context:
-        context_str += "DATABASE CONTEXT:\n" + db_context + "\n\n"
+        # [FIX] Normalize non-streaming context attribution
+        if retrieved_raw_blocks:
+            context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n"
+            for i, doc in enumerate(retrieved_raw_blocks):
+                b_id = doc.get("id", f"db-{i+1}")
+                b_text = doc.get("content", "").strip()
+                b_source = doc.get("source_url", "External Document")
+                context_str += f"SOURCE: {b_source}\nID: [{b_id}]\nCONTENT: {b_text}\n\n---\n\n"
+        else:
+            context_str += "DATABASE CONTEXT:\n" + db_context + "\n\n"
     
     if context_parts:
         context_str += "LIVE PAGE / PINNED TABS CONTEXT (with IDs):\n" + "\n\n".join(context_parts)
@@ -784,7 +794,30 @@ def chat_logic_stream(query: str, page_content: str | None = None, content_block
     if output_lang and output_lang != "auto":
         lang_instruction = f"CRITICAL: You MUST output your entire response EXCLUSIVELY in {lang_name}. This includes all explanations, citations, and suggested follow-ups. DO NOT use any other language.\n\n"
 
-    system_instruction = f"""{lang_instruction}You are a helpful AI assistant for the Snapmind browser extension.
+    # [FIX] Detect pinned tabs to use a more lenient system instruction
+    has_pinned = any(b.get("id", "").startswith(("pin-", "source-")) for b in (content_blocks or []))
+    
+    if has_pinned:
+        # Lenient mode for pinned tabs — the user expects answers from their pinned pages
+        system_instruction = f"""{lang_instruction}You are a helpful AI assistant for the Snapmind browser extension.
+
+RULES:
+1. Answer using the provided CONTEXT from the user's pinned tabs and database.
+2. Synthesize and summarize the available information to best answer the user's question.
+3. If the CONTEXT contains relevant information, USE IT — even if it's fragmented or partial.
+4. Only say "I don't have that information" if the CONTEXT is completely empty or entirely unrelated to the question.
+5. DO NOT hallucinate facts not present in the CONTEXT, but DO connect and summarize what IS there.
+6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram. Wrap it strictly in a ```mermaid\\n ... \\n``` block.
+   CRITICAL MERMAID RULES:
+   - YOU MUST EXCLUSIVELY USE 'graph TD' or 'graph LR'. 
+   - NEVER use 'sequenceDiagram', 'gantt', or commas in node names.
+   - Keep the syntax strictly valid.
+
+At the end of your response, suggest 2-3 short (max 10 words), engaging follow-up questions ONLY if answerable from the CONTEXT. Format as 'Suggested Follow-ups:' with each in **bold**.
+
+SPECIAL INSTRUCTION: If the user is asking about correlations or connections between bookmarks/references, you MUST look for legal, causal, or prerequisite links. Give a deep reasoning, not just a surface-level summary."""
+    else:
+        system_instruction = f"""{lang_instruction}You are a helpful AI assistant for the Snapmind browser extension.
 
 CRITICAL RULES - FOLLOW STRICTLY:
 1. ONLY answer using information from the provided CONTEXT.
@@ -792,7 +825,7 @@ CRITICAL RULES - FOLLOW STRICTLY:
 3. If the available CONTEXT (including current page and pinned tabs) lacks the answer to the user's question, output ONLY: "I don't have that information in the current research context". Do not output anything else.
 4. DO NOT hallucinate, invent, or provide general knowledge.
 5. DO NOT write code examples unless they exist in the CONTEXT.
-6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram to visualize it. Wrap it strictly in a ```mermaid\n ... \n``` block.
+6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram to visualize it. Wrap it strictly in a ```mermaid\\n ... \\n``` block.
    CRITICAL MERMAID RULES:
    - YOU MUST EXCLUSIVELY USE 'graph TD' or 'graph LR'. 
    - When asked for a timeline, use a top-down flowchart. Example:
@@ -810,6 +843,7 @@ CRITICAL RULES - FOLLOW STRICTLY:
 At the end of your response, suggest 2-3 short (max 10 words), engaging follow-up questions ONLY if answerable from the CONTEXT. Format as 'Suggested Follow-ups:' with each in **bold**.
 
 SPECIAL INSTRUCTION: If the user is asking about correlations or connections between bookmarks/references, you MUST look for legal, causal, or prerequisite links. e.g. "To participate in X (Bookmark A), you must comply with Y (Bookmark B)". Give a deep reasoning, not just a surface-level summary."""
+
     print(f"[CHAT-STREAM] System Instruction Language Rule: {lang_instruction.strip() or 'None'}")
 
     citation_instruction = ""
@@ -818,37 +852,42 @@ SPECIAL INSTRUCTION: If the user is asking about correlations or connections bet
 
     context_parts = []
     
+    import time as _time
+    _t0 = _time.time()
+    
     # [NEW] Cross-Lingual Comparison Logic
-    has_pinned_sources = any(b.get("id", "").startswith(("source-", "pin-")) for b in (content_blocks or []))
-    is_comparison_query = ("compare" in query.lower() or "contrast" in query.lower() or has_pinned_sources)
+    # [FIX] Only trigger expensive translation path when user EXPLICITLY asks for comparison
+    # Previously, has_pinned_sources made this always True for pinned tabs, causing 10-45s Lingo.dev delays
+    query_lower = query.lower()
+    is_comparison_query = any(kw in query_lower for kw in ["compare", "contrast", "difference between", "vs ", "versus"])
     lingo_feature_prompt = ""
     
     if content_blocks and isinstance(content_blocks, list):
         # If comparison is requested, group blocks by source and optionally translate
         if is_comparison_query:
             print("[CROSS-LINGUAL] Comparison requested, grouping sources...")
-            sources = []
-            curr_source = {"id": "Main Page", "blocks": [], "text_content": ""}
+            source_map = {} # URL -> {id, blocks, text_content}
             for block in content_blocks:
                 block_id = block.get("id", "unknown")
+                url = block.get("url") or "Main Page"
+                if url not in source_map:
+                    source_map[url] = {"id": url, "blocks": [], "text_content": ""}
+                
                 if block_id.startswith("source-"):
-                    if curr_source["blocks"]:
-                        sources.append(curr_source)
-                    curr_source = {"id": block_id, "blocks": [], "text_content": ""}
-                    # Add the header block itself
+                    # Header block
                     context_parts.append(f"[{block_id}] {block.get('text', '')}")
                 else:
                     text = block.get("text", "")
                     if text and len(text.strip()) >= 5:
-                        curr_source["blocks"].append(block)
-                        if len(curr_source["text_content"]) < 4000:  # Collect sample for translation
-                            curr_source["text_content"] += text + "\n"
-            if curr_source["blocks"]:
-                sources.append(curr_source)
+                        source_map[url]["blocks"].append(block)
+                        if len(source_map[url]["text_content"]) < 4000:
+                            source_map[url]["text_content"] += text + "\n"
                 
             from rag_pipeline import translate_text_lingo
-            for idx, source in enumerate(sources):
-                print(f"[CROSS-LINGUAL] Processing source {idx+1}: {source['id']}")
+            for url, source in source_map.items():
+                if not source["blocks"]:
+                    continue
+                print(f"[CROSS-LINGUAL] Processing source: {url}")
                 sample_text = source["text_content"][:4000]
                 translated_text, src_lang, is_trans = translate_text_lingo(sample_text, target_lang="en", api_keys=api_keys)
                 
@@ -858,7 +897,7 @@ SPECIAL INSTRUCTION: If the user is asking about correlations or connections bet
                      
                 if is_trans and src_lang != "en" and src_lang != "unknown":
                     print(f"[CROSS-LINGUAL] Source was in {src_lang}. Appending translated baseline.")
-                    context_parts.append(f"\n--- [LINGO.DEV TRANSLATION BASELINE FOR {source['id']} (Original: {src_lang})] ---\n{translated_text}\n--- END BASELINE ---\n")
+                    context_parts.append(f"\n--- [LINGO.DEV TRANSLATION BASELINE FOR {url} (Original: {src_lang})] ---\n{translated_text}\n--- END BASELINE ---\n")
             
             lingo_feature_prompt = """
 CRITICAL COMPARISON TASK:
@@ -869,14 +908,24 @@ The user wants to compare distinct websites/pages in different languages. You ha
 """
         else:
             # 1. Structured Context (Standard Flow)
+            from browser_agents import extract_highlight_snippet, generate_highlight_url
             for block in content_blocks:
-                if not block.get("text") or len(block["text"].strip()) < 5:
+                if not block.get("text") or len(block["text"].strip()) < 10:
                     continue
                 block_id = block.get("id", "unknown")
-                text = block.get("text", "")
-                import re
-                text = re.sub(r'\[\d{1,3}\]', '', text)
-                context_parts.append(f"[{block_id}] {text}")
+                text = block.get("text", "").strip()
+                url = block.get("url", "Current Page")
+                
+                # [FIX] Generate highlight_snippet for pinned blocks so citations can navigate
+                if not block.get("highlight_snippet") and text:
+                    block["highlight_snippet"] = extract_highlight_snippet(text)
+                    if url and url != "Current Page":
+                        block["url"] = generate_highlight_url(url, block["highlight_snippet"])
+                
+                # [NEW] Explicit Source Attribution for Pinned/Live Context
+                context_parts.append(f"SOURCE: {url}\nID: [{block_id}]\nCONTENT: {text}")
+
+    print(f"[PERF] Content blocks processed in {_time.time() - _t0:.2f}s")
 
     if lingo_feature_prompt:
         system_instruction += "\n\n" + lingo_feature_prompt
@@ -901,6 +950,7 @@ The user wants to compare distinct websites/pages in different languages. You ha
              context_parts.append(f"ID: [db-block-{block_count}]\n{text}")
 
     # --- STEP 4: DATABASE RETRIEVAL (Historical Context) ---
+    _t1 = _time.time()
     db_context = ""
     retrieved_raw_blocks = []
     if site_id:
@@ -937,41 +987,54 @@ The user wants to compare distinct websites/pages in different languages. You ha
             retrieved_raw_blocks = all_site_matches[:SearchConfig.MATCH_COUNT]
             
             print(f"[CHAT-STREAM] Retrieved {len(retrieved_raw_blocks)} blocks from {len(site_ids)} sites")
+            print(f"[PERF] DB search completed in {_time.time() - _t1:.2f}s")
             
             # [NEW] Phase 26: Dynamic Pinned-Site Crawling (Bypass Indexing)
-            # If we didn't find much in the DB for these sites, try a live scrape for the URL if it's a valid http/https URL.
-            if len(retrieved_raw_blocks) < 3 and site_ids:
-                from rag_pipeline import scrape_website_firecrawl
+            # [FIX] Skip live scrape if frontend already sent enough content via content_blocks
+            pinned_text_len = sum(len(b.get('text', '')) for b in (content_blocks or []))
+            total_db_chars = sum(len(b.get('content', '')) for b in retrieved_raw_blocks)
+            avg_len = total_db_chars / len(retrieved_raw_blocks) if retrieved_raw_blocks else 0
+            
+            needs_live_scrape = (pinned_text_len < 2000) and ((len(retrieved_raw_blocks) < 3) or (avg_len < 400 and total_db_chars < 3000))
+            
+            if needs_live_scrape and site_ids:
                 import hashlib
+                import concurrent.futures
+                from rag_pipeline import scrape_website_firecrawl
+                from chunking import chunk_text
                 
-                for sid in site_ids:
-                    if sid.startswith(("http://", "https://")):
-                        print(f"[CHAT-STREAM] Insufficient DB context for {sid}. Performing dynamic Firecrawl scrape...")
-                        try:
-                            # Use Firecrawl to get full text
-                            live_text, live_title = scrape_website_firecrawl(sid, api_keys=api_keys)
-                            if live_text and len(live_text) > 500:
-                                print(f"[CHAT-STREAM] Live scrape successful for {sid} ({len(live_text)} chars). Chunking...")
-                                from chunking import chunk_text
-                                # Chunk it on the fly
-                                live_chunks = chunk_text(live_text, max_chars=800, source_url=sid, use_semantic=False)
-                                
-                                url_hash = hashlib.md5(sid.encode()).hexdigest()[:6]
-                                for i, chunk in enumerate(live_chunks[:10]): # Limit to top 10 chunks to avoid context bloat
-                                    text = chunk.get('content', '')
-                                    block_id = f"pin-block-{url_hash}-{i+1}"
-                                    
-                                    # Add to retrieved_raw_blocks
-                                    retrieved_raw_blocks.append({
-                                        'id': block_id,
-                                        'content': text,
-                                        'source_url': sid,
-                                        'score': 1.0, # High priority
-                                        'metadata': {'title': live_title or "Live Page Content"}
-                                    })
-                                print(f"[CHAT-STREAM] Added {len(live_chunks[:10])} live chunks for {sid}")
-                        except Exception as e:
-                            print(f"[CHAT-STREAM] Dynamic scrape failed for {sid}: {e}")
+                urls_to_scrape = [sid for sid in site_ids if sid.startswith(("http://", "https://"))]
+                print(f"[CHAT-STREAM] Insufficient context (pinned={pinned_text_len}, db_avg={avg_len:.0f}). Scraping {len(urls_to_scrape)} URLs in parallel...")
+                
+                # [FIX] Scrape in parallel instead of sequentially
+                def scrape_and_chunk(url):
+                    try:
+                        live_text, live_title = scrape_website_firecrawl(url, api_keys=api_keys)
+                        if live_text and len(live_text) > 500:
+                            chunks = chunk_text(live_text, max_chars=1000, source_url=url, use_semantic=False)
+                            return url, chunks[:10], live_title
+                    except Exception as e:
+                        print(f"[CHAT-STREAM] Dynamic scrape failed for {url}: {e}")
+                    return url, [], None
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                    futures = [executor.submit(scrape_and_chunk, u) for u in urls_to_scrape]
+                    for future in concurrent.futures.as_completed(futures):
+                        sid, live_chunks, live_title = future.result()
+                        if live_chunks:
+                            url_hash = hashlib.md5(sid.encode()).hexdigest()[:6]
+                            for i, chunk in enumerate(live_chunks):
+                                retrieved_raw_blocks.append({
+                                    'id': f"pin-block-{url_hash}-{i+1}",
+                                    'content': chunk.get('content', ''),
+                                    'source_url': sid,
+                                    'score': 1.0,
+                                    'metadata': {'title': live_title or 'Live Page Content'}
+                                })
+                            print(f"[CHAT-STREAM] Added {len(live_chunks)} live chunks for {sid}")
+            else:
+                if pinned_text_len >= 2000:
+                    print(f"[CHAT-STREAM] Skipping live scrape — frontend content_blocks have {pinned_text_len} chars (sufficient)")
 
             # [FIX] Fallback to global search only if we still have nothing after live scrape attempts
             if not retrieved_raw_blocks and site_ids:
@@ -1006,30 +1069,30 @@ The user wants to compare distinct websites/pages in different languages. You ha
     if notebook_context:
         context_str += "RESEARCH NOTEBOOK CONTEXT (MOST RELEVANT BOOKMARKS):\n" + notebook_context + "\n\n"
         
-    if db_context:
+    # [FIX] Always include retrieved_raw_blocks in context, regardless of optimize_context output
+    # Previously, if optimize_context returned empty (due to MIN_RELEVANCE_SCORE filtering),
+    # all DB blocks were silently dropped and the LLM had no data to answer from.
+    if retrieved_raw_blocks:
         context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n"
-        if retrieved_raw_blocks:
-            from browser_agents import extract_highlight_snippet
-            import hashlib
-            for i, doc in enumerate(retrieved_raw_blocks):
-                content_blocks = content_blocks or []
-                c_text = doc.get('content', '')
-                h_snippet = extract_highlight_snippet(c_text)
-                source_url = doc.get('source_url', '')
-                # [FIX] Embed source URL in block ID so citations can redirect properly
-                url_hash = hashlib.md5(source_url.encode()).hexdigest()[:6] if source_url else 'unknown'
-                block_id = f"db-block-{url_hash}-{i+1}"
-                # [FIX] Embed block ID in context so LLM can cite it
-                context_str += f"ID: [{block_id}]\n{c_text}\n\n"
-                content_blocks.append({
-                    "id": block_id,
-                    "text": c_text,
-                    "highlight_snippet": h_snippet,
-                    "url": source_url
-                })
-            print(f"[CHAT-STREAM] Embedded {len(retrieved_raw_blocks)} database blocks with IDs and source URLs")
-        else:
-            context_str += db_context + "\n\n"
+        from browser_agents import extract_highlight_snippet
+        import hashlib
+        for i, doc in enumerate(retrieved_raw_blocks):
+            content_blocks = content_blocks or []
+            c_text = doc.get('content', '')
+            h_snippet = extract_highlight_snippet(c_text)
+            source_url = doc.get('source_url', '')
+            url_hash = hashlib.md5(source_url.encode()).hexdigest()[:6] if source_url else 'unknown'
+            block_id = doc.get('id', f"db-block-{url_hash}-{i+1}")
+            context_str += f"SOURCE: {source_url}\nID: [{block_id}]\nCONTENT: {c_text}\n\n---\n\n"
+            content_blocks.append({
+                "id": block_id,
+                "text": c_text,
+                "highlight_snippet": h_snippet,
+                "url": source_url
+            })
+        print(f"[CHAT-STREAM] Embedded {len(retrieved_raw_blocks)} database blocks with IDs and source URLs")
+    elif db_context:
+        context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n" + db_context + "\n\n"
 
     context = context_str.strip()
     
@@ -1109,6 +1172,7 @@ Question: {query}
     # Mistral Streaming
     try:
         print(f"Streaming with Mistral model: mistral-small-latest")
+        print(f"[PERF] Total pre-stream time: {_time.time() - _t0:.2f}s")
         
         # 1. System Message (Instructions + RAG Context)
         system_content = f"{system_instruction}\n{citation_instruction}\n\nCONTEXT:\n{context}" if context else f"{system_instruction}\nNO CONTEXT FOUND."
