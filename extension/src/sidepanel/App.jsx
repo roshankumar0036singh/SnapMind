@@ -102,7 +102,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                 if (tabs[0]?.id) {
                   const cleanSnippetText = (text) => {
                     if (!text) return '';
-                    let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[\d-]+|pin-[A-Z0-9]+-\d+)\]/g, '')
+                    let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)\]/g, '')
                                     .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
                                     .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
                                     .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
@@ -146,7 +146,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
           {isYouTube ? youtubeTimestamp : (
             (isBookmarked ? 'Saved' :
               (citation.blockId?.startsWith?.('pin-') ? 'Source' : 'Source'))
-          )} {!isYouTube ? (citation.blockId?.match?.(/\d+$/)?.[0] || citation.blockId?.replace?.(/^(bi-block-|nb-block-|db-block-|pin-[A-Z0-9]+-)/, '') || 'Link') : ''}
+          )} {!isYouTube ? (citation.blockId?.match?.(/\d+$/)?.[0] || citation.blockId?.replace?.(/^(bi-block-|nb-block-|db-block-|pin-[a-zA-Z0-9-]+-)/i, '') || 'Link') : ''}
         </button>
       </HoverCard.Trigger>
       <HoverCard.Portal>
@@ -209,9 +209,9 @@ const getFlagEmoji = (langCode) => {
 
 const getSourceHandle = (title) => {
   if (!title) return 'PIN';
-  // Use up to 3 words to ensure uniqueness (e.g. SWOC and SSOC are already unique, but helps generally)
+  // Use up to 3 words to ensure uniqueness
   const words = title.trim().split(/\s+/).slice(0, 3);
-  const handle = words.map(w => w.toUpperCase().replace(/[^A-Z0-9]/g, '')).filter(Boolean).join('-');
+  const handle = words.map(w => w.replace(/[^a-zA-Z0-9]/g, '')).filter(Boolean).join('-');
   return handle || 'PIN';
 };
 
@@ -1061,8 +1061,14 @@ function App() {
     }
   }, [view, memoryTab]);
 
+  // [FIX] Throttled scroll to bottom to prevent flickering during rapid streaming
+  const lastScrollTime = useRef(0);
   useEffect(() => {
-    scrollToBottom();
+    const now = Date.now();
+    if (now - lastScrollTime.current > 100) { // Throttle scroll to 10fps
+      scrollToBottom();
+      lastScrollTime.current = now;
+    }
   }, [messages, view, cropPreview]);
 
   const handleFileUpload = async (eventOrFile) => {
@@ -1760,6 +1766,18 @@ function App() {
         // to tell the backend to search across ALL indexed content.
         if (queryNotebook) {
           targetSiteId = null; 
+        } else if (pinnedTabs && pinnedTabs.length > 0) {
+          // [FIX] If pinned tabs exist, query ONLY from pinned tabs (not current page + tabs)
+         // [FIX] Consolidate target sites: include current page AND all pinned tabs
+        let targetSites = [...pinnedTabs.map(t => t.url)];
+        if (currentUrl && !pinnedTabs.some(t => t.url === currentUrl)) {
+          targetSites.push(currentUrl);
+        }
+        if (activeContext?.id && !targetSites.includes(activeContext.id)) {
+          targetSites.push(activeContext.id);
+        }
+        targetSiteId = targetSites.filter(Boolean).join(',');
+        console.log('[QUERY] Pinned tabs detected. Querying ONLY from pinned tabs:', targetSiteId);
         } else {
           if (activeContext && activeContext.type === 'file') {
             targetSiteId = activeContext.id;
@@ -1767,17 +1785,6 @@ function App() {
             targetSiteId = activeContext.id;
           } else {
             targetSiteId = currentUrl; // Default to current URL
-          }
-
-          // [NEW] Include pinned tabs in targetSiteId
-          if (targetSiteId && pinnedTabs && pinnedTabs.length > 0) {
-            let sites = [targetSiteId];
-            pinnedTabs.forEach(tab => {
-              if (tab.url && !sites.includes(tab.url)) {
-                sites.push(tab.url);
-              }
-            });
-            targetSiteId = sites.join(',');
           }
         }
 
@@ -1816,11 +1823,12 @@ function App() {
           },
           (newBlocks) => {
             if (newBlocks && newBlocks.length > 0) {
-              console.log("[Stream] Received blocks:", newBlocks.length);
+              console.log("[Stream] Received blocks:", newBlocks.length, newBlocks);
               
               // 1. Update global contentBlocks (for current context awareness)
               setContentBlocks(prev => {
                 const filtered = newBlocks.filter(nb => !prev.some(pb => pb.id === nb.id));
+                console.log("[Stream] Added", filtered.length, "new blocks to contentBlocks");
                 return [...prev, ...filtered];
               });
 
@@ -1831,6 +1839,7 @@ function App() {
                   contextBlocks: [...(m.contextBlocks || []), ...newBlocks] 
                 } : m)
               );
+              console.log("[Stream] Updated message with contextBlocks");
             }
           },
           targetSiteId, currentSessionId, search_query, query_lang, outputLang, queryNotebook);
@@ -1841,13 +1850,16 @@ function App() {
         }
  
         // 4. Extract Citations (Post-Stream)
-        // Find block IDs even if they are comma-separated like [db-block-1, db-block-3]
+        // Find block IDs including new format with hex hash: db-block-abc123-5
         console.log("[Stream] Generation complete. Extracting citations from text...");
-        const citationRegex = /((?:bi|nb|db|br)-block-[\d-]+|pin-[A-Z0-9]+-\d+)/g;
+        console.log("[Stream] Full response text:", fullText);
+        const citationRegex = /((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)/gi;
         const citations = [];
         let match;
+        console.log("[Stream] Looking for citations with regex...");
         while ((match = citationRegex.exec(fullText)) !== null) {
           const blockId = match[1];
+          console.log("[Stream] Found citation:", blockId);
           if (!citations.find(c => c.blockId === blockId)) {
             // Descriptive snippet for pinned tabs
             let snippet = `Source ${blockId.replace(/^(bi-block-|nb-block-|db-block-|br-block-)/, '')}`;
@@ -1858,8 +1870,10 @@ function App() {
                snippet = `${handle} ${idx}`;
             }
             citations.push({ blockId, snippet });
+            console.log("[Stream] Added citation - ID:", blockId, "Snippet:", snippet);
           }
         }
+        console.log("[Stream] Total citations extracted:", citations.length, citations);
 
         if (citations.length > 0) {
           setMessages(currentMessages =>
@@ -2450,31 +2464,11 @@ function App() {
       {/* Chat Container */}
       {
         view === 'chat' && (
-          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 scroll-smooth" style={{ background: 'var(--bg-secondary)', maxWidth: '100%' }}>
-            {/* Ingestion Progress Indicator */}
-            {ingestStatus && (ingestStatus.status === 'processing' || ingestStatus.status === 'completed') && (
-              <div className="mb-4 p-3 bg-white border border-indigo-100 rounded-xl shadow-sm animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Loader2 className={`w-3.5 h-3.5 text-indigo-500 ${ingestStatus.status === 'processing' ? 'animate-spin' : ''}`} />
-                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                      {ingestStatus.status === 'completed' ? 'Research Indexed!' : 'Background Ingestion'}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-black text-indigo-600">{ingestStatus.progress}%</span>
-                </div>
-                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full transition-all duration-500 ease-out ${ingestStatus.status === 'completed' ? 'bg-green-500' : 'bg-indigo-500'}`}
-                    style={{ width: `${ingestStatus.progress}%` }}
-                  ></div>
-                </div>
-                <p className="mt-2 text-[10px] text-slate-500 font-medium">
-                  {ingestStatus.message}
-                </p>
-              </div>
-            )}
-            
+          <div 
+            className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 scroll-smooth scrollbar-hide relative min-h-0" 
+            id="message-container"
+            style={{ background: 'var(--bg-secondary)', maxWidth: '100%', scrollbarGutter: 'stable' }}
+          >
             {messages.map((msg, idx) => (
               <div
                 key={msg.id}
@@ -2591,7 +2585,7 @@ function App() {
                             const lang = match ? match[1] : '';
                             
                             if (!inline && lang === 'mermaid') {
-                              return <MermaidChart code={String(children).replace(/\n$/, '')} />;
+                              return <MermaidChart chart={String(children).replace(/\n$/, '')} />;
                             }
  
                             return !inline ? (
@@ -2630,13 +2624,28 @@ function App() {
                           td: ({ children }) => <td className="px-3 py-2 text-slate-600 border-b border-slate-100">{children}</td>
                         };
  
-                        const citationRegex = /\[?(?:bi|nb|db|br)-block-[\d-]+\]?|\[?pin-[A-Z0-9]+-\d+\]?/g;
+                        // [FIX] Updated regex to handle multiple citations in brackets like [pin-SOCIAL-WINTER-OF-25, pin-SOCIAL-WINTER-OF-43]
+                        const citationRegex = /\[((?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)(?:\s*,\s*(?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+))*)\]/gi;
+                        let seenCitations = new Set(); // Track seen citations to avoid duplicates
+                        
                         const processedText = msg.text.replace(citationRegex, (match) => {
-                          // Extract the base ID without brackets
-                          const id = match.replace(/[\[\]]/g, '');
-                          const index = msg.citations?.findIndex(c => c.blockId === id) ?? -1;
-                          if (index === -1) return ""; 
-                          return `[●](#snap-cite-${id})`;
+                          // Extract individual citation IDs from the bracket group
+                          const citationIds = match.slice(1, -1) // Remove brackets
+                            .split(',')
+                            .map(id => id.trim())
+                            .filter(id => id.length > 0);
+                          
+                          // Convert each citation to a link, avoiding duplicates
+                          const citationLinks = citationIds
+                            .filter(id => {
+                              if (seenCitations.has(id)) return false; // Skip duplicates
+                              seenCitations.add(id);
+                              return msg.citations?.some(c => c.blockId === id);
+                            })
+                            .map(id => `[●](#snap-cite-${id})`)
+                            .join('');
+                          
+                          return citationLinks || ''; // Return empty if no valid citations found
                         });
  
                         return (
@@ -2669,13 +2678,36 @@ function App() {
                           ...(contentBlocks || []),
                           ...pinnedTabs.flatMap(t => t.blocks || [])
                         ];
-                        return msg.citations
+                        
+                        console.log("[Citations] Available blocks:", allAvailableBlocks.map(b => ({id: b.id, url: b.url}))); 
+                        console.log("[Citations] Extracted citations:", msg.citations?.map(c => c.blockId));
+                        
+                        // [FIX] Deduplicate citations by blockId to avoid showing the same citation twice
+                        const seenBlockIds = new Set();
+                        const uniqueCitations = msg.citations.filter(cite => {
+                          if (seenBlockIds.has(cite.blockId)) return false;
+                          seenBlockIds.add(cite.blockId);
+                          return true;
+                        });
+                        
+                        return uniqueCitations
                           .filter(cite => {
                             // [FIX] In RAG / Research modes, show ALL citations regardless of URL
-                            if (mode === 'rag' || mode === 'browser') return true;
+                            if (mode === 'rag' || mode === 'browser') {
+                              const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
+                              if (!block) {
+                                console.warn(`[Citations] Block not found for citation: ${cite.blockId}, but showing anyway in RAG mode`);
+                                // Show citation even if block not found - it might be from pinned tabs or other sources
+                                return true;
+                              }
+                              return true;
+                            }
                             
                             const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
-                            if (!block) return false;
+                            if (!block) {
+                              console.warn(`[Citations] Block not found for citation: ${cite.blockId}`);
+                              return false;
+                            }
 
                             // Scoping for sidepanel context (Legacy behavior for specific modes)
                             const isPinned = pinnedTabs.some(t => t.url === block?.url || t.url === block?.sourceURL);
@@ -2829,12 +2861,9 @@ function App() {
 
       {/* Footer Input */}
       {view === 'chat' && (
-        <div className="relative">
-          {/* Active Context and Pinned Tabs Area - Floating above footer */}
-          <div 
-            className="absolute bottom-full right-4 flex flex-col items-end gap-2 mb-3 pointer-events-none transition-all duration-300"
-            style={{ zIndex: 15 }}
-          >
+          <footer className="relative p-4 pt-2 bg-white/80 backdrop-blur-md border-t border-slate-200/60 transition-all focus-within:bg-white focus-within:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.1)] min-h-[85px]">
+          {/* Floating PIN TAB and Context Area - Outside footer flow to avoid shifting chat bar */}
+          <div className="absolute bottom-[95px] right-4 flex flex-col items-end gap-2 pointer-events-none z-[40] transition-all duration-300">
             {/* Active Context Indicator */}
             {activeContext && activeContext.type === 'file' && (
               <div className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg cursor-pointer group hover:-translate-y-0.5 pointer-events-auto"
@@ -2847,11 +2876,10 @@ function App() {
               </div>
             )}
 
-            {/* [NEW] Pin Tab Button */}
+            {/* Floating PIN TAB Button */}
             {(!activeContext || activeContext.type === 'url') && currentUrl && !pinnedTabs.find(t => t.url === currentUrl) && mode === 'rag' && (
-              <div className="bg-[#fffdf0] border-2 border-[#fde047] px-4 py-1.5 rounded-full flex items-center justify-center gap-2 shadow-lg cursor-pointer hover:-translate-y-0.5 transition-all w-fit pointer-events-auto"
+              <div className="bg-white/95 backdrop-blur border-2 border-amber-300 px-4 py-2 rounded-2xl flex items-center justify-center gap-2 shadow-xl cursor-pointer hover:-translate-y-1 transition-all w-fit pointer-events-auto group ring-4 ring-amber-500/5 hover:border-amber-400 active:scale-95"
                 onClick={async () => {
-                  // Ensure we have the blocks before pinning
                   let blocks = contentBlocks;
                   if (blocks.length === 0) {
                     try {
@@ -2872,30 +2900,29 @@ function App() {
                   const blocksWithUniqueIds = blocks.map(b => ({ 
                     ...b, 
                     id: pinId + b.id.replace(/^bi-block-/, ''),
-                    url: currentUrl // Inject URL for filtering
+                    url: currentUrl
                   }));
                   setPinnedTabs(prev => [...prev, { title: currentTabTitle || 'Pinned Tab', url: currentUrl, blocks: blocksWithUniqueIds }]);
                   toast.success("Tab pinned for Multi-Tab AI");
                 }}
               >
-                <span className="text-[13px] font-black text-[#92400e] uppercase tracking-wider font-sans">PIN TAB</span>
+                <Pin className="w-3.5 h-3.5 text-amber-600 group-hover:rotate-12 transition-transform" />
+                <span className="text-[12px] font-bold text-amber-800 uppercase tracking-wide">Pin Current Tab</span>
               </div>
             )}
 
-            {/* Pinned Tabs List */}
+            {/* Compact Pinned Tabs List - Floating horizontally */}
             {pinnedTabs.length > 0 && (
               <div className="flex gap-2 mb-1 flex-wrap justify-end pointer-events-auto">
                 {pinnedTabs.map((tab, idx) => (
-                  <div key={idx} className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-lg opacity-95 hover:opacity-100 text-[10px] font-bold text-amber-800 tracking-wider uppercase backdrop-blur-sm animate-in slide-in-from-right-2">
-                    {tab.title.substring(0, 15)}...
-                    <button className="ml-2 hover:text-red-600 font-bold p-1" onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}>×</button>
+                  <div key={idx} className="bg-amber-100/90 border border-amber-300 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-xl transition-all text-[10px] font-bold text-amber-900 tracking-wider uppercase backdrop-blur-sm animate-in zoom-in-50 duration-200">
+                    <span className="max-w-[120px] truncate">{tab.title}</span>
+                    <button className="hover:bg-amber-200 p-0.5 rounded-md text-amber-600 transition-colors" onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}>×</button>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
-          <footer className="relative p-4 bg-white/80 backdrop-blur-md border-t border-slate-200/60 transition-all focus-within:bg-white focus-within:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.1)]">
             {/* Preview Area for Crop */}
             {cropPreview && (
               <div className="mb-3 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
@@ -3012,8 +3039,7 @@ function App() {
               </form>
             </div>
           </footer>
-        </div>
-      )}
+        )}
       <Toaster richColors position="top-center" />
 
       {/* Keyboard Shortcuts Modal */}

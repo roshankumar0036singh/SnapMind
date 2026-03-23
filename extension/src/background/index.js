@@ -113,7 +113,7 @@ async function handleQuery(payload) {
             // If prompt is different (a specific question), we behave contextually:
             // 1. If we have a cached image, reuse it (assuming user asks about what they just saw).
             // 2. If no cached image, capture new one.
-            const isDefaultPrompt = text.includes("Describe the visual layout");
+            const isDefaultPrompt = text && text.includes("Describe the visual layout");
 
             // Allow client to pass a pre-cropped image (e.g. Region Select)
             if (payload.imageData) {

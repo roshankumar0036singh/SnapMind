@@ -183,11 +183,11 @@ export const apiClient = {
 
         } catch (error) {
             console.error("Backend Vision Error:", error);
-            const isNetworkError = error.message.includes("Failed to fetch");
+            const isNetworkError = error?.message?.includes("Failed to fetch");
             return {
                 answer: isNetworkError
                     ? `**Connection Refused**: Cannot reach \`${baseUrl}\`.`
-                    : `Error analyzing image: ${error.message}`
+                    : `Error analyzing image: ${error?.message || 'Unknown error'}`
             };
         }
     },
@@ -277,12 +277,12 @@ export const apiClient = {
         } catch (error) {
             console.error("RAG Backend Error:", error);
             // Check if it's a specific fetch error (Failed to fetch)
-            const isNetworkError = error.message.includes("Failed to fetch") || error.message.includes("NetworkError");
+            const isNetworkError = error?.message?.includes("Failed to fetch") || error?.message?.includes("NetworkError");
 
             return {
                 answer: isNetworkError
                     ? `**Connection Refused**: Cannot reach \`${baseUrl}\`.`
-                    : `**Backend Error**: ${error.message}`,
+                    : `**Backend Error**: ${error?.message || 'Unknown error'}`,
                 citations: []
             };
         }
@@ -410,9 +410,9 @@ export const apiClient = {
             console.error("Ingest Error:", error);
             return {
                 success: false,
-                message: error.message.includes("Failed to fetch")
+                message: error?.message?.includes("Failed to fetch")
                     ? `Cannot reach Backend at ${baseUrl}`
-                    : error.message
+                    : error?.message || 'Unknown error'
             };
         }
     },
@@ -468,9 +468,9 @@ export const apiClient = {
             console.error("Text Ingestion Error:", error);
             return {
                 success: false,
-                message: error.message.includes("Failed to fetch")
+                message: error?.message?.includes("Failed to fetch")
                     ? `Cannot reach Backend at ${baseUrl}`
-                    : error.message
+                    : error?.message || 'Unknown error'
             };
         }
     },
@@ -529,9 +529,9 @@ export const apiClient = {
             console.error("File Upload Error:", error);
             return {
                 success: false,
-                message: error.message.includes("Failed to fetch")
+                message: error?.message?.includes("Failed to fetch")
                     ? `Cannot reach Backend at ${baseUrl}`
-                    : error.message
+                    : error?.message || 'Unknown error'
             };
         }
     },
@@ -585,9 +585,9 @@ export const apiClient = {
             console.error("GitHub Ingestion Error:", error);
             return {
                 success: false,
-                message: error.message.includes("Failed to fetch")
+                message: error?.message?.includes("Failed to fetch")
                     ? `Cannot reach Backend at ${baseUrl}`
-                    : error.message
+                    : error?.message || 'Unknown error'
             };
         }
     },
@@ -735,11 +735,11 @@ export const apiClient = {
 
         } catch (error) {
             console.error("Browser Backend Error:", error);
-            const isNetworkError = error.message.includes("Failed to fetch");
+            const isNetworkError = error?.message?.includes("Failed to fetch");
             return {
                 answer: isNetworkError
                     ? `**Connection Refused**: Cannot reach \`${baseUrl}\`.`
-                    : `**Backend Error**: ${error.message}`,
+                    : `**Backend Error**: ${error?.message || 'Unknown error'}`,
                 citations: []
             };
         }
@@ -906,7 +906,7 @@ export const apiClient = {
             return { success: true };
         } catch (error) {
             console.error('Export error:', error);
-            return { success: false, error: error.message };
+            return { success: false, error: error?.message || 'Unknown error' };
         }
     },
 
