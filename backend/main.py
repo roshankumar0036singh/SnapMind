@@ -205,33 +205,55 @@ async def ingest_endpoint(request: IngestRequest, req: Request):
     Supports both single-page and multi-page crawling.
     Processes synchronously so the frontend can display completion status.
     """
-    print(f"Accepted ingestion request: {request.url} (mode: {request.crawl_mode})")
-    
-    api_keys = {
-        "gemini": req.headers.get("x-gemini-key"),
-        "mistral": req.headers.get("x-mistral-key"),
-        "lingodev": req.headers.get("x-lingodev-key"),
-        "firecrawl": req.headers.get("x-firecrawl-key")
-    }
-    
-    if request.text_content:
-        # Direct ingestion
-        from rag_pipeline import ingest_text_logic
-        return ingest_text_logic(request.url, request.text_content, api_keys=api_keys, session_id=request.session_id)
-    elif request.crawl_mode == "multi":
-        # Multi-page crawling
-        from rag_pipeline import ingest_multipage_logic
-        return ingest_multipage_logic(
-            request.url,
+    try:
+        print(f"Accepted ingestion request: {request.url} (mode: {request.crawl_mode})")
+        
+        # Validate URL
+        if not request.url or not isinstance(request.url, str) or len(request.url.strip()) == 0:
+            return {"success": False, "error": "Invalid or missing URL"}
+        
+        # Collect API keys from headers
+        api_keys = {
+            "gemini": req.headers.get("x-gemini-key"),
+            "mistral": req.headers.get("x-mistral-key"),
+            "lingodev": req.headers.get("x-lingodev-key"),
+            "firecrawl": req.headers.get("x-firecrawl-key")
+        }
+        
+        # Log API key status for debugging
+        for key_name, key_value in api_keys.items():
+            if key_value:
+                print(f"[INGEST] ✓ {key_name} key provided")
+            else:
+                print(f"[INGEST] ✗ {key_name} key MISSING (env fallback will be used)")
+        
+        if request.text_content:
+            # Direct ingestion
+            from rag_pipeline import ingest_text_logic
+            return ingest_text_logic(request.url, request.text_content, api_keys=api_keys, session_id=request.session_id)
+        elif request.crawl_mode == "multi":
+            # Multi-page crawling
+            from rag_pipeline import ingest_multipage_logic
+            return ingest_multipage_logic(
+                request.url,
             request.max_pages,
             request.max_depth,
             api_keys,
             session_id=request.session_id
         )
-    else:
-        # Single-page crawling (default)
-        from rag_pipeline import ingest_website_logic
-        return ingest_website_logic(request.url, api_keys, target_lang=request.target_lang, session_id=request.session_id)
+        else:
+            # Single-page crawling (default)
+            from rag_pipeline import ingest_website_logic
+            return ingest_website_logic(request.url, api_keys, target_lang=request.target_lang, session_id=request.session_id)
+    
+    except ValueError as ve:
+        print(f"[INGEST] Validation error: {ve}")
+        return {"success": False, "error": f"Validation error: {str(ve)}"}
+    except Exception as e:
+        print(f"[INGEST] FATAL ERROR in endpoint: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": f"Ingestion failed: {type(e).__name__}: {str(e)}"}
 
 @app.post("/ingest/file")
 async def ingest_file_endpoint(

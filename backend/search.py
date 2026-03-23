@@ -221,9 +221,9 @@ def get_relevant_context(query: str, match_threshold: float = None, site_id: str
             )
         
         full_context = "\n\n---\n\n".join(context_parts) + graph_context
-        # [NEW] Strict Context Slicing to 8000 chars as requested
-        if len(full_context) > 8000:
-            full_context = full_context[:8000] + "... [Truncated for Context Limit]"
+        # [NEW] Increased Context Slicing to 20000 chars to support multi-tab research
+        if len(full_context) > 20000:
+            full_context = full_context[:20000] + "... [Truncated for Context Limit]"
             
         print(f"[SEARCH] Final context: {len(matches)} chunks, {len(full_context)} chars")
         
@@ -661,18 +661,33 @@ Question: {query}
         import re
         final_answer = re.sub(r'\[\d{1,3}\]', '', final_answer)
         
+        # [FIX] Extract citations from the answer before translation
+        # Matches patterns like [db-block-12], [nb-block-5], [pin-SOCIAL-WINTER-OF-25], etc.
+        citation_pattern = r'\[((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)(?:\s*,\s*(?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+))*\]'
+        citations_raw = re.findall(citation_pattern, final_answer, re.IGNORECASE)
+        
+        # Flatten and deduplicate citations
+        citations_set = set()
+        for citation_group in citations_raw:
+            # Split by comma if there are multiple citations in one bracket
+            ids = [cid.strip() for cid in re.split(r',', citation_group)]
+            citations_set.update(ids)
+        
+        citations_list = [{"blockId": cid} for cid in sorted(citations_set)]
+        
         # [NEW] Post-Translation via Lingo.dev if output_lang is specified
         print(f"[CHAT] Post-generation check: output_lang={output_lang}")
         if output_lang and output_lang not in ["auto", "en", "unknown"]:
             print(f"[CHAT] Applying post-generation Lingo.dev translation to: {output_lang}")
             from rag_pipeline import translate_text_lingo
-            translated_answer, _, was_translated = translate_text_lingo(answer, target_lang=output_lang, api_keys=api_keys)
+            translated_answer, _, was_translated = translate_text_lingo(final_answer, target_lang=output_lang, api_keys=api_keys)
             if translated_answer:
-                answer = translated_answer
-                print(f"[CHAT] Translation applied (was_translated={was_translated}, len={len(answer)})")
+                final_answer = translated_answer
+                print(f"[CHAT] Translation applied (was_translated={was_translated}, len={len(final_answer)})")
                 
         result = {
-            "answer": answer,
+            "answer": final_answer,
+            "citations": citations_list,
             "context_found": bool(context),
             "sources": ["Current Page"] if is_direct_context else [],
             "model_used": "mistral-small-latest",
@@ -851,14 +866,54 @@ The user wants to compare distinct websites/pages in different languages. You ha
     retrieved_raw_blocks = []
     if site_id:
         print(f"[CHAT-STREAM] Querying database for site_id: {site_id}...")
-        from hybrid_search import hybrid_search
-        # Use the search_query (English) for vector search
-        retrieved_raw_blocks = hybrid_search(db_pool, search_query, site_id=site_id)
+        
+        # [FIX] Handle comma-separated site_ids (from pinned tabs feature)
+        # Same logic as get_relevant_context
+        site_ids = [s.strip() for s in site_id.split(",")] if site_id else []
+        
+        if site_ids:
+            searcher = HybridSearcher(db_pool, api_keys=api_keys)
+            
+            # Query each site and aggregate results
+            per_site_top_k = max(SearchConfig.MATCH_COUNT, 10)
+            all_site_matches = []
+            seen_ids = set()
+            
+            for sid in site_ids:
+                if not sid:
+                    continue
+                site_matches = searcher.search(
+                    query=search_query,
+                    site_id=sid,
+                    top_k=per_site_top_k,
+                    mode=SearchConfig.SEARCH_MODE
+                )
+                for m in site_matches:
+                    if m['id'] not in seen_ids:
+                        all_site_matches.append(m)
+                        seen_ids.add(m['id'])
+            
+            # Sort by score descending
+            all_site_matches.sort(key=lambda x: x.get('score', 0), reverse=True)
+            retrieved_raw_blocks = all_site_matches[:SearchConfig.MATCH_COUNT]
+            
+            print(f"[CHAT-STREAM] Retrieved {len(retrieved_raw_blocks)} blocks from {len(site_ids)} sites")
+            
+            # [FIX] Fallback to global search if no results found
+            if not retrieved_raw_blocks and site_ids:
+                print(f"[CHAT-STREAM] No matches for site_ids: {site_ids}. Falling back to global search...")
+                retrieved_raw_blocks = searcher.search(
+                    query=search_query,
+                    site_id=None,
+                    top_k=SearchConfig.MATCH_COUNT,
+                    mode=SearchConfig.SEARCH_MODE
+                )
         
         # [NEW] Phase 5: Optimize retrieved context
-        from context_optimizer import optimize_context
-        optimized = optimize_context(retrieved_raw_blocks, query=search_query)
-        db_context = optimized.content
+        if retrieved_raw_blocks:
+            from context_optimizer import optimize_context
+            optimized = optimize_context(retrieved_raw_blocks, query=search_query)
+            db_context = optimized.content
 
     # 3. Research Notebook Context
     notebook_context = ""
@@ -878,19 +933,29 @@ The user wants to compare distinct websites/pages in different languages. You ha
         context_str += "RESEARCH NOTEBOOK CONTEXT (MOST RELEVANT BOOKMARKS):\n" + notebook_context + "\n\n"
         
     if db_context:
-        context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n" + db_context + "\n\n"
+        context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n"
         if retrieved_raw_blocks:
             from browser_agents import extract_highlight_snippet
+            import hashlib
             for i, doc in enumerate(retrieved_raw_blocks):
                 content_blocks = content_blocks or []
                 c_text = doc.get('content', '')
                 h_snippet = extract_highlight_snippet(c_text)
+                source_url = doc.get('source_url', '')
+                # [FIX] Embed source URL in block ID so citations can redirect properly
+                url_hash = hashlib.md5(source_url.encode()).hexdigest()[:6] if source_url else 'unknown'
+                block_id = f"db-block-{url_hash}-{i+1}"
+                # [FIX] Embed block ID in context so LLM can cite it
+                context_str += f"ID: [{block_id}]\n{c_text}\n\n"
                 content_blocks.append({
-                    "id": f"db-block-{i+1}",
+                    "id": block_id,
                     "text": c_text,
                     "highlight_snippet": h_snippet,
-                    "url": doc.get('source_url', '')
+                    "url": source_url
                 })
+            print(f"[CHAT-STREAM] Embedded {len(retrieved_raw_blocks)} database blocks with IDs and source URLs")
+        else:
+            context_str += db_context + "\n\n"
 
     context = context_str.strip()
     
@@ -910,6 +975,11 @@ The user wants to compare distinct websites/pages in different languages. You ha
     print(f"[DEBUG CONTEXT] Final context length: {len(context)} chars")
     if len(context) > 0:
         print(f"[DEBUG CONTEXT] Preview: {context[:500]}...")
+
+    # [DEBUG] Log all blocks before yielding
+    print(f"[DEBUG] Total content_blocks being sent to frontend: {len(content_blocks or [])}")
+    for cb in (content_blocks or []):
+        print(f"  - Block ID: {cb.get('id')}, URL: {cb.get('url', 'NO_URL')}, Text length: {len(cb.get('text', ''))}")
 
     citation_instruction = ""
     if context:

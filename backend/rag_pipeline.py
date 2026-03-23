@@ -267,6 +267,12 @@ def extract_semantic_tags(text: str, api_keys: dict = None) -> List[str]:
 
 def scrape_website_firecrawl(url: str, max_retries: int = 3, api_keys: dict = None) -> tuple[str, str | None]:
     firecrawl_key = get_firecrawl_key(api_keys)
+    
+    # [FIX] Validate API key before attempting to scrape
+    if not firecrawl_key:
+        print(f"[SCRAPE] WARNING: No Firecrawl API key available. Falling back to simple scrape.")
+        return simple_scrape_fallback(url), None
+    
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {firecrawl_key}"}
     
     for attempt in range(max_retries):
@@ -285,24 +291,33 @@ def scrape_website_firecrawl(url: str, max_retries: int = 3, api_keys: dict = No
             )
             
             if response.status_code == 200:
-                data = response.json()
-                data_obj = data.get('data', {})
-                content = (data_obj.get('markdown') or 
-                          data_obj.get('raw') or 
-                          data.get('html', ''))
-                
-                title = data_obj.get('metadata', {}).get('title')
-                
-                if content and len(content) > 200:
-                    return content, title
+                try:
+                    data = response.json()
+                    data_obj = data.get('data', {})
+                    # [FIX] Corrected to use data_obj instead of data for html field
+                    content = (data_obj.get('markdown') or 
+                              data_obj.get('raw') or 
+                              data_obj.get('html', ''))
+                    
+                    title = data_obj.get('metadata', {}).get('title')
+                    
+                    if content and len(content) > 200:
+                        return content, title
+                    else:
+                        print(f"[SCRAPE] Content too short (len={len(content) if content else 0}), retrying...")
+                except (ValueError, KeyError) as e:
+                    print(f"[SCRAPE] JSON parse error on attempt {attempt}: {e}")
             else:
                 print(f"[SCRAPE] Firecrawl error {response.status_code}: {response.text}")
+        except requests.Timeout:
+            print(f"[SCRAPE] Timeout on attempt {attempt}, retrying...")
         except Exception as e:
-            print(f"Scrape attempt {attempt} failed: {e}")
+            print(f"[SCRAPE] Attempt {attempt} failed: {type(e).__name__}: {e}")
         
-        time.sleep(2 ** attempt)
+        if attempt < max_retries - 1:
+            time.sleep(2 ** attempt)
     
-    print(f"[SCRAPE] Falling back to simple scrape for {url}")
+    print(f"[SCRAPE] All Firecrawl attempts failed. Falling back to simple scrape for {url}")
     return simple_scrape_fallback(url), None
 
 
@@ -519,14 +534,19 @@ def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_ur
         max_workers = EmbeddingConfig.MAX_EMBEDDING_WORKERS
     
     data_list = []
+    failed_count = 0
     
     # [FIX] Initialize a single client instance to reuse across all worker threads
     # This prevents the "NoneType build_request" errors caused by redundant httpx pools.
     client = None
-    if "mistral" in EmbeddingConfig.EMBEDDING_MODEL.lower():
-        client = get_mistral_client(api_keys)
-    elif "gemini" in EmbeddingConfig.EMBEDDING_MODEL.lower():
-        client = get_gemini_client(api_keys)
+    try:
+        if "mistral" in EmbeddingConfig.EMBEDDING_MODEL.lower():
+            client = get_mistral_client(api_keys)
+        elif "gemini" in EmbeddingConfig.EMBEDDING_MODEL.lower():
+            client = get_gemini_client(api_keys)
+    except Exception as e:
+        print(f"[EMBED] Failed to initialize client: {e}")
+        # Will attempt to use api_keys directly in embed_single_chunk
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks sharing the same client
@@ -549,8 +569,11 @@ def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_ur
                     "metadata": metadata
                 })
             except Exception as e:
-                print(f"Failed to embed chunk: {e}")
-                continue
+                failed_count += 1
+                print(f"[EMBED] Failed to embed chunk {failed_count}: {type(e).__name__}: {e}")
+    
+    if failed_count > 0:
+        print(f"[EMBED] WARNING: {failed_count}/{len(chunks)} chunks failed to embed. Success rate: {100*len(data_list)/len(chunks):.1f}%")
     
     return data_list
 
@@ -648,7 +671,15 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
             return {"success": False, "error": f"Twitter Thread error: {error_msg}"}
     
     # 1. Extract content
-    markdown_content, page_title = scrape_website_firecrawl(url, api_keys=api_keys)
+    try:
+        markdown_content, page_title = scrape_website_firecrawl(url, api_keys=api_keys)
+        print(f"[INGEST] Scraped content length: {len(markdown_content) if markdown_content else 0} chars")
+    except Exception as e:
+        print(f"[INGEST ERROR] scrape_website_firecrawl raised exception: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        update_job_status("failed", f"Scraping error: {str(e)}")
+        return {"success": False, "error": f"Failed to scrape website: {str(e)}"}
     
     if markdown_content:
         # [NEW] Strip common navigation boilerplate to improve RAG quality
@@ -662,27 +693,46 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         return {"success": False, "error": "Insufficient content found. The page might be protected or empty."}
     
     # 2. Extract semantic tags
-    print(f"[INGEST] Extracting semantic tags via Mistral...")
-    extracted_tags = extract_semantic_tags(markdown_content, api_keys=api_keys)
+    try:
+        print(f"[INGEST] Extracting semantic tags via Mistral...")
+        extracted_tags = extract_semantic_tags(markdown_content, api_keys=api_keys)
+    except Exception as e:
+        print(f"[INGEST WARNING] Tagging failed, continuing without tags: {e}")
+        extracted_tags = []
     
     # [NEW] Phase 13: GraphRAG Extraction
-    if FeatureFlags.GRAPHRAG_ENABLED:
-        from graph_logic import extract_graph_data, insert_graph_data
-        print(f"[INGEST] Extracting GraphRAG data...")
-        graph_data = extract_graph_data(markdown_content, api_keys=api_keys)
-        if graph_data.get("nodes") or graph_data.get("edges"):
-            insert_graph_data(graph_data, normalized_url, session_id=session_id)
+    try:
+        if FeatureFlags.GRAPHRAG_ENABLED:
+            from graph_logic import extract_graph_data, insert_graph_data
+            print(f"[INGEST] Extracting GraphRAG data...")
+            graph_data = extract_graph_data(markdown_content, api_keys=api_keys)
+            if graph_data.get("nodes") or graph_data.get("edges"):
+                insert_graph_data(graph_data, normalized_url, session_id=session_id)
+    except Exception as e:
+        print(f"[INGEST WARNING] GraphRAG extraction failed, continuing: {e}")
 
     # 2.5: Translate content via Lingo.dev
-    markdown_content, original_lang, is_translated = translate_text_lingo(markdown_content, target_lang=target_lang, api_keys=api_keys)
+    try:
+        markdown_content, original_lang, is_translated = translate_text_lingo(markdown_content, target_lang=target_lang, api_keys=api_keys)
+    except Exception as e:
+        print(f"[INGEST WARNING] Translation failed, using original content: {e}")
+        original_lang = "unknown"
+        is_translated = False
     
     # 3. Chunk with semantic chunking (configurable via FeatureFlags)
-    chunks = chunk_text(
-        markdown_content, 
-        max_chars=ChunkingConfig.TARGET_CHUNK_SIZE,
-        source_url=normalized_url,
-        use_semantic=FeatureFlags.PHASE_1_SEMANTIC_CHUNKING
-    )
+    try:
+        chunks = chunk_text(
+            markdown_content, 
+            max_chars=ChunkingConfig.TARGET_CHUNK_SIZE,
+            source_url=normalized_url,
+            use_semantic=FeatureFlags.PHASE_1_SEMANTIC_CHUNKING
+        )
+    except Exception as e:
+        print(f"[INGEST ERROR] Chunking failed: {e}")
+        import traceback
+        traceback.print_exc()
+        update_job_status("failed", f"Chunking error: {str(e)}")
+        return {"success": False, "error": f"Failed to chunk content: {str(e)}"}
     
     if not chunks:
         update_job_status("failed", "No valid chunks created from content")

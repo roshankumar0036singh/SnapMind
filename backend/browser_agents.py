@@ -126,6 +126,47 @@ def extract_highlight_snippet(chunk_text: str, max_len=250) -> str:
     fallback = re.sub(r'[*_~`#\[\]\(\)]', '', fallback).strip()
     return ' '.join(fallback.split())[:max_len]
 
+def generate_highlight_url(page_url: str, highlight_text: str) -> str:
+    """
+    Generate a URL fragment that can be used to highlight specific text on a page.
+    Uses the Text Fragments feature (https://web.dev/text-fragments/) which creates
+    a URL like: https://example.com/page#:~:text=highlight%20text
+    """
+    if not page_url or not highlight_text:
+        return page_url or ""
+    
+    try:
+        from urllib.parse import urlencode, quote, urlparse, urlunparse
+        
+        # Clean and normalize the highlight text
+        # Only use the first 100 chars to avoid overly long fragments
+        clean_text = highlight_text.strip()[:100]
+        
+        # URL encode the text for the fragment
+        # Text fragments use ~:text= prefix
+        encoded_text = quote(clean_text, safe='')
+        
+        # Parse the URL to append fragment
+        parsed = urlparse(page_url)
+        
+        # Create the text fragment
+        text_fragment = f":~:text={encoded_text}"
+        
+        # Reconstruct URL with the fragment
+        new_url = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            text_fragment  # fragment
+        ))
+        
+        return new_url
+    except Exception as e:
+        print(f"[HIGHLIGHT] Error generating highlight URL: {e}")
+        return page_url  # Fallback to original URL if something goes wrong
+
 # Helper for intelligent chunking
 def chunk_at_word_boundary(text: str, chunk_size: int = 2000) -> list[str]:
     chunks = []
@@ -173,7 +214,8 @@ class BrowserOrchestrator:
         self.searcher = SearchAgent(get_firecrawl_key(api_keys))
         self.ranker = RankerAgent(api_keys)
         self.slicer = SlicerAgent(api_keys)
-        self.scraper = FirecrawlScraper(get_firecrawl_key(api_keys))    def run(self, user_query: str) -> dict:
+        self.scraper = FirecrawlScraper(get_firecrawl_key(api_keys))
+    def run(self, user_query: str) -> dict:
         print(f"[BrowserOrchestrator] Starting for query: {user_query}")
         
         # [FIX] Initialize missing variables
