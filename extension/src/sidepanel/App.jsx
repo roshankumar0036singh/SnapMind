@@ -1,6 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -72,29 +72,29 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
               });
             } else if (targetUrl) {
               const highlightUrl = citation.highlightUrl || targetUrl;
-              
+
               // [FIX] Clean markdown from snippet and take a longer, robust window
               const cleanSnippetText = (text) => {
                 if (!text) return '';
-                let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[\d-]+|pin-[A-Z0-9]+-\d+)\]/g, '')
-                                .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
-                                .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
-                                .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
-                                .replace(/\s+/g, ' ')                 // Collapse whitespace
-                                .trim();
-                
+                let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[\d-]+|pin-[a-zA-Z0-9-]+-\d+)\]/gi, '')
+                  .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
+                  .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
+                  .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
+                  .replace(/\s+/g, ' ')                 // Collapse whitespace
+                  .trim();
+
                 if (cleaned.length > 150) {
                   const lastSpace = cleaned.lastIndexOf(' ', 150);
                   cleaned = cleaned.substring(0, lastSpace > 30 ? lastSpace : 150);
                 }
                 return cleaned;
               };
-              
+
               // Prefer clean highlight_snippet from backend, fall back to raw text cleaning
               const snippet = block?.highlight_snippet || (block?.text ? cleanSnippetText(block.text) : '');
               console.log(`[Citation] Highlighting ${citation.blockId} with snippet: "${snippet.substring(0, 50)}..."`);
 
-               const pageNum = block?.metadata?.page || block?.page;
+              const pageNum = block?.metadata?.page || block?.page;
               onHighlight(citation.blockId, highlightUrl, snippet, pageNum);
             } else {
               // Local/Active tab fallback (same page)
@@ -102,12 +102,12 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                 if (tabs[0]?.id) {
                   const cleanSnippetText = (text) => {
                     if (!text) return '';
-                    let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)\]/g, '')
-                                    .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
-                                    .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
-                                    .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
-                                    .replace(/\s+/g, ' ')                 // Collapse whitespace
-                                    .trim();
+                    let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)\]/gi, '')
+                      .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
+                      .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
+                      .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
+                      .replace(/\s+/g, ' ')                 // Collapse whitespace
+                      .trim();
                     if (cleaned.length > 150) {
                       const lastSpace = cleaned.lastIndexOf(' ', 150);
                       cleaned = cleaned.substring(0, lastSpace > 30 ? lastSpace : 150);
@@ -130,8 +130,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
               });
             }
           }}
-          className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition-all cursor-pointer ${
-            isYouTube
+          className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition-all cursor-pointer ${isYouTube
               ? 'bg-rose-50/90 text-rose-700 border-rose-200 hover:bg-rose-100 shadow-sm'
               : isBookmarked
                 ? 'bg-amber-100/80 text-amber-800 border-amber-300 shadow-sm'
@@ -168,9 +167,9 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                   if (!isBookmarked) {
                     const snippet = block?.highlight_snippet || "";
                     const h_url = citation.highlightUrl || block?.url || block?.sourceURL;
-                    onSave(text, block?.url || block?.sourceURL, { 
-                        highlight_snippet: snippet, 
-                        highlightUrl: h_url 
+                    onSave(text, block?.url || block?.sourceURL, {
+                      highlight_snippet: snippet,
+                      highlightUrl: h_url
                     });
                   }
                 }}
@@ -474,7 +473,7 @@ function App() {
       console.warn("handleCitationHighlight: No URL for block", blockId);
       return;
     }
-    
+
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       let highlightUrl = url;
@@ -523,7 +522,7 @@ function App() {
 
         // [NEW] Prioritize exact URL match for multi-tab accuracy
         let existingTab = tabs.find(t => t.url === highlightUrl);
-        
+
         if (!existingTab) {
           const highlightBase = highlightUrlObj ? (highlightUrlObj.origin + highlightUrlObj.pathname) : highlightUrl.split('#')[0];
           existingTab = tabs.find(t => {
@@ -539,9 +538,9 @@ function App() {
           // Tab already open (at least the same base page)
           chrome.tabs.update(existingTab.id, { active: true });
           chrome.windows.update(existingTab.windowId, { focused: true });
-          
+
           const isSameExactUrl = existingTab.url === highlightUrl;
-          
+
           if (isSameExactUrl) {
             // Already there, just highlight
             setTimeout(() => {
@@ -557,7 +556,7 @@ function App() {
             // Same page, but maybe different fragment. 
             // Only update URL if it actually changed the base or something significant
             chrome.tabs.update(existingTab.id, { url: highlightUrl });
-            
+
             // Wait for potential fragment-based scroll/load
             setTimeout(() => {
               chrome.tabs.sendMessage(existingTab.id, {
@@ -589,18 +588,18 @@ function App() {
       if (link && (link.getAttribute('href')?.includes('#snap-cite-') || link.getAttribute('href')?.includes('cite:'))) {
         e.preventDefault();
         e.stopPropagation();
-        
+
         const href = link.getAttribute('href');
         const parts = href.split(href.includes('snap-cite-') ? 'snap-cite-' : 'cite:');
         const blockId = parts[parts.length - 1].replace(/^[#/]+/, '');
-        
+
         console.log("[Global Interceptor] Catching click for:", blockId);
-        
+
         const allBlocks = [
           ...(contentBlocks || []),
           ...pinnedTabs.flatMap(t => t.blocks || [])
         ];
-         if (block) {
+        if (block) {
           const pageNum = block?.metadata?.page || block?.page;
           handleCitationHighlight(blockId, block.url || block.sourceURL, block.highlight_snippet || "", pageNum);
         } else {
@@ -887,7 +886,7 @@ function App() {
       try {
         const status = await apiClient.getIngestStatus(currentSessionId);
         setIngestStatus(status);
-        
+
         // Stop polling if completed or failed
         if (status.status === 'completed' || status.status === 'error' || status.status === 'unknown') {
           // Keep completed status for a few seconds then clear
@@ -1021,7 +1020,7 @@ function App() {
         // Fetch sessions list
         const sessions = await apiClient.getGraphSessions();
         setGraphSessions(sessions);
-        
+
         // [NEW] Fallback: If no sessions, fetch all graph data for global view
         if (!sessions || sessions.length === 0) {
           const data = await apiClient.getGraphData();
@@ -1233,7 +1232,7 @@ function App() {
     const isYouTube = url.hostname.includes('youtube.com') || url.hostname.includes('youtu.be');
     const isTwitter = url.hostname.includes('twitter.com') || url.hostname.includes('x.com');
     let crawlMode;
-    
+
     if (isYouTube || isTwitter) {
       crawlMode = { mode: 'single', max_pages: 1, max_depth: 1 };
     } else {
@@ -1607,9 +1606,9 @@ function App() {
     const toastId = toast.loading("Saving to Bookmarks...");
     try {
       const sourceUrl = overrideUrl || activeContext?.id || currentUrl;
-      const resp = await apiClient.createBookmark(content, sourceUrl, { 
+      const resp = await apiClient.createBookmark(content, sourceUrl, {
         session_id: currentSessionId,
-        ...metadata 
+        ...metadata
       });
       if (resp.success) {
         toast.success("Saved to Research Notebook", { id: toastId });
@@ -1633,7 +1632,7 @@ function App() {
     const toastId = toast.loading("Synthesizing your Multi-Page Research Report...");
     try {
       const response = await apiClient.downloadReport(currentSessionId, query);
-      
+
       // Handle "still processing" state
       if (response && response.status === 'pending') {
         toast.info("Research is still being indexed. Please wait a few moments for the background process to finish!", { id: toastId, duration: 5000 });
@@ -1687,14 +1686,14 @@ function App() {
             queryNotebook,
             imagePayload
           });
-          
+
           if (response.blocks && response.blocks.length > 0) {
             setContentBlocks(prev => {
               const newBlocks = response.blocks.filter(nb => !prev.some(pb => pb.id === nb.id));
               return [...prev, ...newBlocks];
             });
           }
-          
+
           setMessages(currentMessages => [
             ...currentMessages,
             { id: (Date.now() + 1).toString(), role: 'assistant', text: response.answer, citations: response.citations }
@@ -1709,7 +1708,7 @@ function App() {
         return;
       }
 
-        // STEAMING FLOW (RAG Only, No Image)
+      // STEAMING FLOW (RAG Only, No Image)
       if (modeToUse === 'rag' && !imagePayload) {
         let blocks = [];
         try {
@@ -1760,24 +1759,24 @@ function App() {
         // Determine site_id based on activeContext
         // 2. Identify Context (Filtered by Sidebar or Global Mode)
         let targetSiteId = currentUrl;
-        
+
         // [NEW] Phase 19: Global Search Toggle
         // When queryNotebook (labeled as Global Knowledge) is active, we pass site_id=null
         // to tell the backend to search across ALL indexed content.
         if (queryNotebook) {
-          targetSiteId = null; 
+          targetSiteId = null;
         } else if (pinnedTabs && pinnedTabs.length > 0) {
           // [FIX] If pinned tabs exist, query ONLY from pinned tabs (not current page + tabs)
-         // [FIX] Consolidate target sites: include current page AND all pinned tabs
-        let targetSites = [...pinnedTabs.map(t => t.url)];
-        if (currentUrl && !pinnedTabs.some(t => t.url === currentUrl)) {
-          targetSites.push(currentUrl);
-        }
-        if (activeContext?.id && !targetSites.includes(activeContext.id)) {
-          targetSites.push(activeContext.id);
-        }
-        targetSiteId = targetSites.filter(Boolean).join(',');
-        console.log('[QUERY] Pinned tabs detected. Querying ONLY from pinned tabs:', targetSiteId);
+          // [FIX] Consolidate target sites: include current page AND all pinned tabs
+          let targetSites = [...pinnedTabs.map(t => t.url)];
+          if (currentUrl && !pinnedTabs.some(t => t.url === currentUrl)) {
+            targetSites.push(currentUrl);
+          }
+          if (activeContext?.id && !targetSites.includes(activeContext.id)) {
+            targetSites.push(activeContext.id);
+          }
+          targetSiteId = targetSites.filter(Boolean).join(',');
+          console.log('[QUERY] Pinned tabs detected. Querying ONLY from pinned tabs:', targetSiteId);
         } else {
           if (activeContext && activeContext.type === 'file') {
             targetSiteId = activeContext.id;
@@ -1824,7 +1823,7 @@ function App() {
           (newBlocks) => {
             if (newBlocks && newBlocks.length > 0) {
               console.log("[Stream] Received blocks:", newBlocks.length, newBlocks);
-              
+
               // 1. Update global contentBlocks (for current context awareness)
               setContentBlocks(prev => {
                 const filtered = newBlocks.filter(nb => !prev.some(pb => pb.id === nb.id));
@@ -1834,9 +1833,9 @@ function App() {
 
               // 2. [FIX] Store blocks directly in THIS message to avoid ID collisions in citations
               setMessages(currentMessages =>
-                currentMessages.map(m => m.id === aiMsgId ? { 
-                  ...m, 
-                  contextBlocks: [...(m.contextBlocks || []), ...newBlocks] 
+                currentMessages.map(m => m.id === aiMsgId ? {
+                  ...m,
+                  contextBlocks: [...(m.contextBlocks || []), ...newBlocks]
                 } : m)
               );
               console.log("[Stream] Updated message with contextBlocks");
@@ -1848,7 +1847,7 @@ function App() {
         if (!streamResult.success || isFirstToken) {
           throw new Error(streamResult.error || "The AI failed to generate a response. Please check your connection or try a different query.");
         }
- 
+
         // 4. Extract Citations (Post-Stream)
         // Find block IDs including new format with hex hash: db-block-abc123-5
         console.log("[Stream] Generation complete. Extracting citations from text...");
@@ -1864,10 +1863,10 @@ function App() {
             // Descriptive snippet for pinned tabs
             let snippet = `Source ${blockId.replace(/^(bi-block-|nb-block-|db-block-|br-block-)/, '')}`;
             if (blockId.startsWith('pin-')) {
-               const parts = blockId.split('-');
-               const handle = parts[1];
-               const idx = parts[2];
-               snippet = `${handle} ${idx}`;
+              const parts = blockId.split('-');
+              const handle = parts[1];
+              const idx = parts[2];
+              snippet = `${handle} ${idx}`;
             }
             citations.push({ blockId, snippet });
             console.log("[Stream] Added citation - ID:", blockId, "Snippet:", snippet);
@@ -1963,7 +1962,7 @@ function App() {
 
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 text-sm font-sans antialiased text-slate-900 selection:bg-indigo-100 overflow-x-hidden max-w-full">
+    <div className="flex flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 text-sm font-sans antialiased text-slate-900 selection:bg-indigo-100 overflow-hidden max-w-full" style={{ position: 'fixed', inset: 0, height: '100dvh', width: '100vw' }}>
 
       {/* Offline Banner */}
       {isOffline && (
@@ -2393,11 +2392,11 @@ function App() {
             ) : memoryTab === 'graph' ? (
               selectedGraphSession ? (
                 <div className="space-y-4">
-                  <button 
+                  <button
                     onClick={handleBackToSessions}
                     className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-indigo-600 transition-colors"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
                     Back to Conversations
                   </button>
                   <GraphMap data={graphData} isLoading={isLoading} />
@@ -2438,7 +2437,7 @@ function App() {
                           </div>
                         </div>
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-indigo-500 group-hover:bg-indigo-50 transition-all">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
                         </div>
                       </button>
                     ))
@@ -2464,8 +2463,8 @@ function App() {
       {/* Chat Container */}
       {
         view === 'chat' && (
-          <div 
-            className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 scroll-smooth scrollbar-hide relative min-h-0" 
+          <div
+            className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 scroll-smooth scrollbar-hide relative min-h-0"
             id="message-container"
             style={{ background: 'var(--bg-secondary)', maxWidth: '100%', scrollbarGutter: 'stable' }}
           >
@@ -2496,7 +2495,7 @@ function App() {
                 </div>
 
                 {/* Message Card */}
-                <div 
+                <div
                   className="group/msg relative"
                   style={{
                     maxWidth: '85%',
@@ -2506,7 +2505,7 @@ function App() {
                     border: `1px solid ${msg.role === 'user' ? 'var(--primary-100)' : 'var(--border-light)'}`,
                     boxShadow: 'var(--shadow-sm)',
                     transition: 'all 0.2s ease-out'
-                }}>
+                  }}>
                   {/* [NEW] Per-Message Report Download Icon */}
                   {msg.role === 'assistant' && mode === 'browser' && (
                     <button
@@ -2542,12 +2541,12 @@ function App() {
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    
+
                                     console.log("[Citation] Intercepted click for block:", blockId);
- 
+
                                     // 1. [FIX] EXCLUSIVELY use this message's blocks
                                     let block = msg.contextBlocks?.find(b => b.id === blockId);
- 
+
                                     // 2. Fallback to global context pools (pinned tabs, active tab)
                                     if (!block) {
                                       const globalBlocks = [
@@ -2557,11 +2556,11 @@ function App() {
                                       block = globalBlocks.find(b => b.id === blockId);
                                     }
                                     const citeData = msg.citations?.find(c => c.blockId === blockId);
-                                    
+
                                     if (block || citeData) {
                                       const url = block?.url || block?.sourceURL || citeData?.url;
                                       const snippet = block?.highlight_snippet || block?.text || "";
-                                      
+
                                       if (url) {
                                         const pageNum = block?.metadata?.page || block?.page || citeData?.page;
                                         handleCitationHighlight(blockId, url, snippet, pageNum);
@@ -2583,11 +2582,11 @@ function App() {
                           code: ({ node, inline, className, children, ...props }) => {
                             const match = /language-(\w+)/.exec(className || '');
                             const lang = match ? match[1] : '';
-                            
+
                             if (!inline && lang === 'mermaid') {
                               return <MermaidChart chart={String(children).replace(/\n$/, '')} />;
                             }
- 
+
                             return !inline ? (
                               <div className="relative group/code">
                                 <pre className={`${className} p-4 rounded-xl overflow-x-auto bg-slate-900/50 backdrop-blur-sm border border-slate-800 text-[13px] leading-relaxed shadow-lg mb-4`} {...props}>
@@ -2623,18 +2622,18 @@ function App() {
                           th: ({ children }) => <th className="px-3 py-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">{children}</th>,
                           td: ({ children }) => <td className="px-3 py-2 text-slate-600 border-b border-slate-100">{children}</td>
                         };
- 
+
                         // [FIX] Updated regex to handle multiple citations in brackets like [pin-SOCIAL-WINTER-OF-25, pin-SOCIAL-WINTER-OF-43]
                         const citationRegex = /\[((?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)(?:\s*,\s*(?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+))*)\]/gi;
                         let seenCitations = new Set(); // Track seen citations to avoid duplicates
-                        
+
                         const processedText = msg.text.replace(citationRegex, (match) => {
                           // Extract individual citation IDs from the bracket group
                           const citationIds = match.slice(1, -1) // Remove brackets
                             .split(',')
                             .map(id => id.trim())
                             .filter(id => id.length > 0);
-                          
+
                           // Convert each citation to a link, avoiding duplicates
                           const citationLinks = citationIds
                             .filter(id => {
@@ -2644,10 +2643,10 @@ function App() {
                             })
                             .map(id => `[●](#snap-cite-${id})`)
                             .join('');
-                          
+
                           return citationLinks || ''; // Return empty if no valid citations found
                         });
- 
+
                         return (
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -2678,10 +2677,10 @@ function App() {
                           ...(contentBlocks || []),
                           ...pinnedTabs.flatMap(t => t.blocks || [])
                         ];
-                        
-                        console.log("[Citations] Available blocks:", allAvailableBlocks.map(b => ({id: b.id, url: b.url}))); 
+
+                        console.log("[Citations] Available blocks:", allAvailableBlocks.map(b => ({ id: b.id, url: b.url })));
                         console.log("[Citations] Extracted citations:", msg.citations?.map(c => c.blockId));
-                        
+
                         // [FIX] Deduplicate citations by blockId to avoid showing the same citation twice
                         const seenBlockIds = new Set();
                         const uniqueCitations = msg.citations.filter(cite => {
@@ -2689,7 +2688,7 @@ function App() {
                           seenBlockIds.add(cite.blockId);
                           return true;
                         });
-                        
+
                         return uniqueCitations
                           .filter(cite => {
                             // [FIX] In RAG / Research modes, show ALL citations regardless of URL
@@ -2702,7 +2701,7 @@ function App() {
                               }
                               return true;
                             }
-                            
+
                             const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
                             if (!block) {
                               console.warn(`[Citations] Block not found for citation: ${cite.blockId}`);
@@ -2861,9 +2860,9 @@ function App() {
 
       {/* Footer Input */}
       {view === 'chat' && (
-          <footer className="relative p-4 pt-2 bg-white/80 backdrop-blur-md border-t border-slate-200/60 transition-all focus-within:bg-white focus-within:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.1)] min-h-[85px]">
+        <footer className="relative flex-shrink-0 p-4 pt-2 bg-white/80 backdrop-blur-md border-t border-slate-200/60 transition-all focus-within:bg-white focus-within:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.1)] min-h-[85px]">
           {/* Floating PIN TAB and Context Area - Outside footer flow to avoid shifting chat bar */}
-          <div className="absolute bottom-[95px] right-4 flex flex-col items-end gap-2 pointer-events-none z-[40] transition-all duration-300">
+          <div className="absolute bottom-[140px] right-4 flex flex-col items-end gap-2 pointer-events-none z-[40] transition-all duration-300">
             {/* Active Context Indicator */}
             {activeContext && activeContext.type === 'file' && (
               <div className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg cursor-pointer group hover:-translate-y-0.5 pointer-events-auto"
@@ -2878,7 +2877,7 @@ function App() {
 
             {/* Floating PIN TAB Button */}
             {(!activeContext || activeContext.type === 'url') && currentUrl && !pinnedTabs.find(t => t.url === currentUrl) && mode === 'rag' && (
-              <div className="bg-white/95 backdrop-blur border-2 border-amber-300 px-4 py-2 rounded-2xl flex items-center justify-center gap-2 shadow-xl cursor-pointer hover:-translate-y-1 transition-all w-fit pointer-events-auto group ring-4 ring-amber-500/5 hover:border-amber-400 active:scale-95"
+              <div className="bg-white/95 backdrop-blur border-2 border-indigo-200 px-4 py-2 rounded-2xl flex items-center justify-center gap-2 shadow-xl cursor-pointer hover:-translate-y-1 transition-all w-fit pointer-events-auto group ring-4 ring-indigo-500/5 hover:border-indigo-400 active:scale-95"
                 onClick={async () => {
                   let blocks = contentBlocks;
                   if (blocks.length === 0) {
@@ -2897,8 +2896,8 @@ function App() {
                   }
                   const handle = getSourceHandle(currentTabTitle);
                   const pinId = `pin-${handle}-`;
-                  const blocksWithUniqueIds = blocks.map(b => ({ 
-                    ...b, 
+                  const blocksWithUniqueIds = blocks.map(b => ({
+                    ...b,
                     id: pinId + b.id.replace(/^bi-block-/, ''),
                     url: currentUrl
                   }));
@@ -2906,8 +2905,8 @@ function App() {
                   toast.success("Tab pinned for Multi-Tab AI");
                 }}
               >
-                <Pin className="w-3.5 h-3.5 text-amber-600 group-hover:rotate-12 transition-transform" />
-                <span className="text-[12px] font-bold text-amber-800 uppercase tracking-wide">Pin Current Tab</span>
+                <Pin className="w-3.5 h-3.5 text-indigo-600 group-hover:rotate-12 transition-transform" />
+                <span className="text-[12px] font-bold text-indigo-800 uppercase tracking-wide">Pin Tab</span>
               </div>
             )}
 
@@ -2915,131 +2914,131 @@ function App() {
             {pinnedTabs.length > 0 && (
               <div className="flex gap-2 mb-1 flex-wrap justify-end pointer-events-auto">
                 {pinnedTabs.map((tab, idx) => (
-                  <div key={idx} className="bg-amber-100/90 border border-amber-300 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-xl transition-all text-[10px] font-bold text-amber-900 tracking-wider uppercase backdrop-blur-sm animate-in zoom-in-50 duration-200">
+                  <div key={idx} className="bg-indigo-100/90 border border-indigo-200 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-xl transition-all text-[10px] font-bold text-indigo-900 tracking-wider uppercase backdrop-blur-sm animate-in zoom-in-50 duration-200">
                     <span className="max-w-[120px] truncate">{tab.title}</span>
-                    <button className="hover:bg-amber-200 p-0.5 rounded-md text-amber-600 transition-colors" onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}>×</button>
+                    <button className="hover:bg-indigo-200 p-0.5 rounded-md text-indigo-600 transition-colors" onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}>×</button>
                   </div>
                 ))}
               </div>
             )}
           </div>
-            {/* Preview Area for Crop */}
-            {cropPreview && (
-              <div className="mb-3 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
-                <img src={cropPreview} className="h-12 w-auto rounded-lg border border-slate-100" alt="Selection" />
-                <div className="flex-1 text-xs text-slate-500">
-                  Region Selected. Ask a question about it below.
+          {/* Preview Area for Crop */}
+          {cropPreview && (
+            <div className="mb-3 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
+              <img src={cropPreview} className="h-12 w-auto rounded-lg border border-slate-100" alt="Selection" />
+              <div className="flex-1 text-xs text-slate-500">
+                Region Selected. Ask a question about it below.
+              </div>
+              <button onClick={() => setCropPreview(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Preview Area for Pending File Attachment */}
+          {pendingFile && (
+            <div className="mb-3 flex flex-col gap-2 bg-white p-3 rounded-xl border border-indigo-200 shadow-sm animate-in slide-in-from-bottom-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-sm font-semibold text-slate-700 truncate">{pendingFile.name}</span>
+                    <span className="text-xs text-slate-400 pl-0.5">{(pendingFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                  </div>
                 </div>
-                <button onClick={() => setCropPreview(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
+                <button type="button" onClick={() => setPendingFile(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 transition" disabled={isLoading}>
                   ✕
                 </button>
               </div>
-            )}
 
-            {/* Preview Area for Pending File Attachment */}
-            {pendingFile && (
-              <div className="mb-3 flex flex-col gap-2 bg-white p-3 rounded-xl border border-indigo-200 shadow-sm animate-in slide-in-from-bottom-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-sm font-semibold text-slate-700 truncate">{pendingFile.name}</span>
-                      <span className="text-xs text-slate-400 pl-0.5">{(pendingFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                    </div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <select
+                  value={fileTargetLang}
+                  onChange={(e) => setFileTargetLang(e.target.value)}
+                  disabled={isLoading}
+                  className="text-xs bg-slate-50 border border-slate-200 text-slate-600 rounded px-2 py-1 outline-none"
+                >
+                  <option value="auto">Keep Original Lang</option>
+                  <option value="en">Translate to EN</option>
+                  <option value="es">Translate to ES</option>
+                  <option value="fr">Translate to FR</option>
+                  <option value="de">Translate to DE</option>
+                  <option value="ja">Translate to JA</option>
+                  <option value="zh">Translate to ZH</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleFileUpload(pendingFile)}
+                  disabled={isLoading}
+                  className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition"
+                >
+                  {isLoading ? 'Uploading...' : 'Upload & Index'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Input Wrapper */}
+          <div className="relative flex flex-col pt-1 pb-1">
+            {/* Premium Chat Control Bar */}
+            {(mode === 'rag' || mode === 'browser' || mode === 'visual') && (
+              <div className="flex items-center justify-between px-3 py-1.5 mx-4 mb-2 bg-white/80 backdrop-blur-xl border border-slate-200/40 rounded-full shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] translate-y-1">
+                <div className="flex items-center gap-1 pr-2 border-r border-slate-200/80">
+                  <div className="flex gap-0.5">
+                    {['auto', 'en', 'es', 'fr', 'de', 'it', 'ja'].map(lang => (
+                      <button
+                        key={lang}
+                        onClick={() => setOutputLang(lang)}
+                        className={`px-2 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all ${outputLang === lang
+                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105'
+                          : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
+                          }`}
+                      >
+                        {lang === 'auto' ? 'AUTO' : lang}
+                      </button>
+                    ))}
                   </div>
-                  <button type="button" onClick={() => setPendingFile(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 transition" disabled={isLoading}>
-                    ✕
-                  </button>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                  <select
-                    value={fileTargetLang}
-                    onChange={(e) => setFileTargetLang(e.target.value)}
-                    disabled={isLoading}
-                    className="text-xs bg-slate-50 border border-slate-200 text-slate-600 rounded px-2 py-1 outline-none"
-                  >
-                    <option value="auto">Keep Original Lang</option>
-                    <option value="en">Translate to EN</option>
-                    <option value="es">Translate to ES</option>
-                    <option value="fr">Translate to FR</option>
-                    <option value="de">Translate to DE</option>
-                    <option value="ja">Translate to JA</option>
-                    <option value="zh">Translate to ZH</option>
-                  </select>
+                <div className="flex items-center pl-2 pr-1">
                   <button
                     type="button"
-                    onClick={() => handleFileUpload(pendingFile)}
-                    disabled={isLoading}
-                    className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition"
+                    onClick={() => setQueryNotebook(!queryNotebook)}
+                    title={queryNotebook ? "Searching Research Notebook" : "Searching Global Knowledge"}
+                    className={`p-2.5 rounded-full transition-all duration-300 ${queryNotebook
+                      ? 'bg-amber-100 text-amber-600 shadow-md shadow-amber-100 scale-105 ring-2 ring-amber-50'
+                      : 'bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                      }`}
                   >
-                    {isLoading ? 'Uploading...' : 'Upload & Index'}
+                    <Bookmark className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Input Wrapper */}
-            <div className="relative flex flex-col pt-1 pb-1">
-              {/* Premium Chat Control Bar */}
-              {(mode === 'rag' || mode === 'browser' || mode === 'visual') && (
-                <div className="flex items-center justify-between px-3 py-1.5 mx-4 mb-2 bg-white/80 backdrop-blur-xl border border-slate-200/40 rounded-full shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] translate-y-1">
-                  <div className="flex items-center gap-1 pr-2 border-r border-slate-200/80">
-                    <div className="flex gap-0.5">
-                      {['auto', 'en', 'es', 'fr', 'de', 'it', 'ja'].map(lang => (
-                        <button
-                          key={lang}
-                          onClick={() => setOutputLang(lang)}
-                          className={`px-2 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all ${outputLang === lang
-                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105'
-                            : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
-                            }`}
-                        >
-                          {lang === 'auto' ? 'AUTO' : lang}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center pl-2 pr-1">
-                    <button
-                      type="button"
-                      onClick={() => setQueryNotebook(!queryNotebook)}
-                      title={queryNotebook ? "Searching Research Notebook" : "Searching Global Knowledge"}
-                      className={`p-2.5 rounded-full transition-all duration-300 ${queryNotebook
-                        ? 'bg-amber-100 text-amber-600 shadow-md shadow-amber-100 scale-105 ring-2 ring-amber-50'
-                        : 'bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-                        }`}
-                    >
-                      <Bookmark className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <form
-                onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                className="relative flex items-center group mt-2"
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+              className="relative flex items-center group mt-2"
+            >
+              <input
+                autoFocus
+                type="text"
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
+                placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
               >
-                <input
-                  autoFocus
-                  type="text"
-                  className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
-                  placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isLoading}
-                  className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
-          </footer>
-        )}
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+        </footer>
+      )}
       <Toaster richColors position="top-center" />
 
       {/* Keyboard Shortcuts Modal */}

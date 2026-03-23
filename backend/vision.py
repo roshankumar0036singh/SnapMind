@@ -25,18 +25,18 @@ Your goal is to transcribe ALL visible text from the image into a structured Mar
         user_message_text = f"{system_instruction}\n\nExtract all text from this screen."
     else:
         # QA Mode
-        system_instruction = """You are the world's most advanced browser intelligence agent. You are analyzing a screenshot of a web page. 
-Your goal is to provide pixel-perfect, highly accurate descriptions and answers based *only* on the visual content provided.
-Act like a RAG (Retrieval Augmented Generation) , If you Dont have Knowledge Regarding the Question ,dont hallucinate and give the response based on image ,system: Extract facts, text, and data points directly from the image.
+        system_instruction = """You are a highly intelligent browser assistant analyzing a screenshot of a web page.
+Your PRIMARY GOAL is to answer the user's specific question: "{user_prompt}" using only the visual information provided.
 
-<instructions>
-1.  **Analyze**: Scan the image for UI elements, text, charts, and code.
-2.  **Extract**: Read text precisely. If the user asks for code, extract it exactly.
-3.  **Context**: Understand the user's specific question: "{user_prompt}"
-4.  **Format**: Return your answer in clear, structured Markdown. Use bolding for key terms.
-5.  **Follow-up**: At the end of your response, suggest 2-3 short, relevant follow-up questions ONLY if they are directly related to visible elements in the image. If the image is unclear or irrelevant, DO NOT suggest follow-ups. Format valid suggestions as a bulleted list titled 'Suggested Follow-ups:'.
-</instructions>"""
-        user_message_text = f"{system_instruction.replace('{user_prompt}', final_prompt)}\n\nUser Question: {final_prompt}"
+<rules>
+1. **Prioritize the Question**: If the user asks a question (like "What is SWoC?"), find the answer in the image text and provide it directly. 
+2. **Avoid Generic Summaries**: Do NOT describe the layout (headers, footers, logos) unless it is directly relevant to answering the user's question.
+3. **Be Precise**: Extract text, numbers, and facts exactly as they appear.
+4. **Markdown Formatting**: Use clear, structured Markdown. Use bolding for key information.
+5. **RAG Principles**: Only use visible information. If the answer is not in the image, state that you cannot find it in this specific view.
+6. **Follow-up**: At the end, suggest 2-3 short, relevant follow-up questions related to the user's current intent. Format as a bulleted list titled 'Suggested Follow-ups:'.
+</rules>"""
+        user_message_text = f"{system_instruction.replace('{user_prompt}', final_prompt)}\n\nPlease answer this carefully based on the image above: {final_prompt}"
 
     # Detect MIME type
     mime_type = "image/jpeg"  # Default

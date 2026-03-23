@@ -479,7 +479,7 @@ SPECIAL INSTRUCTION: If the user is asking about correlations or connections bet
     context_parts = []
     
     # [NEW] Cross-Lingual Comparison Logic
-    has_pinned_sources = any(b.get("id", "").startswith("source-") for b in (content_blocks or []))
+    has_pinned_sources = any(b.get("id", "").startswith(("source-", "pin-")) for b in (content_blocks or []))
     is_comparison_query = ("compare" in query.lower() or "contrast" in query.lower() or has_pinned_sources)
     lingo_feature_prompt = ""
     
@@ -569,7 +569,46 @@ The user wants to compare distinct websites/pages in different languages. You ha
         notebook_context, notebook_blocks = get_notebook_context(search_query, api_keys=api_keys)
 
     # 4. Prioritize Vector DB Search
-    db_context, retrieved_raw_blocks = get_relevant_context(search_query, site_id=site_id, api_keys=api_keys)
+    # [FIX] site_id might be a comma-separated list of URLs
+    site_ids = [s.strip() for s in site_id.split(",")] if site_id else []
+    
+    db_context = ""
+    retrieved_raw_blocks = []
+    
+    if site_ids:
+        db_context, retrieved_raw_blocks = get_relevant_context(search_query, site_id=site_id, api_keys=api_keys)
+        
+        # [NEW] Phase 26: Dynamic Pinned-Site Crawling (Non-Streaming)
+        if len(retrieved_raw_blocks) < 3:
+             from rag_pipeline import scrape_website_firecrawl
+             import hashlib
+             for sid in site_ids:
+                 if sid.startswith(("http://", "https://")):
+                     try:
+                         live_text, live_title = scrape_website_firecrawl(sid, api_keys=api_keys)
+                         if live_text and len(live_text) > 500:
+                             from chunking import chunk_text
+                             live_chunks = chunk_text(live_text, max_chars=800, source_url=sid, use_semantic=False)
+                             url_hash = hashlib.md5(sid.encode()).hexdigest()[:6]
+                             for i, chunk in enumerate(live_chunks[:10]):
+                                 text = chunk.get('content', '')
+                                 retrieved_raw_blocks.append({
+                                     'id': f"pin-block-{url_hash}-{i+1}",
+                                     'content': text,
+                                     'source_url': sid,
+                                     'score': 1.0,
+                                     'metadata': {'title': live_title}
+                                 })
+                     except: pass
+             # Re-generate db_context if we added live blocks
+             if len(retrieved_raw_blocks) > 0:
+                 from search import optimize_context
+                 # Need to convert retrieved_raw_blocks to expected format for optimize_context
+                 optimized = optimize_context(retrieved_raw_blocks, query=search_query)
+                 db_context = optimized.content
+    else:
+        # Global search
+        db_context, retrieved_raw_blocks = get_relevant_context(search_query, site_id=None, api_keys=api_keys)
     
     context_str = ""
     if notebook_context:
@@ -780,7 +819,7 @@ SPECIAL INSTRUCTION: If the user is asking about correlations or connections bet
     context_parts = []
     
     # [NEW] Cross-Lingual Comparison Logic
-    has_pinned_sources = any(b.get("id", "").startswith("source-") for b in (content_blocks or []))
+    has_pinned_sources = any(b.get("id", "").startswith(("source-", "pin-")) for b in (content_blocks or []))
     is_comparison_query = ("compare" in query.lower() or "contrast" in query.lower() or has_pinned_sources)
     lingo_feature_prompt = ""
     
@@ -899,9 +938,44 @@ The user wants to compare distinct websites/pages in different languages. You ha
             
             print(f"[CHAT-STREAM] Retrieved {len(retrieved_raw_blocks)} blocks from {len(site_ids)} sites")
             
-            # [FIX] Fallback to global search if no results found
+            # [NEW] Phase 26: Dynamic Pinned-Site Crawling (Bypass Indexing)
+            # If we didn't find much in the DB for these sites, try a live scrape for the URL if it's a valid http/https URL.
+            if len(retrieved_raw_blocks) < 3 and site_ids:
+                from rag_pipeline import scrape_website_firecrawl
+                import hashlib
+                
+                for sid in site_ids:
+                    if sid.startswith(("http://", "https://")):
+                        print(f"[CHAT-STREAM] Insufficient DB context for {sid}. Performing dynamic Firecrawl scrape...")
+                        try:
+                            # Use Firecrawl to get full text
+                            live_text, live_title = scrape_website_firecrawl(sid, api_keys=api_keys)
+                            if live_text and len(live_text) > 500:
+                                print(f"[CHAT-STREAM] Live scrape successful for {sid} ({len(live_text)} chars). Chunking...")
+                                from chunking import chunk_text
+                                # Chunk it on the fly
+                                live_chunks = chunk_text(live_text, max_chars=800, source_url=sid, use_semantic=False)
+                                
+                                url_hash = hashlib.md5(sid.encode()).hexdigest()[:6]
+                                for i, chunk in enumerate(live_chunks[:10]): # Limit to top 10 chunks to avoid context bloat
+                                    text = chunk.get('content', '')
+                                    block_id = f"pin-block-{url_hash}-{i+1}"
+                                    
+                                    # Add to retrieved_raw_blocks
+                                    retrieved_raw_blocks.append({
+                                        'id': block_id,
+                                        'content': text,
+                                        'source_url': sid,
+                                        'score': 1.0, # High priority
+                                        'metadata': {'title': live_title or "Live Page Content"}
+                                    })
+                                print(f"[CHAT-STREAM] Added {len(live_chunks[:10])} live chunks for {sid}")
+                        except Exception as e:
+                            print(f"[CHAT-STREAM] Dynamic scrape failed for {sid}: {e}")
+
+            # [FIX] Fallback to global search only if we still have nothing after live scrape attempts
             if not retrieved_raw_blocks and site_ids:
-                print(f"[CHAT-STREAM] No matches for site_ids: {site_ids}. Falling back to global search...")
+                print(f"[CHAT-STREAM] Still no matches (DB or Live). Falling back to global search...")
                 retrieved_raw_blocks = searcher.search(
                     query=search_query,
                     site_id=None,
