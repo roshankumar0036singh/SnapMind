@@ -14,7 +14,6 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
     """
     
     final_prompt = user_prompt or "Describe this image in detail."
-    
     if mode == "extraction":
         system_instruction = """You are a high-precision OCR and Layout Analysis engine. 
 Your goal is to transcribe ALL visible text from the image into a structured Markdown format.
@@ -25,19 +24,32 @@ Your goal is to transcribe ALL visible text from the image into a structured Mar
         user_message_text = f"{system_instruction}\n\nExtract all text from this screen."
     else:
         # QA Mode
-        system_instruction = """You are a highly intelligent browser assistant analyzing a screenshot of a web page.
-Your PRIMARY GOAL is to answer the user's specific question: "{user_prompt}" using only the visual information provided.
+        is_specific_query = user_prompt and user_prompt.strip() and "Describe the visual layout" not in user_prompt
 
-<rules>
-1. **Prioritize the Question**: If the user asks a question (like "What is SWoC?"), find the answer in the image text and provide it directly. 
-2. **Avoid Generic Summaries**: Do NOT describe the layout (headers, footers, logos) unless it is directly relevant to answering the user's question.
-3. **Be Precise**: Extract text, numbers, and facts exactly as they appear.
-4. **Markdown Formatting**: Use clear, structured Markdown. Use bolding for key information.
-5. **RAG Principles**: Only use visible information. If the answer is not in the image, state that you cannot find it in this specific view.
-6. **Follow-up**: At the end, suggest 2-3 short, relevant follow-up questions related to the user's current intent. Format as a bulleted list titled 'Suggested Follow-ups:'.
-</rules>"""
-        user_message_text = f"{system_instruction.replace('{user_prompt}', final_prompt)}\n\nPlease answer this carefully based on the image above: {final_prompt}"
+        if is_specific_query:
+            system_instruction = """You are a helpful and intelligent browser assistant.
+Your EXCLUSIVE GOAL is to answer the user's specific question using the visual information provided.
 
+<CRITICAL_RULES>
+1. **CONVERSATIONAL TONE**: Answer the user directly like a human assistant. (e.g., "Based on the image, Roshan is a Full-Stack Developer...")
+2. **NO STRUCTURED REPORTS**: Do NOT output "## Profile Overview", "Image Description", or use strict markdown document formatting. Write sentences.
+3. **DIRECT ANSWER ONLY**: Immediately answer the user's explicit question. Explain ONLY what is relevant to their question and nothing else. Do not summarize the whole image.
+4. **Be Precise**: Quote text from the image exactly when relevant.
+5. **Contextual extraction**: If you see text related to the question, provide it. Do not refuse to answer if the context is a partial match.
+6. **Follow-up**: At the very end, suggest two short follow-up questions. Format as a bullet list under '**Suggested Follow-ups:**', and make each question **bold** (e.g., * **What does...?**).
+</CRITICAL_RULES>"""
+            user_message_text = f"User's Question: \"{user_prompt}\"\n\nRemember: DO NOT write structured image reports. Focus EXCLUSIVELY on answering the specific question above directly and conversationally."
+        else:
+            system_instruction = """You are a highly intelligent browser assistant analyzing a screenshot of a web page.
+Your GOAL is to provide a structured, helpful description of the image content.
+
+<RULES>
+1. **Focus on Content**: Describe the main content, data, or text visible in the image.
+2. **Structured Format**: Use Markdown headers and lists to organize the description.
+3. **Avoid Fluff**: Do not use generic openings like "This is a screenshot of". Dive straight into the useful details.
+4. **Follow-up**: At the end, suggest 2-3 short follow-up questions about the image content. Format as a bulleted list titled '**Suggested Follow-ups:**' with each question in **bold**.
+</RULES>"""
+            user_message_text = "Please describe the core content and text visible in this image in detail."
     # Detect MIME type
     mime_type = "image/jpeg"  # Default
     if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -76,10 +88,14 @@ Your PRIMARY GOAL is to answer the user's specific question: "{user_prompt}" usi
                 "model": groq_model,
                 "messages": [
                     {
+                        "role": "system",
+                        "content": system_instruction
+                    },
+                    {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": user_message_text},
-                            {"type": "image_url", "image_url": {"url": data_url}}
+                            {"type": "image_url", "image_url": {"url": data_url}},
+                            {"type": "text", "text": user_message_text}
                         ]
                     }
                 ],

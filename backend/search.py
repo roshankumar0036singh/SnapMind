@@ -323,57 +323,51 @@ def get_notebook_context(query: str, session_id: str = None, api_keys: dict = No
         
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
-                # [NEW] Hybrid Search for Bookmarks: Vector + Keyword + Session Filtering
-                # 1. Primary: Vector Search (Relaxed threshold 0.5 for better recall)
+                # [NEW] Multi-tiered Search for Bookmarks
+                # We prioritize current session matches, but allow any highly relevant bookmark from the user's history.
                 query_sql = """
-                    SELECT id, content, source_url, created_at, (embedding <=> %s::halfvec) as distance, metadata
+                    SELECT id, content, source_url, created_at, (embedding <=> %s::halfvec) as distance, metadata,
+                           CASE WHEN metadata->>'session_id' = %s THEN 0 ELSE 1 END as session_rank
                     FROM bookmarks 
-                    WHERE 1=1
+                    WHERE (embedding <=> %s::halfvec) < 0.50
+                    ORDER BY session_rank ASC, distance ASC 
+                    LIMIT %s
                 """
-                params = [embedding]
-                
-                if session_id:
-                    query_sql += " AND (metadata->>'session_id' = %s) "
-                    params.append(session_id)
-                
-                query_sql += " AND (embedding <=> %s::halfvec) < 0.50 ORDER BY distance ASC LIMIT %s"
-                params.extend([embedding, limit])
+                params = [embedding, session_id, embedding, limit]
                 
                 cur.execute(query_sql, tuple(params))
                 rows = cur.fetchall()
                 
-                # 2. Key-word Fallback: if vector search is too restrictive for short/slang queries
+                # 2. Keyword Fallback (Cross-session by default if no direct session matches)
                 if not rows and query and len(query) > 3:
                     print(f"[NOTEBOOK] Vector search failed (dist > 0.5), trying Keyword fallback...")
-                    kw_query = f"""
-                        SELECT id, content, source_url, created_at, 0 as distance, metadata
+                    kw_query = """
+                        SELECT id, content, source_url, created_at, 0.1 as distance, metadata,
+                               CASE WHEN metadata->>'session_id' = %s THEN 0 ELSE 1 END as session_rank
                         FROM bookmarks
                         WHERE (content ILIKE %s OR metadata->>'tags' ILIKE %s)
+                        ORDER BY session_rank ASC, created_at DESC 
+                        LIMIT %s
                     """
-                    kw_params = [f"%{query}%", f"%{query}%"]
-                    if session_id:
-                        kw_query += " AND (metadata->>'session_id' = %s) "
-                        kw_params.append(session_id)
-                    
-                    kw_query += " ORDER BY created_at DESC LIMIT %s"
-                    kw_params.append(limit)
+                    kw_params = [session_id, f"%{query}%", f"%{query}%", limit]
                     
                     cur.execute(kw_query, tuple(kw_params))
                     rows = cur.fetchall()
 
                 # 3. Generative Fallback: if specifically asking "what is in my notebook" or similar
-                general_phrases = ["what is in my", "show my", "latest", "notebook", "research", "saved", "bookmarks"]
+                general_phrases = ["what is in my", "show my", "latest", "notebook", "research", "saved", "bookmarks", "infer from", "stored", "memory"]
                 is_general = any(p in query.lower() for p in general_phrases) or not query.strip()
                 
                 if not rows and is_general:
-                    print(f"[NOTEBOOK] General query detected, returning most recent session bookmarks.")
-                    recent_query = "SELECT id, content, source_url, created_at, 0.9 as distance, metadata FROM bookmarks WHERE 1=1 "
-                    recent_params = []
-                    if session_id:
-                        recent_query += " AND (metadata->>'session_id' = %s) "
-                        recent_params.append(session_id)
-                    recent_query += " ORDER BY created_at DESC LIMIT 5"
-                    cur.execute(recent_query, tuple(recent_params))
+                    print(f"[NOTEBOOK] General query detected, returning most recent bookmarks (all sessions).")
+                    recent_query = """
+                        SELECT id, content, source_url, created_at, 0.9 as distance, metadata,
+                               CASE WHEN metadata->>'session_id' = %s THEN 0 ELSE 1 END as session_rank
+                        FROM bookmarks 
+                        ORDER BY session_rank ASC, created_at DESC 
+                        LIMIT 15
+                    """
+                    cur.execute(recent_query, (session_id,))
                     rows = cur.fetchall()
 
                 if not rows:
@@ -712,7 +706,8 @@ Question: {query}
         
         # [FIX] Extract citations from the answer before translation
         # Matches patterns like [db-block-12], [nb-block-5], [pin-SOCIAL-WINTER-OF-25], etc.
-        citation_pattern = r'\[((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)(?:\s*,\s*(?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+))*\]'
+    # [FIX] Expanded citation pattern to support source-URL and pin-tX- IDs
+        citation_pattern = r'\[((?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)(?:\s*,\s*(?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+))*\]'
         citations_raw = re.findall(citation_pattern, final_answer, re.IGNORECASE)
         
         # Flatten and deduplicate citations
@@ -817,32 +812,20 @@ At the end of your response, suggest 2-3 short (max 10 words), engaging follow-u
 
 SPECIAL INSTRUCTION: If the user is asking about correlations or connections between bookmarks/references, you MUST look for legal, causal, or prerequisite links. Give a deep reasoning, not just a surface-level summary."""
     else:
-        system_instruction = f"""{lang_instruction}You are a helpful AI assistant for the Snapmind browser extension.
+        system_instruction = f"""{lang_instruction}You are a helpful and conversational AI research assistant for the Snapmind browser extension.
+Your GOAL is to answer the user's question directly and intelligently using ONLY the provided CONTEXT.
 
-CRITICAL RULES - FOLLOW STRICTLY:
-1. ONLY answer using information from the provided CONTEXT.
-2. DO NOT use external knowledge, training data, or make assumptions.
-3. If the available CONTEXT (including current page and pinned tabs) lacks the answer to the user's question, output ONLY: "I don't have that information in the current research context". Do not output anything else.
-4. DO NOT hallucinate, invent, or provide general knowledge.
-5. DO NOT write code examples unless they exist in the CONTEXT.
-6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram to visualize it. Wrap it strictly in a ```mermaid\\n ... \\n``` block.
-   CRITICAL MERMAID RULES:
-   - YOU MUST EXCLUSIVELY USE 'graph TD' or 'graph LR'. 
-   - When asked for a timeline, use a top-down flowchart. Example:
-     ```mermaid
-     graph TD
-     A[January 2026] --> B[February 2026]
-     B --> C[March 2026]
-     ```
-   - NEVER use 'sequenceDiagram', 'gantt', or commas in node names.
-   - Use standard flowchart nodes. e.g. A[Start] --> B(Process)
-   - DO NOT use unsupported characters or brackets in node names unless quoted.
-   - Keep the syntax strictly valid.
-7. PRIORITIZE SUBSTANCE: If the user makes a meta-comment about the conversation or previous responses (e.g., "why is giving this response") while also asking for information, prioritize fulfilling the information request using the CONTEXT. Avoid performing a meta-analysis or comparative analysis of requests unless explicitly and solely asked to do so.
+<POLISH_RULES>
+1. **Be Conversational**: Answer like a human assistant. Avoid overly robotic or formal document structures unless explicitly asked for a report.
+2. **NO META-ANALYSIS**: Do NOT explain the "Snapmind rules," "Notebook Mode inferences," or describe how your internal retrieval works. Just provide the answer.
+3. **Direct Answers**: Immediately address the user's query. Do NOT use headers like "### Key Inferences from Notebook Mode" or "### Example Scenarios" unless they are part of the actual data in the context.
+4. **Context Only**: ONLY answer using information from the provided CONTEXT. DO NOT use external knowledge or make assumptions.
+5. **Direct Fallback**: If the CONTEXT lacks the answer, output ONLY: "I don't have that information in the current research context". Nothing else.
+6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram. Wrap it strictly in a ```mermaid\n ... \n``` block.
+7. **Suggested Follow-ups**: At the very end, suggest 2-3 short, engaging follow-up questions ONLY if answerable from the CONTEXT. Format as '**Suggested Follow-ups:**' with each in **bold**.
+</POLISH_RULES>
 
-At the end of your response, suggest 2-3 short (max 10 words), engaging follow-up questions ONLY if answerable from the CONTEXT. Format as 'Suggested Follow-ups:' with each in **bold**.
-
-SPECIAL INSTRUCTION: If the user is asking about correlations or connections between bookmarks/references, you MUST look for legal, causal, or prerequisite links. e.g. "To participate in X (Bookmark A), you must comply with Y (Bookmark B)". Give a deep reasoning, not just a surface-level summary."""
+SPECIAL INSTRUCTION: If the user asks about correlations or connections between bookmarks/references, look for legal, causal, or prerequisite links. Give a deep reasoning based on the content."""
 
     print(f"[CHAT-STREAM] System Instruction Language Rule: {lang_instruction.strip() or 'None'}")
 
@@ -1133,18 +1116,22 @@ The user wants to compare distinct websites/pages in different languages. You ha
         if context_parts or db_context:
             cite_examples.append("[db-block-1]")
         
-        example_str = " or ".join(cite_examples) if cite_examples else "[db-block-1]"
+        if context_parts:
+            cite_examples.append("[pin-t0-5]") # Explicit pinned tab example
+            cite_examples.append("[source-https://example.com]") # Explicit source header example
+        
+        example_str = " or ".join(cite_examples)
         
         notebook_priority = "\nPREFERENCE: Research Notebook mode is active. Prioritize information from BOOKMARK [nb-block-X] sources." if query_notebook else ""
         
         citation_instruction = f"""{notebook_priority}
 CITATION RULES:
 1. You MUST cite the source block ID in brackets, e.g. {example_str}, for EVERY fact you use from the context.
-2. ONLY cite using IDs explicitly provided in the CONTEXT above (e.g., [db-block-1], [nb-block-1], or [source-1]). 
-3. DO NOT invent, hallucinate, or guess any block IDs. DO NOT use prefixes like 'bi-block' unless specifically provided in the context.
-4. If a piece of information is not tagged with an ID, do not cite it.
+2. ONLY cite using IDs explicitly provided in the CONTEXT above. Use [pin-tX-Y] for pinned tabs and [source-URL] for site headers when relevant.
+3. DO NOT invent, hallucinate, or guess any block IDs.
+4. If multiple sources support a fact, cite all of them, e.g. [db-block-1, pin-t0-5].
 5. Attach citations to the specific sentences or phrases they support.
-6. Use at most 4 distinct citations per response.
+6. Use as many distinct citations as necessary to be accurate (up to 10 for multi-tab research).
 """
 
     # Force Language constraint if translated
