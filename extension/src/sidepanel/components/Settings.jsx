@@ -13,7 +13,7 @@ export default function Settings({ onBack }) {
     useEffect(() => {
         // Load existing keys
         if (chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey'], (result) => {
+            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl'], (result) => {
                 if (result.geminiApiKey) setGeminiApiKey(result.geminiApiKey);
                 if (result.mistralApiKey) setMistralApiKey(result.mistralApiKey);
                 if (result.lingodevApiKey) setLingodevApiKey(result.lingodevApiKey);
@@ -156,7 +156,7 @@ export default function Settings({ onBack }) {
                         type="text"
                         value={backendUrl}
                         onChange={(e) => setBackendUrl(e.target.value)}
-                        placeholder="http://localhost:8000"
+                        placeholder="https://roshan123478-snapmind-backend.hf.space"
                         className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 transition-all mb-1"
                     />
                     <p className="text-xs text-gray-400">

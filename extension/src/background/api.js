@@ -9,8 +9,8 @@
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 // Default to env var if available, else empty (user must set it in settings)
 const DEFAULT_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-const DEFAULT_BACKEND_URL = "http://localhost:8000";
-const DEFAULT_HF_TOKEN = "";
+const DEFAULT_BACKEND_URL = "https://roshan123478-snapmind-backend.hf.space";
+const DEFAULT_HF_TOKEN = "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";
 
 export const apiClient = {
     /**
@@ -47,7 +47,7 @@ export const apiClient = {
                 if (res.lingodevApiKey) headers['x-lingodev-key'] = res.lingodevApiKey;
                 if (res.firecrawlApiKey) headers['x-firecrawl-key'] = res.firecrawlApiKey;
                 
-                // HF token is now optional for local development
+                // HF token is now hardcoded as per user preference
                 if (DEFAULT_HF_TOKEN) {
                     headers['Authorization'] = `Bearer ${DEFAULT_HF_TOKEN}`;
                     headers['x-hf-token'] = DEFAULT_HF_TOKEN;
@@ -368,12 +368,17 @@ export const apiClient = {
         const ingestEndpoint = `${baseUrl}/ingest`;
 
         try {
+            const apiKeysHeaders = await this.getApiKeysHeaders();
+            console.log(`[API-DEBUG] Ingest Endpoint: ${ingestEndpoint}`);
+            console.log(`[API-DEBUG] Headers keys: ${Object.keys(apiKeysHeaders).join(", ")}`);
+            console.log(`[API-DEBUG] Auth Header present: ${!!apiKeysHeaders['Authorization']}`);
+            
             console.log(`[API] Ingesting ${url} to ${ingestEndpoint} (mode: ${crawl_mode}, lang: ${target_lang})...`);
             const response = await fetch(ingestEndpoint, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    ...(await this.getApiKeysHeaders())
+                    ...apiKeysHeaders
                 },
                 body: JSON.stringify({
                     url: url,

@@ -599,15 +599,24 @@ function App() {
           ...(contentBlocks || []),
           ...pinnedTabs.flatMap(t => t.blocks || [])
         ];
+        
+        // [FIX] Find the block by its ID (including namespaced IDs)
+        const block = allBlocks.find(b => b.id === blockId);
+        
         if (block) {
           const pageNum = block?.metadata?.page || block?.page;
           handleCitationHighlight(blockId, block.url || block.sourceURL, block.highlight_snippet || "", pageNum);
         } else {
-          // Find the message that cited this block without the crashing aiMsgId check
+          // Fallback: Check if it's a source-URL block which might not have a full content block but has metadata in citations
           const msgWithCites = messages.findLast(m => m.citations?.some(c => c.blockId === blockId));
           const citeData = msgWithCites?.citations?.find(c => c.blockId === blockId);
+          
           if (citeData?.url) {
             handleCitationHighlight(blockId, citeData.url, "");
+          } else if (blockId.startsWith('source-')) {
+            // Extract URL from ID: source-https://...
+            const potentialUrl = blockId.replace('source-', '');
+            handleCitationHighlight(blockId, potentialUrl, "");
           }
         }
       }
@@ -1728,13 +1737,15 @@ function App() {
         // [NEW] Append pinned tabs context if any exist, outside the try-catch!
         // Always append pinned contexts to allow multi-tab correlation
         if (pinnedTabs.length > 0) {
-          pinnedTabs.forEach((pinnedTab) => {
+          pinnedTabs.forEach((pinnedTab, tabIndex) => {
             if (pinnedTab.blocks && pinnedTab.blocks.length > 0) {
               // Add a source header block so the AI knows which tab is which
               const headerBlock = { id: `source-${pinnedTab.url}`, text: `\n\n--- Source: ${pinnedTab.title} (${pinnedTab.url}) ---\n\n`, url: pinnedTab.url };
-              // [FIX] Inject parent URL into each child block so citations can navigate
+              // [FIX] Inject parent URL and namespace block IDs to prevent cross-tab collisions
+              // We use pin-t${tabIndex}- prefix to guarantee uniqueness across all pinned tabs
               const enrichedBlocks = pinnedTab.blocks.map(b => ({
                 ...b,
+                id: `pin-t${tabIndex}-${b.id.replace(/^(bi-block-|pin-)/, '')}`,
                 url: b.url || pinnedTab.url,
               }));
               blocks = [...blocks, headerBlock, ...enrichedBlocks];
@@ -1856,7 +1867,8 @@ function App() {
         // Find block IDs including new format with hex hash: db-block-abc123-5
         console.log("[Stream] Generation complete. Extracting citations from text...");
         console.log("[Stream] Full response text:", fullText);
-        const citationRegex = /((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)/gi;
+        // [FIX] Support source-URL and pin-tX- citation extraction
+        const citationRegex = /((?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)/gi;
         const citations = [];
         let match;
         console.log("[Stream] Looking for citations with regex...");
@@ -1864,14 +1876,19 @@ function App() {
           const blockId = match[1];
           console.log("[Stream] Found citation:", blockId);
           if (!citations.find(c => c.blockId === blockId)) {
-            // Descriptive snippet for pinned tabs
-            let snippet = `Source ${blockId.replace(/^(bi-block-|nb-block-|db-block-|br-block-)/, '')}`;
+            // Descriptive snippet for pinned tabs and sources
+            let snippet = `Source ${blockId.replace(/^(bi-block-|nb-block-|db-block-|br-block-|source-block-)/, '')}`;
+            
             if (blockId.startsWith('pin-')) {
+              // Format: pin-t0-5 or pin-t0-bi-block-5
               const parts = blockId.split('-');
-              const handle = parts[1];
-              const idx = parts[2];
-              snippet = `${handle} ${idx}`;
+              const tabIdx = parts[1].replace('t', '');
+              const blockIdx = parts[parts.length - 1];
+              snippet = `Pinned Tab ${parseInt(tabIdx) + 1} #${blockIdx}`;
+            } else if (blockId.startsWith('source-')) {
+              snippet = "Site Header";
             }
+            
             citations.push({ blockId, snippet });
             console.log("[Stream] Added citation - ID:", blockId, "Snippet:", snippet);
           }
@@ -2627,8 +2644,8 @@ function App() {
                           td: ({ children }) => <td className="px-3 py-2 text-slate-600 border-b border-slate-100">{children}</td>
                         };
 
-                        // [FIX] Updated regex to handle multiple citations in brackets like [pin-SOCIAL-WINTER-OF-25, pin-SOCIAL-WINTER-OF-43]
-                        const citationRegex = /\[((?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)(?:\s*,\s*(?:(?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+))*)\]/gi;
+                        // [FIX] Updated regex to handle multiple citations in brackets like [pin-t0-1, nb-block-5, source-URL]
+                        const citationRegex = /\[((?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)(?:\s*,\s*(?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+))*)\]/gi;
                         let seenCitations = new Set(); // Track seen citations to avoid duplicates
 
                         const processedText = msg.text.replace(citationRegex, (match) => {
