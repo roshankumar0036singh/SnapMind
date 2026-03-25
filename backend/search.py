@@ -9,11 +9,12 @@ from api_clients import get_mistral_client
 
 # Import hybrid search, reranking, and configuration
 from hybrid_search import HybridSearcher
-from config import SearchConfig, FeatureFlags, RerankingConfig, CacheConfig, ContextConfig
+from config import SearchConfig, FeatureFlags, RerankingConfig, CacheConfig, ContextConfig, LLMProviderConfig
 from cache import cache_query, store_in_cache
 from context_optimizer import optimize_context
 from query_processor import enhance_query, get_best_query_for_search
 import time
+from ollama_client import ollama_client
 
 # Lazy import reranker to avoid loading heavy models unless needed
 _reranker_instance = None
@@ -693,12 +694,23 @@ Question: {query}
         
         final_messages.append({"role": "user", "content": query})
 
-        client = get_mistral_client(api_keys)
-        chat_response = client.chat.complete(
-            model="mistral-small-latest",
-            messages=final_messages,
-        )
-        final_answer = chat_response.choices[0].message.content
+        if LLMProviderConfig.PROVIDER in ["local", "hybrid"]:
+            print(f"[CHAT] Using Local LLM (Ollama): {LLMProviderConfig.OLLAMA_GENERATION_MODEL}")
+            final_answer = ollama_client.generate(
+                prompt=query,
+                system_prompt=system_content,
+                model=LLMProviderConfig.OLLAMA_GENERATION_MODEL
+            )
+            model_used = LLMProviderConfig.OLLAMA_GENERATION_MODEL
+        else:
+            print(f"Generating with Mistral model: mistral-small-latest")
+            client = get_mistral_client(api_keys)
+            chat_response = client.chat.complete(
+                model="mistral-small-latest",
+                messages=final_messages,
+            )
+            final_answer = chat_response.choices[0].message.content
+            model_used = "mistral-small-latest"
         
         # [NEW] Post-process to strip any leaked numeric footnotes [19], [1]
         import re
@@ -734,7 +746,7 @@ Question: {query}
             "citations": citations_list,
             "context_found": bool(context),
             "sources": ["Current Page"] if is_direct_context else [],
-            "model_used": "mistral-small-latest",
+            "model_used": model_used,
             "retrieved_blocks": (retrieved_raw_blocks or []) + notebook_blocks
         }
 
@@ -1156,9 +1168,15 @@ NO SPECIFIC CONTEXT WAS RETRIEVED.
 Question: {query}
 """
 
-    # Mistral Streaming
+    # Streaming Generation
     try:
-        print(f"Streaming with Mistral model: mistral-small-latest")
+        if LLMProviderConfig.PROVIDER in ["local", "hybrid"]:
+            print(f"Streaming with Local LLM (Ollama): {LLMProviderConfig.OLLAMA_GENERATION_MODEL}")
+            model_used = LLMProviderConfig.OLLAMA_GENERATION_MODEL
+        else:
+            print(f"Streaming with Mistral model: mistral-small-latest")
+            model_used = "mistral-small-latest"
+        
         print(f"[PERF] Total pre-stream time: {_time.time() - _t0:.2f}s")
         
         # 1. System Message (Instructions + RAG Context)
@@ -1181,21 +1199,33 @@ Question: {query}
         # 3. Current User Question
         final_messages.append({"role": "user", "content": query})
 
-        client = get_mistral_client(api_keys)
-        stream_response = client.chat.stream(
-            model="mistral-small-latest",
-            messages=final_messages,
-        )
-
         full_response = ""
-        for chunk in stream_response:
-             if chunk.data.choices[0].delta.content:
-                text_chunk = chunk.data.choices[0].delta.content
+        
+        if LLMProviderConfig.PROVIDER in ["local", "hybrid"]:
+            # Insert the system prompt as the first message if needed by Ollama
+            stream_response = ollama_client.chat_stream(
+                messages=final_messages,
+                model=LLMProviderConfig.OLLAMA_GENERATION_MODEL
+            )
+            for text_chunk in stream_response:
                 full_response += text_chunk
-                # [NEW] Wait to yield tokens if we need to translate the whole stream first.
                 if output_lang and output_lang not in ["auto", "en", "unknown"]:
                     continue # Do not yield english blocks if we intend to translate at the end
                 yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
+        else:
+            client = get_mistral_client(api_keys)
+            stream_response = client.chat.stream(
+                model="mistral-small-latest",
+                messages=final_messages,
+            )
+            for chunk in stream_response:
+                 if chunk.data.choices[0].delta.content:
+                    text_chunk = chunk.data.choices[0].delta.content
+                    full_response += text_chunk
+                    # [NEW] Wait to yield tokens if we need to translate the whole stream first.
+                    if output_lang and output_lang not in ["auto", "en", "unknown"]:
+                        continue # Do not yield english blocks if we intend to translate at the end
+                    yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
         
         # [NEW] Post-Translation via Lingo.dev for stream
         print(f"[CHAT-STREAM] Post-generation check: output_lang={output_lang}, response_len={len(full_response)}")
@@ -1232,7 +1262,7 @@ Question: {query}
         yield json.dumps({
             "type": "usage",
             "context_found": bool(context),
-            "model_used": "mistral-small-latest"
+            "model_used": model_used
         }) + "\n"
         return
         

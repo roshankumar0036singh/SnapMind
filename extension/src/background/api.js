@@ -18,19 +18,27 @@ export const apiClient = {
      */
     async getBaseUrl() {
         console.log("[DEBUG] getBaseUrl() called");
-        // 1. Prioritize user-configured URL from storage
-        const storage = await new Promise(r => chrome.storage.local.get(['backendUrl'], r));
+        
+        // 1. Check if user activated Local Desktop Backend Mode
+        const storage = await new Promise(r => chrome.storage.local.get(['backendUrl', 'useLocalBackend'], r));
+        
+        if (storage.useLocalBackend) {
+            console.log("[DEBUG] Sending traffic to LOCAL DESKTOP BACKEND: http://localhost:8000");
+            return "http://localhost:8000";
+        }
+
+        // 2. Prioritize user-configured URL from storage
         if (storage.backendUrl) {
             console.log("[DEBUG] Found configured backendUrl in storage:", storage.backendUrl);
             return storage.backendUrl.replace(/\/$/, ""); 
         }
 
-        // 2. Fallback to Environment Variable (Vite)
+        // 3. Fallback to Environment Variable (Vite)
         const envUrl = import.meta.env.VITE_BACKEND_URL;
         console.log("[DEBUG] Fallback to env VITE_BACKEND_URL:", envUrl);
         if (envUrl) return envUrl.replace(/\/$/, "");
 
-        // 3. Last resort hardcoded default
+        // 4. Last resort hardcoded default
         console.log("[DEBUG] Last resort: DEFAULT_BACKEND_URL:", DEFAULT_BACKEND_URL);
         return DEFAULT_BACKEND_URL.replace(/\/$/, "");
     },

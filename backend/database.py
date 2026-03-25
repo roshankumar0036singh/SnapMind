@@ -51,26 +51,33 @@ def get_db_pool():
                     # Register the vector type on all new connections
                     register_vector(conn)
                 
+                # Check if we are running in local desktop mode
+                is_local = "localhost" in DATABASE_URL or "127.0.0.1" in DATABASE_URL
+                
+                kwargs_dict = {
+                    "prepare_threshold": None,
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5,
+                    "tcp_user_timeout": 60000 
+                }
+                
+                if not is_local:
+                    kwargs_dict["sslmode"] = "require"
+                
                 _db_pool = ConnectionPool(
                     DATABASE_URL, 
                     configure=configure_connection,
-                    min_size=5,       
-                    max_size=50,      
-                    max_idle=10,      # Further improved for SSL stability
+                    min_size=2 if is_local else 5,       
+                    max_size=10 if is_local else 50,      
+                    max_idle=5 if is_local else 10,
                     max_lifetime=120, # Reduced to 2 mins to prevent EOF detected
                     check=ConnectionPool.check_connection, 
                     timeout=60.0,     
-                    kwargs={
-                        "prepare_threshold": None,
-                        "keepalives": 1,
-                        "keepalives_idle": 30,
-                        "keepalives_interval": 10,
-                        "keepalives_count": 5,
-                        "sslmode": "require",
-                        "tcp_user_timeout": 60000 
-                    }
+                    kwargs=kwargs_dict
                 )
-                print("✅ Database Pool Initialized Successfully")
+                print(f"✅ Database Pool Initialized Successfully (Local Mode: {is_local})")
             except Exception as e:
                 print(f"❌ Database Pool Failed to Initialize: {e}")
                 import traceback

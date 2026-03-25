@@ -89,9 +89,13 @@ class BookmarkRequest(BaseModel):
     metadata: dict | None = None
 
 @app.get("/")
-def health_check():
-    """Minimal health check for Hugging Face health monitor."""
-    return {"status": "ok", "service": "Snapmind Backend"}
+def read_root():
+    return {"status": "ok", "service": "snapmind-rag"}
+
+@app.get("/bridge/status")
+def bridge_status():
+    """Endpoint for Chrome Extension to verify it's connected to the local desktop app."""
+    return {"status": "connected", "mode": "local", "features": ["files", "offline", "hybrid_llm"]}
 
 @app.get("/debug/health")
 def health_check_debug():

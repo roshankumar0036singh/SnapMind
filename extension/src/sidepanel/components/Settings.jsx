@@ -8,18 +8,21 @@ export default function Settings({ onBack }) {
     const [firecrawlApiKey, setFirecrawlApiKey] = useState('');
     const [groqApiKey, setGroqApiKey] = useState('');
     const [backendUrl, setBackendUrl] = useState('');
+    const [useLocalBackend, setUseLocalBackend] = useState(false);
+    const [localConnectionStatus, setLocalConnectionStatus] = useState(null); // 'testing', 'success', 'failed'
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
         // Load existing keys
         if (chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl'], (result) => {
+            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl', 'useLocalBackend'], (result) => {
                 if (result.geminiApiKey) setGeminiApiKey(result.geminiApiKey);
                 if (result.mistralApiKey) setMistralApiKey(result.mistralApiKey);
                 if (result.lingodevApiKey) setLingodevApiKey(result.lingodevApiKey);
                 if (result.firecrawlApiKey) setFirecrawlApiKey(result.firecrawlApiKey);
                 if (result.groqApiKey) setGroqApiKey(result.groqApiKey);
                 if (result.backendUrl) setBackendUrl(result.backendUrl);
+                if (result.useLocalBackend !== undefined) setUseLocalBackend(result.useLocalBackend);
             });
         }
     }, []);
@@ -32,13 +35,31 @@ export default function Settings({ onBack }) {
                 lingodevApiKey: lingodevApiKey.trim(),
                 firecrawlApiKey: firecrawlApiKey.trim(),
                 groqApiKey: groqApiKey.trim(),
-                backendUrl: backendUrl.trim()
+                backendUrl: backendUrl.trim(),
+                useLocalBackend: useLocalBackend
             }, () => {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 2000);
             });
         } else {
             console.warn("Chrome storage not available (dev mode?)");
+        }
+    };
+
+    const testLocalConnection = async () => {
+        setLocalConnectionStatus('testing');
+        try {
+            const res = await fetch('http://localhost:8000/bridge/status');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.status === 'connected') {
+                    setLocalConnectionStatus('success');
+                    return;
+                }
+            }
+            setLocalConnectionStatus('failed');
+        } catch (e) {
+            setLocalConnectionStatus('failed');
         }
     };
 
@@ -146,11 +167,53 @@ export default function Settings({ onBack }) {
                     </p>
                 </div>
 
+                {/* LOCAL BACKEND TOGGLE */}
+                <div className="space-y-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
+                    <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                            <label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                Use Local Desktop Backend
+                            </label>
+                            <p className="text-xs text-gray-500">
+                                Connect to SnapMind Desktop for enhanced privacy and local Ollama generation.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setUseLocalBackend(!useLocalBackend)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${useLocalBackend ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${useLocalBackend ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+
+                    {useLocalBackend && (
+                        <div className="pt-2 flex items-center gap-3">
+                            <button
+                                onClick={testLocalConnection}
+                                disabled={localConnectionStatus === 'testing'}
+                                className="px-3 py-1.5 bg-white border border-gray-200 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-gray-700"
+                            >
+                                {localConnectionStatus === 'testing' ? 'Testing...' : 'Test Local Connection'}
+                            </button>
+                            {localConnectionStatus === 'success' && (
+                                <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Connected
+                                </span>
+                            )}
+                            {localConnectionStatus === 'failed' && (
+                                <span className="text-xs font-medium text-red-600 flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Connection Failed
+                                </span>
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 {/* BACKEND URL */}
-                <div className="space-y-2">
+                <div className={`space-y-2 transition-opacity ${useLocalBackend ? 'opacity-50 pointer-events-none' : ''}`}>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                         <Save className="w-3.5 h-3.5" />
-                        Backend Server URL
+                        Cloud Backend Server URL
                     </label>
                     <input
                         type="text"
@@ -158,9 +221,10 @@ export default function Settings({ onBack }) {
                         onChange={(e) => setBackendUrl(e.target.value)}
                         placeholder="https://roshan123478-snapmind-backend.hf.space"
                         className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 transition-all mb-1"
+                        disabled={useLocalBackend}
                     />
                     <p className="text-xs text-gray-400">
-                        Point to your local or hosted Snapmind server.
+                        Point to your hosted Snapmind server.
                     </p>
                 </div>
 
