@@ -2,5 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getVersion: () => ipcRenderer.invoke('get-version'),
-  // We'll add more desktop-specific APIs here (like filesystem access, etc)
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  addWatchFolder: (path) => ipcRenderer.invoke('add-watch-folder', path),
+  removeWatchFolder: (path) => ipcRenderer.invoke('remove-watch-folder', path)
 });
