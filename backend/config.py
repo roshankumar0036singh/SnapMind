@@ -118,8 +118,18 @@ class CacheConfig:
 
 
 # ============================================================================
-# GENERATION CONFIGURATION
+# LLM PROVIDER & GENERATION CONFIGURATION
 # ============================================================================
+
+class LLMProviderConfig:
+    """Configuration for LLM hosting strategy (Desktop App feature)"""
+    
+    # Provider: 'cloud' (Supabase/API), 'local' (100% Ollama), 'hybrid' (Ollama Gen + Cloud Embed)
+    PROVIDER = os.getenv("LLM_PROVIDER", "cloud")
+    
+    # Ollama settings
+    OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    OLLAMA_GENERATION_MODEL = os.getenv("OLLAMA_GENERATION_MODEL", "llama3")
 
 class GenerationConfig:
     """Configuration for LLM generation"""
