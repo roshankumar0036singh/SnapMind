@@ -1,43 +1,47 @@
 import { ChatOllama } from '@langchain/community/chat_models/ollama';
 import { ChatMistralAI } from '@langchain/mistralai';
-import { getMistralKey } from './credentials.js';
+import { ChatOpenAI } from '@langchain/openai';
+import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { getKey } from './credentials.js';
+import config from './config.js';
 import chalk from 'chalk';
+import { SnapMindError } from './errors.js';
 
 export async function getLLM(options = {}) {
-  const { airgap = false, modelName = 'llama3', temperature = 0.3 } = options;
+  const provider = options.provider || config.get('provider');
+  const airgap = options.airgap || false;
+  const temperature = options.temperature || config.get('temperature');
+  const model = options.model || config.get('model');
 
-  // 1. Try Ollama (Local) first
-  if (!airgap) {
+  // 1. Force Airgap (Local Only)
+  if (airgap || provider === 'ollama') {
     try {
-      const ollama = new ChatOllama({
-        baseUrl: 'http://localhost:11434',
-        model: modelName,
-        temperature,
-      });
-
-      // Quick ping to see if Ollama is actually running
       const response = await fetch('http://localhost:11434/api/tags').catch(() => null);
-      
-      if (response && response.status === 200) {
-        return ollama;
+      if (!(response && response.status === 200)) {
+        if (airgap) throw new SnapMindError('Ollama not running! Airgap mode requires local Ollama.', 'LOCAL_OFFLINE');
+        console.log(chalk.yellow('⚠️ Local Ollama not detected. Attempting cloud fallback...'));
       } else {
-        console.log(chalk.yellow('⚠️ Local Ollama not detected. Falling back to Mistral API...'));
+        return new ChatOllama({ baseUrl: 'http://localhost:11434', model, temperature });
       }
     } catch (e) {
-      console.log(chalk.yellow('⚠️ Local Ollama error. Falling back to Mistral API...'));
+      if (airgap) throw e;
     }
   }
 
-  // 2. Fallback to Mistral (Cloud)
-  const mistralKey = await getMistralKey();
-  
-  if (mistralKey) {
-    return new ChatMistralAI({
-      apiKey: mistralKey,
-      model: 'mistral-large-latest',
-      temperature,
-    });
+  // 2. Cloud Providers
+  switch (provider) {
+    case 'mistral':
+      return new ChatMistralAI({ apiKey: await getKey('mistral'), model: 'mistral-large-latest', temperature });
+    case 'openai':
+      return new ChatOpenAI({ apiKey: await getKey('openai'), model: model || 'gpt-4o', temperature });
+    case 'anthropic':
+      return new ChatAnthropic({ apiKey: await getKey('anthropic'), model: model || 'claude-3-5-sonnet-20240620', temperature });
+    case 'gemini':
+      return new ChatGoogleGenerativeAI({ apiKey: await getKey('gemini'), model: model || 'gemini-1.5-pro', temperature });
+    default:
+      // Final attempt at Ollama if provider is unknown
+      return new ChatOllama({ baseUrl: 'http://localhost:11434', model: 'llama3', temperature });
   }
-
-  throw new Error('No LLM available. Please start Ollama or provide a Mistral API key.');
 }
+
