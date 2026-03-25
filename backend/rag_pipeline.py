@@ -9,7 +9,7 @@ import concurrent.futures
 import requests
 import httpx
 import time
-from api_clients import get_gemini_client, get_mistral_client, get_firecrawl_key, get_lingo_key, genai
+from api_clients import get_gemini_client, get_mistral_client, get_firecrawl_key, get_lingo_key, genai, check_connectivity
 from database import get_db_pool, db_retry
 from psycopg import errors
 
@@ -96,6 +96,12 @@ def translate_text_lingo(text: str, target_lang: str = "en", api_keys: dict = No
     print(f"[LINGO] translate_text_lingo called: target_lang={target_lang}, text_len={len(text) if text else 0}")
     
     lingo_key = get_lingo_key(api_keys)
+    
+    # [NEW] Phase 3: Offline Check
+    if not check_connectivity():
+        print("[OFFLINE] Skipping translation (No Internet)")
+        return text, "unknown", False
+
     if not lingo_key or not text or not text.strip():
         # Fallback to Mistral if no Lingo key but text exists
         if text and text.strip():
@@ -522,9 +528,25 @@ def embed_single_chunk(chunk: str, api_keys: dict = None, client=None) -> Tuple[
         if "403" in error_msg and ("leaked" in error_msg.lower() or "permission_denied" in error_msg.lower()):
             print(f"[EMBED] CRITICAL: Google API Key reported as leaked or invalid! Returning neutral embedding.")
             # Return a zero-vector so indexing can proceed without vector features
-            return (chunk, [0.0] * 768)
+            return (chunk, [0.0] * 3072) # [FIX] Updated to 3072 for consistent dimensions
         print(f"Embedding error for chunk: {e}")
         raise
+
+def save_pending_embedding(content: str, source_url: str, metadata: dict):
+    """
+    Saves a chunk to the queue for later embedding when internet returns.
+    """
+    pool = get_db_pool()
+    if not pool: return
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO pending_embeddings (content, source_url, metadata) VALUES (%s, %s, %s)",
+                    (content, source_url, json.dumps(metadata))
+                )
+    except Exception as e:
+        print(f"[OFFLINE] Failed to save pending embedding: {e}")
 
 def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_url: str = "", api_keys: dict = None, page_title: str = None) -> List[dict]:
     """
@@ -536,7 +558,17 @@ def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_ur
     data_list = []
     failed_count = 0
     
-    # [FIX] Initialize a single client instance to reuse across all worker threads
+    # [NEW] Phase 3: Offline Check
+    is_online = check_connectivity()
+    if not is_online:
+        print(f"[OFFLINE] Connectivity lost. Queueing {len(chunks)} chunks for later embedding.")
+        for chunk in chunks:
+            save_pending_embedding(
+                chunk.get('content', ''), 
+                source_url, 
+                {**chunk.get('metadata', {}), "title": page_title}
+            )
+        return [] # Return empty to signal no immediate embeddings available
     # This prevents the "NoneType build_request" errors caused by redundant httpx pools.
     client = None
     try:
@@ -1187,3 +1219,56 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
             "error": f"Multi-page ingestion failed: {str(e)}",
             "pages_crawled": 0
         }
+
+def process_pending_embeddings(api_keys: dict = None):
+    """
+    Processes the queue of pending embeddings. Called by background sync task.
+    """
+    pool = get_db_pool()
+    if not pool: return
+    
+    try:
+        if not check_connectivity():
+            return
+            
+        with pool.connection() as conn:
+            # We use a separate cursor for data retrieval to avoid nested cursor issues
+            with conn.cursor() as cur:
+                # Fetch a batch of pending items
+                cur.execute("SELECT id, content, source_url, metadata FROM pending_embeddings LIMIT 50")
+                items = cur.fetchall()
+                
+                if not items:
+                    return
+                    
+                print(f"[SYNC] Processing {len(items)} pending embeddings...")
+                
+                for item_id, content, source_url, metadata_row in items:
+                    try:
+                        # 1. Embed
+                        _, embedding = embed_single_chunk(content, api_keys)
+                        
+                        # 2. Store in documents table
+                        # metadata_row is already a dict if using psycopg with JSONB
+                        metadata = metadata_row
+                        if isinstance(metadata_row, str):
+                            metadata = json.loads(metadata_row)
+                            
+                        cur.execute(
+                            "INSERT INTO documents (content, embedding, source_url, metadata) VALUES (%s, %s, %s, %s)",
+                            (content, embedding, source_url, json.dumps(metadata))
+                        )
+                        
+                        # 3. Remove from pending
+                        cur.execute("DELETE FROM pending_embeddings WHERE id = %s", (item_id,))
+                        
+                        # Commit per item to ensure progress is saved even if one fails
+                        conn.commit()
+                        print(f"[SYNC] Processed item {item_id}")
+                    except Exception as e:
+                        print(f"[SYNC] Error processing item {item_id}: {e}")
+                        conn.rollback()
+                        
+    except Exception as e:
+        print(f"[SYNC] Critical error in process_pending_embeddings: {e}")
+

@@ -21,9 +21,40 @@ logging.getLogger("google_auth_httplib2").setLevel(logging.WARNING)
 
 from contextlib import asynccontextmanager
 
+async def background_sync_loop():
+    """
+    Periodically checks for pending embeddings and processes them if online.
+    """
+    from rag_pipeline import process_pending_embeddings
+    print("[SYNC] Background Embedding Sync Task Started")
+    while True:
+        try:
+            # Run the synchronous processing logic in a thread pool to avoid blocking Event Loop
+            loop = asyncio.get_event_loop()
+            # We don't pass api_keys here, it will use environment variables or be passed later if needed
+            await loop.run_in_executor(None, process_pending_embeddings)
+            await asyncio.sleep(360) # Re-check every 6 minutes
+        except asyncio.CancelledError:
+            print("[SYNC] Background Sync Task Cancelled")
+            break
+        except Exception as e:
+            print(f"[SYNC] Error in background sync: {e}")
+            await asyncio.sleep(60)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: Start Background Sync
+    sync_task = asyncio.create_task(background_sync_loop())
+    
     yield
+    
+    # Shutdown: Cancel Sync
+    sync_task.cancel()
+    try:
+        await sync_task
+    except asyncio.CancelledError:
+        pass
+
     from database import get_db_pool
     pool = get_db_pool()
     if pool:
@@ -88,6 +119,28 @@ class BookmarkRequest(BaseModel):
     source_url: str | None = None
     metadata: dict | None = None
 
+@app.post("/admin/export")
+async def export_endpoint(request: dict):
+    """
+    Export the entire knowledge base to a local JSON file.
+    """
+    from export_import import export_data
+    # Default to home directory or a specific SnapMind folder
+    default_path = os.path.expanduser("~/snapmind_export.json")
+    target_path = request.get("path", default_path)
+    return export_data(target_path)
+
+@app.post("/admin/import")
+async def import_endpoint(request: dict):
+    """
+    Import knowledge base from a local JSON file.
+    """
+    from export_import import import_data
+    target_path = request.get("path")
+    if not target_path or not os.path.exists(target_path):
+        raise HTTPException(status_code=400, detail="Import file not found at specified path.")
+    return import_data(target_path)
+
 @app.get("/")
 def read_root():
     return {"status": "ok", "service": "snapmind-rag"}
@@ -134,9 +187,16 @@ def health_check_debug():
             "supabase_url": "SET" if os.getenv("DATABASE_URL") else "MISSING"
         }
     }
+class ResearchRequest(BaseModel):
+    session_id: str
+    query: str
+    output_lang: str = "auto"
+    query_notebook: bool = False
+    image_data: str = None
+    visible: bool = False # [NEW] For Desktop Browser Agent
 
-@app.post("/browser/query")
-def browser_query_endpoint(request: BrowserRequest, req: Request):
+@app.post("/browser/research")
+async def research_endpoint(request: ResearchRequest, req: Request):
     """
     Multi-Agent Browser Mode Entry Point
     """
@@ -147,15 +207,32 @@ def browser_query_endpoint(request: BrowserRequest, req: Request):
         "firecrawl": req.headers.get("x-firecrawl-key"),
         "groq": req.headers.get("x-groq-key"),
     }
-    from browser_agents import BrowserOrchestrator
-    orchestrator = BrowserOrchestrator(
-        api_keys=api_keys, 
-        session_id=request.session_id,
-        output_lang=request.output_lang,
-        query_notebook=request.query_notebook,
-        image_data=request.image_data
-    )
-    result = orchestrator.run(request.query)
+    
+    # [NEW] Phase 3: Desktop Local Browser Agent Fallback
+    from config import LLMProviderConfig
+    if LLMProviderConfig.PROVIDER in ["local", "hybrid"]:
+        print("[main] Using LocalBrowserOrchestrator (Desktop Native)")
+        from browser_agent_local import LocalBrowserOrchestrator
+        orchestrator = LocalBrowserOrchestrator(
+            api_keys=api_keys,
+            session_id=request.session_id,
+            output_lang=request.output_lang,
+            query_notebook=request.query_notebook,
+            image_data=request.image_data,
+            visible=request.visible
+        )
+        result = await orchestrator.run(request.query)
+    else:
+        from browser_agents import BrowserOrchestrator
+        orchestrator = BrowserOrchestrator(
+            api_keys=api_keys, 
+            session_id=request.session_id,
+            output_lang=request.output_lang,
+            query_notebook=request.query_notebook,
+            image_data=request.image_data
+        )
+        # BrowserOrchestrator.run is synchronous
+        result = orchestrator.run(request.query)
     
     if "error" in result:
         raise HTTPException(status_code=500, detail=result["error"])

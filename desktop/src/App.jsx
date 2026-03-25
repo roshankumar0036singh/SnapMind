@@ -464,6 +464,7 @@ function App() {
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
   const [githubIngesting, setGithubIngesting] = useState(false); // [NEW] Phase 23: GitHub ingestion status
   const [githubJobId, setGithubJobId] = useState(null); // [NEW] Phase 23: Job polling
+  const [visibleBrowser, setVisibleBrowser] = useState(false); // [NEW] Feature 17: Local Browser Agent Visibility
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // For Ctrl+K focus
@@ -1694,7 +1695,8 @@ function App() {
           const response = await apiClient.queryBrowserMode(userMsg.text, currentSessionId, {
             outputLang,
             queryNotebook,
-            imagePayload
+            imagePayload,
+            visible: visibleBrowser // [NEW] Pass visibility flag to local agent
           });
 
           if (response.blocks && response.blocks.length > 0) {
@@ -2303,6 +2305,19 @@ function App() {
             <span>Browser</span>
           </button>
 
+          {/* [NEW] Visible Browser Toggle - only shown when Browser mode or Desktop specific */}
+          {mode === 'browser' && (
+            <div className="flex items-center gap-2 px-3 border-l border-slate-200 ml-2 animate-in fade-in slide-in-from-left-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Visible</span>
+              <button
+                onClick={() => setVisibleBrowser(!visibleBrowser)}
+                className={`w-8 h-4 rounded-full relative transition-all duration-300 ${visibleBrowser ? 'bg-indigo-500' : 'bg-slate-200'}`}
+              >
+                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-300 ${visibleBrowser ? 'left-4.5' : 'left-0.5'}`} />
+              </button>
+            </div>
+          )}
+
         </div>
 
 
@@ -2371,6 +2386,10 @@ function App() {
                 <Database className="w-3.5 h-3.5" />
                 Graph
               </button>
+               <button
+                onClick={() => setMemoryTab('bookmarks')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'bookmarks' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
+              >
                 <Bookmark className="w-3.5 h-3.5" />
                 Notebook
               </button>

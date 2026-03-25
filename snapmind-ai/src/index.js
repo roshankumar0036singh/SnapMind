@@ -14,7 +14,11 @@ program
   .description('The ultimate local AI companion for students, developers, and analysts.')
   .version('1.0.0')
   .option('--airgap', 'Run in 100% offline mode using local models only')
-  .option('--watch <path>', 'Automatically index changes in the specified directory');
+  .option('--watch <path>', 'Automatically index changes in the specified directory')
+  .option('--repo <url>', 'Clone and index a GitHub repository')
+  .option('--mount <path>', 'Mount and index a local directory recursively')
+  .option('--pages <range>', 'Specific page range to index (e.g., 1-10)');
+
 
 program
   .command('config')

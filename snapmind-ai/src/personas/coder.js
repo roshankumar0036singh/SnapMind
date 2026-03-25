@@ -4,93 +4,107 @@ import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { MemoryVectorStore } from 'langchain/vectorstores/memory';
 import { OllamaEmbeddings } from '@langchain/community/embeddings/ollama';
 import { MistralAIEmbeddings } from '@langchain/mistralai';
+import { OpenAIEmbeddings } from '@langchain/openai';
 import { getLLM } from '../utils/llm.js';
-import { getMistralKey } from '../utils/credentials.js';
+import { getKey } from '../utils/credentials.js';
+import config from '../utils/config.js';
+import { handleError, SnapMindError } from '../utils/errors.js';
+import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
+import simpleGit from 'simple-git';
+import fs from 'fs-extra';
+import path from 'path';
 
 export async function startCoder(options = {}) {
-  const { path } = await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'path',
-      message: 'Enter the path to your code directory:',
-      default: '.',
-    },
-  ]);
+  console.log(chalk.blue('\n💻 SnapMind Coder Mode'));
+  console.log(chalk.gray('Tips: Use --repo <url> for GitHub or --mount <dir> for local projects.\n'));
 
-  const spinner = ora('Analyzing repository...').start();
-  
+  let targetPath = options.mount || '.';
+  const namespace = generateNamespace(options.repo || targetPath);
+  const git = simpleGit();
+
   try {
-    // 1. Load Repository (Filter for code files)
-    const loader = new DirectoryLoader(path, {
-      '.js': (p) => new TextLoader(p),
-      '.ts': (p) => new TextLoader(p),
-      '.py': (p) => new TextLoader(p),
-      '.md': (p) => new TextLoader(p),
-      '.json': (p) => new TextLoader(p),
-    }, true, 'ignore'); // Ignore subdirectories if they match common ignore patterns? No, 'ignore' strategy is for skipped types.
-    
-    const rawDocs = await loader.load();
-    const filteredDocs = rawDocs.filter(d => !d.metadata.source.includes('node_modules') && !d.metadata.source.includes('.git'));
-
-    // 2. Split
-    const splitter = new RecursiveCharacterTextSplitter({
-      chunkSize: 2000,
-      chunkOverlap: 200,
-    });
-    const docs = await splitter.splitDocuments(filteredDocs);
-    
-    // 3. Embeddings 
+    const provider = config.get('provider');
     let embeddings;
-    if (!options.airgap) {
-      try {
-        const response = await fetch('http://localhost:11434/api/tags').catch(() => null);
-        if (response && response.status === 200) {
-          embeddings = new OllamaEmbeddings({ model: 'nomic-embed-text' });
+    if (provider === 'ollama' && !options.airgap) {
+      embeddings = new OllamaEmbeddings({ model: 'nomic-embed-text' });
+    } else if (provider === 'openai') {
+      embeddings = new OpenAIEmbeddings({ apiKey: await getKey('openai') });
+    } else {
+      embeddings = new MistralAIEmbeddings({ apiKey: await getKey('mistral') });
+    }
+
+    let vectorStore = await loadVectorStore(namespace, embeddings);
+
+    if (!vectorStore) {
+      if (options.repo) {
+        const repoName = options.repo.split('/').pop().replace('.git', '');
+        targetPath = path.join(process.cwd(), 'snapmind_repos', repoName);
+        
+        const spinner = ora(`Cloning ${options.repo}...`).start();
+        await fs.ensureDir(path.dirname(targetPath));
+        if (await fs.pathExists(targetPath)) {
+          spinner.text = 'Repo already exists, updating...';
+          await git.cwd(targetPath).pull();
+        } else {
+          await git.clone(options.repo, targetPath);
         }
-      } catch (e) {}
+        spinner.succeed(`Clone complete: ${repoName}`);
+      }
+
+      const indexSpinner = ora('Indexing codebase...').start();
+      
+      const loader = new DirectoryLoader(targetPath, {
+        '.js': (p) => new TextLoader(p),
+        '.ts': (p) => new TextLoader(p),
+        '.py': (p) => new TextLoader(p),
+        '.md': (p) => new TextLoader(p),
+        '.json': (p) => new TextLoader(p),
+      }, true, 'ignore');
+      
+      const rawDocs = await loader.load();
+      const filteredDocs = rawDocs.filter(d => 
+        !d.metadata.source.includes('node_modules') && 
+        !d.metadata.source.includes('.git') &&
+        !d.metadata.source.includes('snapmind_repos')
+      );
+
+      if (filteredDocs.length === 0) throw new SnapMindError('No supported code files found.', 'EMPTY_CODEBASE');
+
+      const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 2000, chunkOverlap: 200 });
+      const docs = await splitter.splitDocuments(filteredDocs);
+      
+      vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
+      await saveVectorStore(vectorStore, namespace);
+      indexSpinner.succeed(`Analyzed ${filteredDocs.length} files (${docs.length} snippets).`);
     }
     
-    if (!embeddings) {
-      const mistralKey = await getMistralKey();
-      embeddings = new MistralAIEmbeddings({ apiKey: mistralKey });
-    }
-    
-    // 4. Vector Store
-    const vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
-    
-    spinner.succeed(`Success! Indexed ${docs.length} code snippets across ${filteredDocs.length} files.`);
-    
-    // 5. Chat Loop
     const llm = await getLLM(options);
-    console.log(chalk.gray('\nType "exit" to leave or ask about your architecture.\n'));
 
     while (true) {
-      const { query } = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'query',
-          message: chalk.blue('coder>'),
-        },
-      ]);
-
+      const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.blue('coder>') }]);
       if (query.toLowerCase() === 'exit') break;
 
       const chatSpinner = ora('Scanning logic...').start();
-      const results = await vectorStore.similaritySearch(query, 4);
-      const context = results.map(r => `File: ${r.metadata.source}\nContent:\n${r.pageContent}`).join('\n\n---\n\n');
-      
-      const response = await llm.invoke([
-        ['system', 'You are SnapMind Coder, an elite software architect assistant. \nAnalyze the provided code snippets to answer questions. \nProvide concise explanations and code examples where possible. \nIf the answer is not in the context, say so.'],
-        ['user', `Context:\n${context}\n\nQuestion: ${query}`]
-      ]);
+      try {
+        const results = await vectorStore.similaritySearch(query, 4);
+        const context = results.map(r => `File: ${path.relative(targetPath, r.metadata.source)}\nContent:\n${r.pageContent}`).join('\n\n---\n\n');
+        
+        const response = await llm.invoke([
+          ['system', 'You are SnapMind Coder. Analyze the snippets and provide concise, technical answers.'],
+          ['user', `Context:\n${context}\n\nQuestion: ${query}`]
+        ]);
 
-      chatSpinner.stop();
-      console.log(chalk.cyan('\n' + response.content + '\n'));
+        chatSpinner.stop();
+        console.log(chalk.cyan('\n' + response.content + '\n'));
+      } catch (e) {
+        chatSpinner.stop();
+        handleError(e);
+      }
     }
   } catch (error) {
-    spinner.fail(`Error: ${error.message}`);
+    handleError(error);
   }
 }
