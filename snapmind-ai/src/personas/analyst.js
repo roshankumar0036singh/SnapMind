@@ -8,6 +8,7 @@ import { getKey } from '../utils/credentials.js';
 import config from '../utils/config.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
 import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
+import { exportSession } from '../utils/exporter.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -16,7 +17,7 @@ import path from 'path';
 
 export async function startAnalyst(options = {}) {
   console.log(chalk.green('\n📊 SnapMind Analyst Mode'));
-  console.log(chalk.gray('Tips: Load CSV/Excel files to query trends and data points.\n'));
+  console.log(chalk.gray('Tips: Load CSV/Excel files to query trends. Use /export to save results. \n'));
 
   const { targetPath } = await inquirer.prompt([
     {
@@ -31,7 +32,6 @@ export async function startAnalyst(options = {}) {
     const namespace = generateNamespace(targetPath);
     const provider = config.get('provider');
     let embeddings;
-    
     if (provider === 'ollama' && !options.airgap) {
       embeddings = new OllamaEmbeddings({ model: 'nomic-embed-text' });
     } else if (provider === 'openai') {
@@ -48,10 +48,8 @@ export async function startAnalyst(options = {}) {
         if (!targetPath.endsWith('.csv')) {
           throw new SnapMindError('Unsupported file type. Analyst persona currently requires CSV.', 'INVALID_FILE');
         }
-
         const loader = new CSVLoader(targetPath);
         const docs = await loader.load();
-        
         vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
         await saveVectorStore(vectorStore, namespace);
         spinner.succeed(`Success! Indexed ${docs.length} rows of data.`);
@@ -63,10 +61,16 @@ export async function startAnalyst(options = {}) {
     }
     
     const llm = await getLLM(options);
+    const history = [];
 
     while (true) {
       const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.green('analyst>') }]);
       if (query.toLowerCase() === 'exit') break;
+
+      if (query.toLowerCase() === '/export') {
+        await exportSession(history);
+        continue;
+      }
 
       const chatSpinner = ora('Calculating...').start();
       try {
@@ -80,6 +84,9 @@ export async function startAnalyst(options = {}) {
 
         chatSpinner.stop();
         console.log(chalk.cyan('\n' + response.content + '\n'));
+
+        history.push({ role: 'user', content: query });
+        history.push({ role: 'assistant', content: response.content });
       } catch (e) {
         chatSpinner.stop();
         handleError(e);

@@ -82,10 +82,16 @@ export async function startCoder(options = {}) {
     }
     
     const llm = await getLLM(options);
+    const history = [];
 
     while (true) {
       const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.blue('coder>') }]);
       if (query.toLowerCase() === 'exit') break;
+
+      if (query.toLowerCase() === '/export') {
+        await exportSession(history);
+        continue;
+      }
 
       const chatSpinner = ora('Scanning logic...').start();
       try {
@@ -99,11 +105,15 @@ export async function startCoder(options = {}) {
 
         chatSpinner.stop();
         console.log(chalk.cyan('\n' + response.content + '\n'));
+
+        history.push({ role: 'user', content: query });
+        history.push({ role: 'assistant', content: response.content });
       } catch (e) {
         chatSpinner.stop();
         handleError(e);
       }
     }
+
   } catch (error) {
     handleError(error);
   }

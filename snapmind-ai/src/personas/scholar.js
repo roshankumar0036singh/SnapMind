@@ -77,10 +77,16 @@ export async function startScholar(options = {}) {
     }
     
     const llm = await getLLM(options);
+    const history = [];
     
     while (true) {
       const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.yellow('scholar>') }]);
       if (query.toLowerCase() === 'exit') break;
+
+      if (query.toLowerCase() === '/export') {
+        await exportSession(history);
+        continue;
+      }
 
       const chatSpinner = ora('Researching...').start();
       try {
@@ -95,6 +101,9 @@ export async function startScholar(options = {}) {
         chatSpinner.stop();
         console.log(chalk.cyan('\n' + response.content + '\n'));
         
+        history.push({ role: 'user', content: query });
+        history.push({ role: 'assistant', content: response.content });
+
         console.log(chalk.gray('Sources:'));
         results.forEach((r, i) => {
           const fileName = path.basename(r.metadata?.source || 'Doc');
@@ -106,6 +115,7 @@ export async function startScholar(options = {}) {
         handleError(e);
       }
     }
+
   } catch (error) {
     handleError(error);
   }
