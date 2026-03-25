@@ -1,0 +1,28 @@
+{
+  "name": "snapmind-ai",
+  "version": "1.0.0",
+  "description": "Interactive CLI for persona-based local AI workflows",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "snapmind-ai": "src/index.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@langchain/community": "^1.1.25",
+    "@langchain/core": "^1.1.36",
+    "@langchain/mistralai": "^1.0.7",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "conf": "^15.1.0",
+    "inquirer": "^13.3.2",
+    "keytar": "^7.9.0",
+    "ollama": "^0.6.3",
+    "ora": "^9.3.0",
+    "pdf-parse": "^2.4.5"
+  }
+}

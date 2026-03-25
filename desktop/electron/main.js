@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, dialog } = require('electron');
 const path = require('node:path');
+const fileWatcher = require('./services/file_watcher');
 
 let mainWindow;
 let tray = null;
@@ -91,5 +92,37 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+app.on('will-quit', () => {
+    // Clean up watchers
+    fileWatcher.stopAll();
+});
+
 // IPC bridging (examples for native integration)
 ipcMain.handle('get-version', () => app.getVersion());
+
+// File Watcher IPC
+ipcMain.handle('select-folder', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+    });
+    if (canceled) { return null; }
+    return filePaths[0]; // Return selected path
+});
+
+ipcMain.handle('add-watch-folder', async (event, folderPath) => {
+    try {
+        fileWatcher.addWatchFolder(folderPath);
+        return { success: true, message: `Watching ${folderPath}` };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('remove-watch-folder', async (event, folderPath) => {
+    try {
+        fileWatcher.removeWatchFolder(folderPath);
+        return { success: true, message: `Stopped watching ${folderPath}` };
+    } catch (e) {
+        return { success: false, error: e.message };
+    }
+});

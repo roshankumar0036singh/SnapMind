@@ -1,6 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin, Folder } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -17,6 +17,7 @@ import './styles/design-tokens.css';
 const Settings = lazy(() => import('./components/Settings'));
 const SessionList = lazy(() => import('./components/SessionList'));
 import MermaidChart from './components/MermaidChart';
+import WatchFoldersPanel from './components/WatchFoldersPanel';
 
 // Custom Markdown Components
 
@@ -457,7 +458,7 @@ function App() {
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
   const [graphSessions, setGraphSessions] = useState([]);
   const [selectedGraphSession, setSelectedGraphSession] = useState(null); // [NEW] Phase 13
-  const [memoryTab, setMemoryTab] = useState('sites'); // 'sites' | 'graph'
+  const [memoryTab, setMemoryTab] = useState('sites'); // 'sites' | 'graph' | 'bookmarks' | 'folders'
   const [queryNotebook, setQueryNotebook] = useState(false); // [NEW] Phase 20: Research Notebook Correlation
   const [bookmarks, setBookmarks] = useState([]); // [LIFTED] Phase 21: Real-time bookmark icons
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
@@ -2370,12 +2371,15 @@ function App() {
                 <Database className="w-3.5 h-3.5" />
                 Graph
               </button>
-              <button
-                onClick={() => setMemoryTab('bookmarks')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'bookmarks' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
-              >
                 <Bookmark className="w-3.5 h-3.5" />
                 Notebook
+              </button>
+              <button
+                onClick={() => setMemoryTab('folders')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'folders' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
+              >
+                <Folder className="w-3.5 h-3.5" />
+                Folders
               </button>
             </div>
 
@@ -2403,7 +2407,9 @@ function App() {
                   ? "Pages you've indexed for intelligent search"
                   : memoryTab === 'graph'
                     ? "Semantic entities and relationships discovered across your knowledge base"
-                    : "Pinned citations and key snippets saved for your research"}
+                    : memoryTab === 'bookmarks'
+                      ? "Pinned citations and key snippets saved for your research"
+                      : "Local directories synced via real-time file system monitoring"}
               </p>
             </div>
 
@@ -2470,12 +2476,14 @@ function App() {
                   )}
                 </div>
               )
-            ) : (
+            ) : memoryTab === 'bookmarks' ? (
               <BookmarkList
                 bookmarks={bookmarks}
                 loading={bookmarksLoading}
                 onDelete={handleDeleteBookmark}
               />
+            ) : (
+              <WatchFoldersPanel />
             )}
           </div>
         )
