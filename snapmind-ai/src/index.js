@@ -1,13 +1,23 @@
+#!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
 import chalkAnimation from 'chalk-animation';
 import inquirer from 'inquirer';
+import figlet from 'figlet';
+import boxen from 'boxen';
 import { startMenu } from './cli/menu.js';
 import config from './utils/config.js';
 import { setKey } from './utils/credentials.js';
 
 
+
 const sleep = (ms = 2000) => new Promise((r) => setTimeout(r, ms));
+
+// Graceful Exit on Ctrl+C
+process.on('SIGINT', () => {
+  console.log(chalk.gray('\n\n  × Shutdown requested. Take care of your mind!'));
+  process.exit(0);
+});
 
 const program = new Command();
 
@@ -74,7 +84,7 @@ program
           message: 'Select provider to update key for:',
           choices: ['openai', 'mistral', 'anthropic', 'gemini']
         }]);
-        const { key } = await inquirer.prompt([{ type: 'password', name: 'key', message: `Enter API key for ${provider}:` }]);
+        const { key } = await inquirer.prompt([{ type: 'password', name: 'key', message: `Enter API key for ${provider}:`, mask: '*' }]);
         await setKey(provider, key);
         console.log(chalk.green('✅ Key securely stored.'));
       } else if (choice === 'temperature') {
@@ -94,22 +104,45 @@ program
 
     const isDirect = options.repo || options.mount || options.persona || options.watch;
 
-    if (!isDirect) {
-      const animation = chalkAnimation.glitch('S N A P M I N D   A I');
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      animation.stop();
+      // Large ASCII Art
+      const asciiArt = figlet.textSync('SnapMind AI', { font: 'Slant', horizontalLayout: 'full' });
+      // Apply a bold gradient-like effect (Cyan -> Blue)
+      const lines = asciiArt.split('\n');
+      console.log('');
+      lines.forEach((line, i) => {
+        const color = i < lines.length / 2 ? chalk.bold.cyan : chalk.bold.blueBright;
+        console.log(color(line));
+      });
 
-      console.log(chalk.bold.cyan('\n🚀 Your Universal Intelligence Companion'));
-      console.log(chalk.gray('------------------------------------------'));
-      console.log(`${chalk.yellow('🎓 Scholar')} : Index PDFs, cite pages, deep research.`);
-      console.log(`${chalk.blue('💻 Coder')}   : Scan repos, refactor logic, fix bugs.`);
-      console.log(`${chalk.green('📊 Analyst')} : Query data, find trends, export CSVs.`);
-      console.log(`${chalk.magenta('✍️ Writer')}  : Scrape web, synthesize drafts, outlines.`);
-      console.log(chalk.gray('------------------------------------------'));
-      console.log(chalk.white('Tip: Use /export inside any chat to save your progress.\n'));
+      const personaList = [
+        `${chalk.cyan('§ Scholar')}  :: Index PDFs, cite pages, deep research.`,
+        `${chalk.blueBright('» Coder')}    :: Scan repos, refactor logic, fix bugs.`,
+        `${chalk.green('∑ Analyst')}  :: Query data, find trends, export CSVs.`,
+        `${chalk.magenta('¶ Writer')}   :: Scrape web, synthesize drafts.`,
+      ].join('\n');
+
+      console.log(boxen(personaList, {
+        padding: { top: 1, bottom: 1, left: 2, right: 2 },
+        margin: { left: 2, top: 1, bottom: 1 },
+        borderStyle: 'round',
+        borderColor: 'cyan',
+        title: chalk.bold.white(' Intelligence Architectures '),
+        titleAlignment: 'center',
+        width: 75
+      }));
+      
+      console.log(chalk.gray(`\n  > System: Use ${chalk.white('/export')} inside any session to persist logs.\n`));
+
+
+    try {
+      await startMenu(options);
+    } catch (e) {
+      if (e.name === 'ExitPromptError' || e.message.includes('force closed')) {
+        console.log(chalk.gray('\n  × Session ended.'));
+      } else {
+        throw e;
+      }
     }
-
-    await startMenu(options);
   });
 
 program.parse(process.argv);

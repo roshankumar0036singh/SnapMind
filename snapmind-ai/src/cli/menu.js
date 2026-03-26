@@ -10,7 +10,7 @@ export async function startMenu(options) {
 
   if (!persona) {
     if (options.mount || options.pages) persona = 'scholar';
-    if (options.repo) persona = 'coder';
+    if (options.repo || options.watch) persona = 'coder';
   }
 
   if (!persona) {
@@ -18,13 +18,13 @@ export async function startMenu(options) {
       {
         type: 'list',
         name: 'persona',
-        message: 'What best describes your workflow right now?',
+        message: 'Select an Intelligence Architecture:',
         choices: [
-          { name: chalk.yellow('🎓 The Scholar') + ' (Deep chat with PDFs & Citations)', value: 'scholar' },
-          { name: chalk.blue('💻 The Coder') + ' (Chat with a codebase or GitHub repo)', value: 'coder' },
-          { name: chalk.green('📊 The Analyst') + ' (Query massive CSV/Excel files)', value: 'analyst' },
-          { name: chalk.magenta('✍️ The Writer') + ' (Synthesize web research)', value: 'writer' },
-          { name: chalk.red('❌ Exit'), value: 'exit' },
+          { name: `${chalk.cyan('§')} ${chalk.bold('Scholar')}   (Deep Research & Citations)`, value: 'scholar' },
+          { name: `${chalk.blueBright('»')} ${chalk.bold('Coder')}     (Codebase & Repo Intelligence)`, value: 'coder' },
+          { name: `${chalk.green('∑')} ${chalk.bold('Analyst')}   (Structured Data & CSV Insight)`, value: 'analyst' },
+          { name: `${chalk.magenta('¶')} ${chalk.bold('Writer')}    (Web Research & Synthesis)`, value: 'writer' },
+          { name: `${chalk.red('×')} ${chalk.bold('Exit')}`, value: 'exit' },
         ],
       },
     ]);
@@ -32,8 +32,7 @@ export async function startMenu(options) {
   }
 
   if (persona === 'exit') {
-    console.log(chalk.gray('Goodbye! Take care of your mind.'));
-    process.exit(0);
+    return;
   }
 
   const personaMap = {

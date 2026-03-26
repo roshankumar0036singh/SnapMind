@@ -1,12 +1,29 @@
-import { ChatOllama } from '@langchain/ollama';
-import { ChatMistralAI } from '@langchain/mistralai';
-import { ChatOpenAI } from '@langchain/openai';
+import { ChatOllama, OllamaEmbeddings } from '@langchain/ollama';
+import { ChatMistralAI, MistralAIEmbeddings } from '@langchain/mistralai';
+import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { getKey } from './credentials.js';
 import config from './config.js';
 import chalk from 'chalk';
 import { SnapMindError } from './errors.js';
+
+export async function getEmbeddings(options = {}) {
+  const provider = options.provider || config.get('provider');
+  const airgap = options.airgap || false;
+
+  if (airgap || provider === 'ollama') {
+    return new OllamaEmbeddings({ model: 'nomic-embed-text' });
+  }
+
+  switch (provider) {
+    case 'openai':
+      return new OpenAIEmbeddings({ apiKey: await getKey('openai') });
+    case 'mistral':
+    default:
+      return new MistralAIEmbeddings({ apiKey: await getKey('mistral') });
+  }
+}
 
 export async function getLLM(options = {}) {
   const provider = options.provider || config.get('provider');

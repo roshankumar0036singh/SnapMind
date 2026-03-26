@@ -1,0 +1,9 @@
+.snapmind_cache/
+snapmind_exports/
+snapmind_repos/
+.gemini/
+brain/
+node_modules/
+.env
+.gitignore
+*.log

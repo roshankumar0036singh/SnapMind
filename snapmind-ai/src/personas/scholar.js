@@ -2,47 +2,57 @@ import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
-import { OllamaEmbeddings } from '@langchain/ollama';
-import { MistralAIEmbeddings } from '@langchain/mistralai';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { getLLM } from '../utils/llm.js';
-import { getKey } from '../utils/credentials.js';
-import config from '../utils/config.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
 import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
-import { exportSession } from '../utils/exporter.js';
+import { getLLM, getEmbeddings } from '../utils/llm.js';
+import { NLP_CONFIG } from '../utils/constants.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
 import fs from 'fs-extra';
 import path from 'path';
+import config from '../utils/config.js';
+
+const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.SCHOLAR;
 
 export async function startScholar(options = {}) {
   console.log(chalk.cyan('\n🎓 SnapMind Scholar Mode'));
   console.log(chalk.gray('Tips: Use --mount <dir> for folders or pass a PDF path.\n'));
 
-  const { targetPath } = options.mount ? { targetPath: options.mount } : await inquirer.prompt([
-    {
-      type: 'input',
-      name: 'targetPath',
-      message: 'Enter PDF path or directory to mount:',
-      validate: (input) => input.length > 0 || 'Path cannot be empty',
-    },
-  ]);
+  let targetPath = options.mount;
+  if (!targetPath) {
+    const { action } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'action',
+        message: 'How would you like to start your research?',
+        choices: [
+          { name: '📂 Scan Current Folder (.)', value: 'current' },
+          { name: '🔌 Mount External Directory (Absolute Path)', value: 'mount' },
+          { name: '📄 Select Specific PDF File', value: 'file' },
+          { name: '🏠 Exit to Menu', value: 'exit' }
+        ]
+      }
+    ]);
+
+    if (action === 'exit') return;
+    if (action === 'current') targetPath = '.';
+    else if (action === 'mount') {
+      const { path: customPath } = await inquirer.prompt([
+        { type: 'input', name: 'path', message: 'Enter absolute path to directory:', validate: (input) => fs.pathExists(input) || 'Path does not exist' }
+      ]);
+      targetPath = customPath;
+    } else if (action === 'file') {
+      const { path: filePath } = await inquirer.prompt([
+        { type: 'input', name: 'path', message: 'Enter path to PDF file:', validate: (input) => input.endsWith('.pdf') && fs.pathExists(input) || 'Invalid PDF path' }
+      ]);
+      targetPath = filePath;
+    }
+  }
 
   try {
     const namespace = generateNamespace(targetPath);
-    const provider = config.get('provider');
-    let embeddings;
-    
-    if (provider === 'ollama' && !options.airgap) {
-      embeddings = new OllamaEmbeddings({ model: 'nomic-embed-text' });
-    } else if (provider === 'openai') {
-      embeddings = new OpenAIEmbeddings({ apiKey: await getKey('openai') });
-    } else {
-      embeddings = new MistralAIEmbeddings({ apiKey: await getKey('mistral') });
-    }
-
+    const embeddings = await getEmbeddings(options);
     let vectorStore = await loadVectorStore(namespace, embeddings);
     
     if (!vectorStore) {
@@ -54,17 +64,27 @@ export async function startScholar(options = {}) {
         if (stats.isDirectory()) {
           loader = new DirectoryLoader(targetPath, {
             '.pdf': (p) => new PDFLoader(p),
-          });
+          }, true); // Recursive
         } else if (targetPath.endsWith('.pdf')) {
           loader = new PDFLoader(targetPath);
         } else {
           throw new SnapMindError('Unsupported file type. Scholar persona requires PDFs.', 'INVALID_FILE');
         }
 
-        const rawDocs = await loader.load();
-        if (rawDocs.length === 0) throw new SnapMindError('No PDF documents found in path.', 'EMPTY_SOURCE');
+        let rawDocs = await loader.load();
+        
+        // Page Range Filtering
+        if (options.pages) {
+          const [start, end] = options.pages.split('-').map(Number);
+          rawDocs = rawDocs.filter(d => {
+            const pg = d.metadata?.loc?.pageNumber;
+            return pg >= (start || 0) && pg <= (end || Infinity);
+          });
+        }
 
-        const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
+        if (rawDocs.length === 0) throw new SnapMindError('No PDF documents found in range.', 'EMPTY_SOURCE');
+
+        const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
         const docs = await splitter.splitDocuments(rawDocs);
         
         vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
@@ -102,7 +122,7 @@ export async function startScholar(options = {}) {
 
       const chatSpinner = ora('Researching...').start();
       try {
-        const results = await vectorStore.similaritySearch(query, 5);
+        const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
         const context = results.map(r => `Source: ${path.basename(r.metadata?.source || 'Doc')}\nContent: ${r.pageContent}`).join('\n\n');
         
         const systemPrompt = query.startsWith('/research') 

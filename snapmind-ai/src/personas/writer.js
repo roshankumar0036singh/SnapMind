@@ -1,21 +1,33 @@
 import { CheerioWebBaseLoader } from '@langchain/community/document_loaders/web/cheerio';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
-import { OllamaEmbeddings } from '@langchain/ollama';
-import { MistralAIEmbeddings } from '@langchain/mistralai';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { getLLM } from '../utils/llm.js';
-import { getKey } from '../utils/credentials.js';
-import config from '../utils/config.js';
+import { getLLM, getEmbeddings } from '../utils/llm.js';
+import { NLP_CONFIG } from '../utils/constants.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
 import { exportSession } from '../utils/exporter.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
 
+const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.WRITER;
+
 export async function startWriter(options = {}) {
   console.log(chalk.magenta('\n✍️ SnapMind Writer Mode'));
   console.log(chalk.gray('Tips: Provide URLs to synthesize research. Use /export to save your draft. \n'));
+
+  const { action } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'action',
+      message: 'How would you like to start your research?',
+      choices: [
+        { name: '🌐 Enter URLs for Live Scraping', value: 'urls' },
+        { name: '🏠 Exit to Menu', value: 'exit' }
+      ]
+    }
+  ]);
+
+  if (action === 'exit') return;
 
   const { urls } = await inquirer.prompt([
     {
@@ -26,31 +38,32 @@ export async function startWriter(options = {}) {
     },
   ]);
 
+  const { tone } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'tone',
+      message: 'Select writing tone:',
+      choices: ['Professional', 'Creative', 'Technical', 'Academic', 'Concise'],
+      default: 'Professional'
+    }
+  ]);
+
   const urlList = urls.split(' ').filter(u => u.startsWith('http'));
   const spinner = ora(`Scraping ${urlList.length} sources...`).start();
   
   try {
-    const loader = new CheerioWebBaseLoader(urlList[0]); // Cheerio standard loader single URL for now or multiple docs
     const rawDocs = [];
     for (const url of urlList) {
-       const uLoader = new CheerioWebBaseLoader(url);
-       const docs = await uLoader.load();
-       rawDocs.push(...docs);
+       const sourceLoader = new CheerioWebBaseLoader(url);
+       const webDocuments = await sourceLoader.load();
+       rawDocs.push(...webDocuments);
     }
     
-    const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1500, chunkOverlap: 200 });
+    const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
     const docs = await splitter.splitDocuments(rawDocs);
     
     // Embeddings
-    const provider = config.get('provider');
-    let embeddings;
-    if (provider === 'ollama' && !options.airgap) {
-      embeddings = new OllamaEmbeddings({ model: 'nomic-embed-text' });
-    } else if (provider === 'openai') {
-      embeddings = new OpenAIEmbeddings({ apiKey: await getKey('openai') });
-    } else {
-      embeddings = new MistralAIEmbeddings({ apiKey: await getKey('mistral') });
-    }
+    const embeddings = await getEmbeddings(options);
     
     const vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
     spinner.succeed(`Success! Synthesized research from ${urlList.length} sources.`);
@@ -69,11 +82,11 @@ export async function startWriter(options = {}) {
 
       const chatSpinner = ora('Synthesizing...').start();
       try {
-        const results = await vectorStore.similaritySearch(query, 6);
+        const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
         const context = results.map(r => `Source: ${r.metadata.source}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
         
         const response = await llm.invoke([
-          ['system', 'You are SnapMind Writer, a professional content strategist. \nUse the provided research snippets to generate high-quality outlines, drafts, and comparisons.'],
+          ['system', `You are SnapMind Writer, a professional content strategist. \nUse the provided research snippets to generate high-quality outlines, drafts, and comparisons. \nTONE: ${tone}`],
           ['user', `Research Context:\n${context}\n\nTask: ${query}`]
         ]);
 

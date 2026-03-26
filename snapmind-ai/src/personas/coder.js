@@ -2,12 +2,8 @@ import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/director
 import { TextLoader } from '@langchain/classic/document_loaders/fs/text';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
-import { OllamaEmbeddings } from '@langchain/ollama';
-import { MistralAIEmbeddings } from '@langchain/mistralai';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { getLLM } from '../utils/llm.js';
-import { getKey } from '../utils/credentials.js';
-import config from '../utils/config.js';
+import { getLLM, getEmbeddings } from '../utils/llm.js';
+import { NLP_CONFIG } from '../utils/constants.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
 import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
 import { exportSession } from '../utils/exporter.js';
@@ -17,40 +13,65 @@ import ora from 'ora';
 import simpleGit from 'simple-git';
 import fs from 'fs-extra';
 import path from 'path';
+import { setupWatcher } from '../utils/watcher.js';
+
+const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.CODER;
 
 export async function startCoder(options = {}) {
   console.log(chalk.blue('\n💻 SnapMind Coder Mode'));
   console.log(chalk.gray('Tips: Use --repo <url> for GitHub or --mount <dir> for local projects.\n'));
 
   let targetPath = options.mount || '.';
-  const namespace = generateNamespace(options.repo || targetPath);
+  let repoUrl = options.repo;
+
+  if (!options.repo && !options.mount) {
+    const { action } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'action',
+        message: 'How would you like to start?',
+        choices: [
+          { name: '📂 Scan Current Directory (.)', value: 'current' },
+          { name: '🔌 Mount External folder (Absolute Path)', value: 'mount' },
+          { name: '🌐 Clone GitHub Repository', value: 'repo' },
+          { name: '🏠 Exit to Menu', value: 'exit' }
+        ]
+      }
+    ]);
+
+    if (action === 'exit') return;
+    if (action === 'mount') {
+      const { path: customPath } = await inquirer.prompt([
+        { type: 'input', name: 'path', message: 'Enter absolute path to folder:', validate: (input) => fs.pathExists(input) || 'Path does not exist' }
+      ]);
+      targetPath = customPath;
+    } else if (action === 'repo') {
+      const { url } = await inquirer.prompt([
+        { type: 'input', name: 'url', message: 'Enter GitHub Repository URL:', validate: (input) => input.endsWith('.git') || 'Invalid git URL' }
+      ]);
+      repoUrl = url;
+    }
+  }
+
+  const namespace = generateNamespace(repoUrl || targetPath);
   const git = simpleGit();
 
   try {
-    const provider = config.get('provider');
-    let embeddings;
-    if (provider === 'ollama' && !options.airgap) {
-      embeddings = new OllamaEmbeddings({ model: 'nomic-embed-text' });
-    } else if (provider === 'openai') {
-      embeddings = new OpenAIEmbeddings({ apiKey: await getKey('openai') });
-    } else {
-      embeddings = new MistralAIEmbeddings({ apiKey: await getKey('mistral') });
-    }
-
+    const embeddings = await getEmbeddings(options);
     let vectorStore = await loadVectorStore(namespace, embeddings);
 
     if (!vectorStore) {
-      if (options.repo) {
-        const repoName = options.repo.split('/').pop().replace('.git', '');
+      if (repoUrl) {
+        const repoName = repoUrl.split('/').pop().replace('.git', '');
         targetPath = path.join(process.cwd(), 'snapmind_repos', repoName);
         
-        const spinner = ora(`Cloning ${options.repo}...`).start();
+        const spinner = ora(`Cloning ${repoUrl}...`).start();
         await fs.ensureDir(path.dirname(targetPath));
         if (await fs.pathExists(targetPath)) {
           spinner.text = 'Repo already exists, updating...';
           await git.cwd(targetPath).pull();
         } else {
-          await git.clone(options.repo, targetPath);
+          await git.clone(repoUrl, targetPath);
         }
         spinner.succeed(`Clone complete: ${repoName}`);
       }
@@ -65,21 +86,45 @@ export async function startCoder(options = {}) {
         '.json': (p) => new TextLoader(p),
       }, true, 'ignore');
       
-      const rawDocs = await loader.load();
-      const filteredDocs = rawDocs.filter(d => 
-        !d.metadata.source.includes('node_modules') && 
-        !d.metadata.source.includes('.git') &&
-        !d.metadata.source.includes('snapmind_repos')
-      );
+        const docs = await loader.load();
+        const filteredDocs = docs.filter(d => 
+          !d.metadata.source.includes('node_modules') && 
+          !d.metadata.source.includes('.git') &&
+          !d.metadata.source.includes('.snapmind_cache') &&
+          !d.metadata.source.includes('snapmind_repos')
+        );
 
-      if (filteredDocs.length === 0) throw new SnapMindError('No supported code files found.', 'EMPTY_CODEBASE');
+        if (filteredDocs.length === 0) throw new SnapMindError('No supported code files found.', 'EMPTY_CODEBASE');
 
-      const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 2000, chunkOverlap: 200 });
-      const docs = await splitter.splitDocuments(filteredDocs);
-      
-      vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
+        const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
+        const splitDocs = await splitter.splitDocuments(filteredDocs);
+        
+        vectorStore = await MemoryVectorStore.fromDocuments(splitDocs, embeddings);
       await saveVectorStore(vectorStore, namespace);
       indexSpinner.succeed(`Analyzed ${filteredDocs.length} files (${docs.length} snippets).`);
+    }
+
+    if (options.watch) {
+      setupWatcher(targetPath, async (event, filePath) => {
+        if (event === 'unlink') {
+          vectorStore.memoryVectors = vectorStore.memoryVectors.filter(v => v.metadata.source !== filePath);
+        } else {
+          try {
+            const loader = new TextLoader(filePath);
+            const rawDocs = await loader.load();
+            const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 2000, chunkOverlap: 200 });
+            const newDocs = await splitter.splitDocuments(rawDocs);
+            
+            // Remove old
+            vectorStore.memoryVectors = vectorStore.memoryVectors.filter(v => v.metadata.source !== filePath);
+            // Add new
+            await vectorStore.addDocuments(newDocs);
+            await saveVectorStore(vectorStore, namespace);
+          } catch (e) {
+            // Ignore temporary file errors
+          }
+        }
+      });
     }
     
     const llm = await getLLM(options);
@@ -112,7 +157,28 @@ export async function startCoder(options = {}) {
           const archContent = `# System Architecture\n\nGenerated by SnapMind AI\n\n\`\`\`mermaid\n${mmdCode}\n\`\`\`\n`;
           await fs.writeFile(archFile, archContent);
           
-          diagramSpinner.succeed(`Architecture diagram saved to ${chalk.bold('ARCHITECTURE.md')}`);
+          const { embed } = await inquirer.prompt([
+            { type: 'confirm', name: 'embed', message: 'Would you like to embed this diagram in your README.md?', default: false }
+          ]);
+
+          if (embed) {
+            const readmePath = path.join(targetPath, 'README.md');
+            if (await fs.pathExists(readmePath)) {
+              let readme = await fs.readFile(readmePath, 'utf8');
+              if (readme.includes('## System Architecture')) {
+                 // Replace existing
+                 readme = readme.replace(/## System Architecture[\s\S]*?(?=(?:##|$))/, `## System Architecture\n\n\`\`\`mermaid\n${mmdCode}\n\`\`\`\n\n`);
+              } else {
+                 readme += `\n\n## System Architecture\n\n\`\`\`mermaid\n${mmdCode}\n\`\`\`\n`;
+              }
+              await fs.writeFile(readmePath, readme);
+              diagramSpinner.succeed(`Diagram embedded in ${chalk.bold('README.md')}`);
+            } else {
+              diagramSpinner.warn('README.md not found, skipped embedding.');
+            }
+          } else {
+            diagramSpinner.succeed(`Architecture diagram saved to ${chalk.bold('ARCHITECTURE.md')}`);
+          }
           continue;
         } catch (e) {
           diagramSpinner.fail('Diagram generation failed.');
@@ -123,7 +189,7 @@ export async function startCoder(options = {}) {
 
       const chatSpinner = ora('Scanning logic...').start();
       try {
-        const results = await vectorStore.similaritySearch(query, 4);
+        const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
         const context = results.map(r => `File: ${path.relative(targetPath, r.metadata.source)}\nContent:\n${r.pageContent}`).join('\n\n---\n\n');
         
         const response = await llm.invoke([

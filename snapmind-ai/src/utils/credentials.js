@@ -3,41 +3,58 @@ import inquirer from 'inquirer';
 import chalk from 'chalk';
 
 const SERVICE_NAME = 'snapmind-ai';
+const cache = {};
+const pending = {};
 
 export async function getKey(provider) {
   const accountName = `${provider}-api-key`;
-  try {
-    let key = await keytar.getPassword(SERVICE_NAME, accountName);
-    
-    if (!key) {
-      console.log(chalk.yellow(`\n⚠️ ${provider} API Key not found in system keychain.`));
-      const { newKey } = await inquirer.prompt([
-        {
-          type: 'password',
-          name: 'newKey',
-          message: `Please enter your ${provider} API Key:`,
-          validate: (input) => input.length > 0 || 'Key cannot be empty',
-        },
-      ]);
+  if (cache[accountName]) return cache[accountName];
+  if (pending[accountName]) return pending[accountName];
+
+  pending[accountName] = (async () => {
+    try {
+      let key = await keytar.getPassword(SERVICE_NAME, accountName);
       
-      await keytar.setPassword(SERVICE_NAME, accountName, newKey);
-      console.log(chalk.green('✅ Key securely stored in OS Keychain.\n'));
-      key = newKey;
+      if (!key) {
+        console.log(chalk.yellow(`\n⚠️ ${provider} API Key not found in system keychain.`));
+        const { newKey } = await inquirer.prompt([
+          {
+            type: 'password',
+            name: 'newKey',
+            message: `Please enter your ${provider} API Key:`,
+            mask: '*',
+            validate: (input) => input.length > 0 || 'Key cannot be empty',
+          },
+        ]);
+        
+        await keytar.setPassword(SERVICE_NAME, accountName, newKey);
+        console.log(chalk.green('✅ Key securely stored in OS Keychain.\n'));
+        key = newKey;
+      }
+      
+      cache[accountName] = key;
+      delete pending[accountName];
+      return key;
+    } catch (error) {
+      delete pending[accountName];
+      console.error(chalk.red('Error accessing system keychain:'), error.message);
+      return null;
     }
-    
-    return key;
-  } catch (error) {
-    console.error(chalk.red('Error accessing system keychain:'), error.message);
-    return null;
-  }
+  })();
+
+  return pending[accountName];
 }
 
 export async function setKey(provider, value) {
-  await keytar.setPassword(SERVICE_NAME, `${provider}-api-key`, value);
+  const accountName = `${provider}-api-key`;
+  cache[accountName] = value;
+  await keytar.setPassword(SERVICE_NAME, accountName, value);
 }
 
 export async function deleteKey(provider) {
-  await keytar.deletePassword(SERVICE_NAME, `${provider}-api-key`);
+  const accountName = `${provider}-api-key`;
+  delete cache[accountName];
+  await keytar.deletePassword(SERVICE_NAME, accountName);
   console.log(chalk.gray(`${provider} API Key removed from keychain.`));
 }
 
