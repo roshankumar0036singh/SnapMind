@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Trash2, Plus, Tag } from 'lucide-react';
-import { apiClient } from '../../background/api';
+import { MessageSquare, Trash2, Plus, Tag, Clock, Database } from 'lucide-react';
+import { apiClient } from '../background/api';
 
 export default function SessionList({
     sessions,
@@ -15,52 +15,65 @@ export default function SessionList({
     useEffect(() => {
         // Fetch global semantic tags on mount
         const loadTags = async () => {
-            const fetchedTags = await apiClient.getTags();
-            setTags(fetchedTags || []);
+            try {
+                const fetchedTags = await apiClient.getTags();
+                setTags(fetchedTags || []);
+            } catch (e) {
+                console.error("Failed to load tags:", e);
+            }
         };
         loadTags();
     }, []);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full bg-[#09090b] text-[#fafafa] font-sans">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-800">Conversations</h3>
+            <div className="flex items-center justify-between p-4 border-b border-[#1a1a1d] bg-[#09090b]/50 backdrop-blur-sm sticky top-0 z-10">
+                <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-[#71717a]" />
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#fafafa]">Persistence Ledger</h3>
+                </div>
                 <button
                     onClick={onNewSession}
-                    className="p-1.5 hover:bg-indigo-50 rounded-lg text-indigo-600 transition-colors"
-                    title="New conversation"
+                    className="p-1.5 hover:bg-[#1a1a1d] rounded-lg text-[#22c55e] transition-all hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] active:scale-95 border border-[#22c55e]/10"
+                    title="New Instance"
                 >
                     <Plus className="w-4 h-4" />
                 </button>
             </div>
 
             {/* Session List */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide">
                 {sessions.length === 0 ? (
-                    <div className="text-center text-slate-400 text-xs py-8">
-                        No conversations yet
+                    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                        <Database className="w-8 h-8 text-[#1a1a1d] mb-4" />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#3f3f46] italic">
+                            Zero Transaction Nodes Detected
+                        </p>
                     </div>
                 ) : (
                     sessions.map(session => (
                         <div
                             key={session.id}
                             onClick={() => onSessionSwitch(session.id)}
-                            className={`group relative p-3 rounded-lg cursor-pointer transition-all ${session.id === currentSessionId
-                                ? 'bg-indigo-50 border border-indigo-200'
-                                : 'bg-white border border-slate-200 hover:border-indigo-200 hover:bg-slate-50'
+                            className={`group relative p-3 rounded-xl cursor-pointer transition-all border ${session.id === currentSessionId
+                                ? 'bg-[#22c55e]/5 border-[#22c55e]/30 shadow-[0_4px_20px_-8px_rgba(34,197,94,0.1)]'
+                                : 'bg-[#121214] border-[#1a1a1d] hover:border-[#27272a] hover:bg-[#18181b]'
                                 }`}
                         >
-                            <div className="flex items-start gap-2">
-                                <MessageSquare className={`w-4 h-4 mt-0.5 shrink-0 ${session.id === currentSessionId ? 'text-indigo-600' : 'text-slate-400'
-                                    }`} />
+                            <div className="flex items-start gap-3">
+                                <div className={`mt-0.5 p-1.5 rounded-lg transition-colors ${session.id === currentSessionId ? 'bg-[#22c55e]/10 text-[#22c55e]' : 'bg-[#18181b] text-[#3f3f46] group-hover:text-[#71717a]'}`}>
+                                    <MessageSquare className="w-3.5 h-3.5" />
+                                </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className={`text-sm font-medium truncate ${session.id === currentSessionId ? 'text-indigo-900' : 'text-slate-700'
-                                        }`}>
-                                        {session.title}
+                                    <div className={`text-[11px] font-black uppercase tracking-tight truncate ${session.id === currentSessionId ? 'text-[#fafafa]' : 'text-[#a1a1aa] group-hover:text-[#fafafa]'}`}>
+                                        {session.title || "Untitled Instance"}
                                     </div>
-                                    <div className="text-xs text-slate-400 mt-0.5">
-                                        {new Date(session.updatedAt).toLocaleDateString()}
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <div className={`w-1 h-1 rounded-full ${session.id === currentSessionId ? 'bg-[#22c55e] animate-pulse' : 'bg-[#3f3f46]'}`} />
+                                        <div className="text-[9px] font-black text-[#3f3f46] uppercase tracking-widest">
+                                            {new Date(session.updatedAt).toLocaleDateString()}
+                                        </div>
                                     </div>
                                 </div>
                                 <button
@@ -68,8 +81,8 @@ export default function SessionList({
                                         e.stopPropagation();
                                         onSessionDelete(session.id);
                                     }}
-                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-all"
-                                    title="Delete conversation"
+                                    className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/10 rounded-lg text-[#3f3f46] hover:text-red-500 transition-all"
+                                    title="Purge Node"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -81,16 +94,16 @@ export default function SessionList({
 
             {/* Semantic Tags Section */}
             {tags.length > 0 && (
-                <div className="p-3 border-t border-slate-200" style={{ maxHeight: '150px', overflowY: 'auto' }}>
-                    <div className="flex items-center gap-1.5 mb-2 text-slate-600 font-medium text-xs uppercase tracking-wider">
-                        <Tag className="w-3.5 h-3.5" />
-                        Semantic Web Graph
+                <div className="p-3 border-t border-[#1a1a1d] bg-[#0a0a0c]">
+                    <div className="flex items-center gap-2 mb-3 px-1">
+                        <Tag className="w-3 h-3 text-[#22c55e]" />
+                        <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-[#71717a]">Semantic Schema</h4>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5 px-1 max-h-[120px] overflow-y-auto scrollbar-hide">
                         {tags.map((tag, idx) => (
                             <div
                                 key={idx}
-                                className="px-2 py-1 bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-medium rounded-md hover:bg-indigo-100 cursor-pointer transition-colors"
+                                className="px-2 py-1 bg-[#121214] border border-[#27272a] text-[#a1a1aa] text-[9px] font-black uppercase tracking-tighter rounded hover:border-[#22c55e]/50 hover:text-[#22c55e] cursor-pointer transition-all"
                             >
                                 {tag}
                             </div>
@@ -101,12 +114,12 @@ export default function SessionList({
 
             {/* Footer */}
             {sessions.length > 0 && (
-                <div className="p-3 border-t border-slate-200">
+                <div className="p-4 border-t border-[#1a1a1d] bg-[#09090b]">
                     <button
                         onClick={onClearAll}
-                        className="w-full py-2 px-3 text-xs text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
+                        className="w-full py-2.5 px-3 text-[10px] font-black uppercase tracking-widest text-[#ef4444] border border-[#ef4444]/10 hover:bg-[#ef4444]/5 hover:border-[#ef4444]/30 rounded-lg transition-all"
                     >
-                        Clear All History
+                        Purge All History
                     </button>
                 </div>
             )}

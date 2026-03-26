@@ -1942,1180 +1942,384 @@ function App() {
     }
   };
 
-  if (view === 'settings') {
-    return (
-      <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-indigo-600" /></div>}>
-        <Settings onBack={() => setView('chat')} />
-      </Suspense>
-    );
-  }
 
-  if (view === 'history') {
-    return (
-      <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-violet-50/50">
-        <header className="px-5 py-4 bg-white/80 backdrop-blur-md border-b border-slate-200/60">
-          <div className="flex items-center justify-between">
-            <h1 className="text-slate-800 font-bold text-base">Conversation History</h1>
-            <button
-              onClick={() => setView('chat')}
-              className="text-sm text-slate-600 hover:text-indigo-600 transition-colors"
-            >
-              ← Back to Chat
-            </button>
-          </div>
-        </header>
-        <div className="flex-1 overflow-hidden">
-          <Suspense fallback={<LoadingSkeleton type="card" count={3} />}>
-            <SessionList
-              sessions={sessions}
-              currentSessionId={currentSessionId}
-              onSessionSwitch={(id) => {
-                switchSession(id);
-                setView('chat');
-              }}
-              onSessionDelete={deleteSession}
-              onNewSession={() => {
-                createNewSession();
-                setView('chat');
-              }}
-              onClearAll={clearAllHistory}
-            />
-          </Suspense>
-        </div>
-      </div>
-    );
-  }
 
 
   return (
-    <div className="flex flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 text-sm font-sans antialiased text-slate-900 selection:bg-indigo-100 overflow-hidden max-w-full" style={{ position: 'fixed', inset: 0, height: '100dvh', width: '100vw' }}>
-
-      {/* Offline Banner */}
-      {isOffline && (
-        <div className="bg-red-500 text-white px-4 py-2 text-center text-xs font-medium flex items-center justify-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-          No internet connection - Some features may not work
+    <div className="flex h-screen w-full bg-[#09090b] text-[#a1a1aa] font-sans overflow-hidden selection:bg-[#22c55e]/30 selection:text-white">
+      {/* SIDEBAR NAVIGATION (240px) */}
+      <aside className="w-[240px] bg-[#0b0b0d] border-r border-[#1a1a1d] flex flex-col z-50 pt-12">
+        <div className="px-6 mb-8 group cursor-default">
+          <div className="flex items-center gap-3 py-3 px-4 bg-[#111113] border border-[#27272a] rounded-xl shadow-inner">
+             <div className="w-8 h-8 rounded-lg bg-[#09090b] border border-[#1a1a1d] flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-[#22c55e]" />
+             </div>
+             <div className="min-w-0">
+                <p className="text-[11px] font-black text-[#fafafa] tracking-wider uppercase">Mainframe</p>
+                <p className="text-[9px] font-bold text-[#71717a] uppercase tracking-[0.2em] mt-0.5">Local Instance</p>
+             </div>
+          </div>
         </div>
-      )}
 
-      {/* Modern Clean Header */}
-      <header style={{
-        background: 'var(--bg-primary)',
-        borderBottom: '1px solid var(--border-light)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 20
-      }} className="px-4 py-3">
-        <div className="flex items-center justify-between">
-          {/* Left: Logo + Title */}
+        <nav className="flex-1 px-4 space-y-1.5">
+          {[
+            { id: 'rag', label: 'Neural Chat', icon: MessageSquare },
+            { id: 'memory', label: 'Vector Memory', icon: Database },
+            { id: 'browser', label: 'Shadow Agent', icon: Globe },
+            { id: 'visual', label: 'Vision Protocol', icon: Crop },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => { setMode(item.id); setView('chat'); if (item.id === 'visual') handleRegionScan(); }}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all group relative ${
+                mode === item.id && view === 'chat'
+                ? 'bg-[#111113] text-[#fafafa] border border-[#27272a] shadow-lg' 
+                : 'text-[#71717a] hover:text-[#fafafa] hover:bg-[#111113]/50'
+              }`}
+            >
+              {mode === item.id && view === 'chat' && (
+                <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-[#22c55e] rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+              )}
+              <item.icon className={`w-4 h-4 transition-colors ${
+                mode === item.id && view === 'chat' ? 'text-[#22c55e]' : 'group-hover:text-[#22c55e]'
+              }`} />
+              {item.label}
+            </button>
+          ))}
+          
+          <div className="pt-4 border-t border-[#1a1a1d] mt-4 space-y-1.5">
+             <button
+               onClick={() => setView('history')}
+               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all group ${
+                 view === 'history' ? 'bg-[#111113] text-[#fafafa] border border-[#27272a]' : 'text-[#71717a] hover:text-[#fafafa]'
+               }`}
+             >
+               <History className={`w-4 h-4 ${view === 'history' ? 'text-[#22c55e]' : ''}`} />
+               Research Logs
+             </button>
+             <button
+               onClick={() => setView('settings')}
+               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all group ${
+                 view === 'settings' ? 'bg-[#111113] text-[#fafafa] border border-[#27272a]' : 'text-[#71717a] hover:text-[#fafafa]'
+               }`}
+             >
+               <SettingsIcon className={`w-4 h-4 ${view === 'settings' ? 'text-[#22c55e]' : ''}`} />
+               Controller
+             </button>
+          </div>
+        </nav>
+
+        <div className="p-6">
+          <div className="p-4 rounded-xl bg-[#09090b] border border-[#1a1a1d] group hover:border-[#27272a] transition-all">
+             <div className="flex items-center justify-between mb-3">
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#3f3f46]">Core Status</span>
+                <div className="flex gap-1">
+                   <div className="w-1 h-1 rounded-full bg-[#22c55e]" />
+                   <div className="w-1 h-1 rounded-full bg-[#22c55e] opacity-50" />
+                   <div className="w-1 h-1 rounded-full bg-[#22c55e] opacity-20" />
+                </div>
+             </div>
+             <p className="text-[11px] font-bold text-[#fafafa] flex items-center gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#22c55e]" />
+                Secured
+             </p>
+          </div>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <main className="flex-1 flex flex-col relative">
+        {/* DESKTOP TITLE BAR (Draggable) */}
+        <div className="h-10 border-b border-[#1a1a1d] bg-[#09090b]/80 backdrop-blur-xl flex items-center justify-between px-6 z-50 shrink-0" style={{ WebkitAppRegion: 'drag' }}>
+          <div className="flex items-center gap-3">
+             <div className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse shadow-[0_0_8px_#22c55e]" />
+             <span className="text-[10px] font-bold text-[#71717a] uppercase tracking-[0.3em]">SnapMind <span className="text-[#3f3f46]">Console</span></span>
+          </div>
+          
+          <div className="flex items-center -mr-2 no-drag" style={{ WebkitAppRegion: 'no-drag' }}>
+             <button onClick={() => window.close()} className="p-2.5 hover:bg-neutral-800 transition-colors">
+               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                 <path d="M1 1L9 9M9 1L1 9" stroke="#71717a" strokeWidth="1.5" strokeLinecap="round"/>
+               </svg>
+             </button>
+          </div>
+        </div>
+
+        {/* HEADER / TOOLBAR */}
+        <header className="h-14 border-b border-[#1a1a1d] flex items-center justify-between px-8 bg-[#09090b]/40 backdrop-blur-md sticky top-0 z-40">
+          <div className="flex items-center gap-4">
+             <h2 className="text-sm font-bold tracking-tight text-[#fafafa] lowercase">
+                ~/ {view === 'chat' ? (mode === 'rag' ? 'neural-chat' : mode === 'browser' ? 'shadow-agent' : 'vision-protocol') : view === 'memory' ? 'vector-memory' : view === 'settings' ? 'controller-config' : 'system-logs'}
+             </h2>
+             
+             {currentUrl && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-[#111113] border border-[#27272a] rounded-full">
+                  <Globe className="w-3 h-3 text-[#71717a]" />
+                  <span className="text-[10px] font-bold text-[#a1a1aa] truncate max-w-[150px]">{new URL(currentUrl).hostname}</span>
+                </div>
+             )}
+          </div>
+
           <div className="flex items-center gap-2">
-            <div style={{
-              background: 'var(--primary-500)',
-              borderRadius: 'var(--radius-md)',
-              padding: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <Bot className="w-4 h-4 text-white" />
-            </div>
-            <h1 style={{
-              fontSize: 'var(--text-lg)',
-              fontWeight: 'var(--font-semibold)',
-              color: 'var(--text-primary)'
-            }}>
-              SnapMind
-            </h1>
-          </div>
-
-          {/* Center: Current Page Domain Pill - Clickable */}
-          {currentUrl && (
-            <a
-              href={currentUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-light)',
-                borderRadius: 'var(--radius-full)',
-                padding: '4px 12px',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-secondary)',
-                fontWeight: 'var(--font-medium)',
-                maxWidth: '200px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textDecoration: 'none',
-                transition: 'var(--transition-fast)',
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--primary-50)';
-                e.currentTarget.style.borderColor = 'var(--primary-200)';
-                e.currentTarget.style.color = 'var(--primary-600)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'var(--bg-secondary)';
-                e.currentTarget.style.borderColor = 'var(--border-light)';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
-              title={`Open ${currentUrl}`}
-            >
-              {new URL(currentUrl).hostname}
-            </a>
-          )}
-
-          {/* Right: Icon Navigation */}
-          <div className="flex items-center gap-1">
-            {/* Index Button */}
-            <button
-              onClick={handleIngest}
-              disabled={isLoading || !currentUrl}
-              title="Index this page (Ctrl+I)"
-              style={{
-                padding: '8px',
-                borderRadius: 'var(--radius-md)',
-                transition: 'var(--transition-fast)',
-                color: isLoading ? 'var(--text-tertiary)' : 'var(--text-tertiary)',
-                background: 'transparent',
-                border: 'none',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.5 : 1
-              }}
-              onMouseEnter={(e) => {
-                if (!isLoading) {
-                  e.currentTarget.style.background = 'var(--primary-50)';
-                  e.currentTarget.style.color = 'var(--primary-600)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isLoading) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-tertiary)';
-                }
-              }}
-            >
-              <Database className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={() => setView('history')}
-              title="Conversation history"
-              style={{
-                padding: '8px',
-                borderRadius: 'var(--radius-md)',
-                transition: 'var(--transition-fast)',
-                color: 'var(--text-tertiary)',
-                background: 'transparent'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--primary-50)';
-                e.currentTarget.style.color = 'var(--primary-600)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-tertiary)';
-              }}
-            >
-              <History className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={() => setView('settings')}
-              title="Settings"
-              style={{
-                padding: '8px',
-                borderRadius: 'var(--radius-md)',
-                transition: 'var(--transition-fast)',
-                color: 'var(--text-tertiary)',
-                background: 'transparent'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'var(--primary-50)';
-                e.currentTarget.style.color = 'var(--primary-600)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-tertiary)';
-              }}
-            >
-              <SettingsIcon className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Modern Pill-Style Mode Tabs */}
-      <div style={{
-        padding: 'var(--space-2)',
-        background: 'var(--bg-primary)',
-        borderBottom: '1px solid var(--border-light)'
-      }}>
-        <div style={{
-          display: 'flex',
-          gap: '4px',
-          padding: '4px',
-          background: 'var(--bg-secondary)',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-light)'
-        }}>
-          <button
-            onClick={() => { setMode('rag'); setView('chat'); setCropPreview(null); }}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
-              transition: 'var(--transition-fast)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              background: mode === 'rag' && view === 'chat' ? 'var(--tab-active-bg)' : 'transparent',
-              color: mode === 'rag' && view === 'chat' ? 'var(--tab-active-color)' : 'var(--text-secondary)',
-              boxShadow: mode === 'rag' && view === 'chat' ? 'var(--shadow-sm)' : 'none'
-            }}
-            onMouseEnter={(e) => {
-              if (!(mode === 'rag' && view === 'chat')) {
-                e.currentTarget.style.background = 'var(--tab-hover-bg)';
-                e.currentTarget.style.color = 'var(--tab-hover-color)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!(mode === 'rag' && view === 'chat')) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }
-            }}
-          >
-            <FileText className="w-4 h-4" />
-            <span>RAG</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setView('chat');
-              handleRegionScan();
-            }}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
-              transition: 'var(--transition-fast)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              background: mode === 'visual' && view === 'chat' ? 'var(--tab-active-bg)' : 'transparent',
-              color: mode === 'visual' && view === 'chat' ? 'var(--tab-active-color)' : 'var(--text-secondary)',
-              boxShadow: mode === 'visual' && view === 'chat' ? 'var(--shadow-sm)' : 'none'
-            }}
-            onMouseEnter={(e) => {
-              if (!(mode === 'visual' && view === 'chat')) {
-                e.currentTarget.style.background = 'var(--tab-hover-bg)';
-                e.currentTarget.style.color = 'var(--tab-hover-color)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!(mode === 'visual' && view === 'chat')) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }
-            }}
-          >
-            <Crop className="w-4 h-4" />
-            <span>Visual</span>
-          </button>
-
-          <button
-            onClick={() => { setView('memory'); }}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
-              transition: 'var(--transition-fast)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              background: view === 'memory' ? 'var(--tab-active-bg)' : 'transparent',
-              color: view === 'memory' ? 'var(--tab-active-color)' : 'var(--text-secondary)',
-              boxShadow: view === 'memory' ? 'var(--shadow-sm)' : 'none'
-            }}
-            onMouseEnter={(e) => {
-              if (view !== 'memory') {
-                e.currentTarget.style.background = 'var(--tab-hover-bg)';
-                e.currentTarget.style.color = 'var(--tab-hover-color)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (view !== 'memory') {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }
-            }}
-          >
-            <Database className="w-4 h-4" />
-            <span>Memory</span>
-          </button>
-
-          <button
-            onClick={() => { setMode('browser'); setView('chat'); setCropPreview(null); }}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
-              transition: 'var(--transition-fast)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              background: mode === 'browser' && view === 'chat' ? 'var(--tab-active-bg)' : 'transparent',
-              color: mode === 'browser' && view === 'chat' ? 'var(--tab-active-color)' : 'var(--text-secondary)',
-              boxShadow: mode === 'browser' && view === 'chat' ? 'var(--shadow-sm)' : 'none'
-            }}
-            onMouseEnter={(e) => {
-              if (!(mode === 'browser' && view === 'chat')) {
-                e.currentTarget.style.background = 'var(--tab-hover-bg)';
-                e.currentTarget.style.color = 'var(--tab-hover-color)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!(mode === 'browser' && view === 'chat')) {
-                e.currentTarget.style.background = 'transparent';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }
-            }}
-          >
-            <Globe className="w-4 h-4" />
-            <span>Browser</span>
-          </button>
-
-          {/* [NEW] Visible Browser Toggle - only shown when Browser mode or Desktop specific */}
-          {mode === 'browser' && (
-            <div className="flex items-center gap-2 px-3 border-l border-slate-200 ml-2 animate-in fade-in slide-in-from-left-2">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Visible</span>
-              <button
-                onClick={() => setVisibleBrowser(!visibleBrowser)}
-                className={`w-8 h-4 rounded-full relative transition-all duration-300 ${visibleBrowser ? 'bg-indigo-500' : 'bg-slate-200'}`}
-              >
-                <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all duration-300 ${visibleBrowser ? 'left-4.5' : 'left-0.5'}`} />
-              </button>
-            </div>
-          )}
-
-        </div>
-
-
-        {/* [NEW] External URL Input for Background Scraping */}
-        {mode === 'rag' && view === 'chat' && (
-          <div className="flex flex-col gap-2 mt-3 px-1">
-            <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/60 p-1.5 rounded-xl transition-all focus-within:bg-white focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-500/10">
-              <input
-                type="url"
-                placeholder="Or index any external URL..."
-                value={externalUrl}
-                onChange={(e) => setExternalUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && externalUrl.trim() && !isLoading) {
-                    handleIngest(externalUrl.trim());
-                  }
-                }}
-                className="flex-1 bg-transparent px-3 py-2 outline-none text-[13px] text-slate-700 placeholder:text-slate-400 font-medium"
-              />
-              <button
-                onClick={() => {
-                  if (externalUrl.trim() && !isLoading) {
-                    handleIngest(externalUrl.trim());
-                  }
-                }}
-                disabled={!externalUrl.trim() || isLoading}
-                className={`flex items-center gap-2 px-4 py-2 flex-shrink-0 rounded-lg font-semibold text-[13px] transition-all duration-200 ${externalUrl.trim() && !isLoading
-                  ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-indigo-600 hover:to-indigo-700 active:scale-95 cursor-pointer'
-                  : 'bg-slate-100/80 text-slate-400 cursor-not-allowed'
-                  }`}
-              >
-                <div className={`flex items-center justify-center w-4 h-4 rounded-full ${externalUrl.trim() && !isLoading ? 'bg-white/20' : 'bg-slate-200/50'}`}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                </div>
-                Scrape
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* [NEW] Report Generation Button for Browser Mode REMOVED as per user request */}
-      </div>
-
-      {/* Modern Memory View */}
-      {
-        view === 'memory' && (
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: 'var(--space-2)',
-            background: 'var(--bg-secondary)'
-          }}>
-            {/* Tab Switcher */}
-            <div className="flex p-1 bg-slate-100 rounded-xl mb-4 border border-slate-200/60 shadow-inner">
-              <button
-                onClick={() => setMemoryTab('sites')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'sites' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                Sites
-              </button>
-              <button
-                onClick={() => setMemoryTab('graph')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'graph' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                Graph
-              </button>
-               <button
-                onClick={() => setMemoryTab('bookmarks')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'bookmarks' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
-              >
-                <Bookmark className="w-3.5 h-3.5" />
-                Notebook
-              </button>
-              <button
-                onClick={() => setMemoryTab('folders')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'folders' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-50'}`}
-              >
-                <Folder className="w-3.5 h-3.5" />
-                Folders
-              </button>
-              <button
-                onClick={() => setMemoryTab('updates')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'updates' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-50'}`}
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                Updates
-              </button>
-              <button
-                onClick={() => setMemoryTab('stats')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'stats' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-50'}`}
-              >
-                <Activity className="w-3.5 h-3.5" />
-                Stats
-              </button>
-            </div>
-
-            {/* Header */}
-            <div style={{
-              marginBottom: 'var(--space-3)',
-              padding: 'var(--space-2)',
-              background: 'var(--bg-primary)',
-              borderRadius: 'var(--radius-lg)',
-              border: '1px solid var(--border-light)'
-            }}>
-              <h2 style={{
-                fontSize: 'var(--text-lg)',
-                fontWeight: 'var(--font-semibold)',
-                color: 'var(--text-primary)',
-                marginBottom: '4px'
-              }}>
-                {memoryTab === 'sites' ? 'Indexed Sites' : memoryTab === 'graph' ? 'Knowledge Map' : memoryTab === 'updates' ? 'Library Maintenance' : memoryTab === 'stats' ? 'RAG Analytics' : 'Research Notebook'}
-              </h2>
-              <p style={{
-                fontSize: 'var(--text-sm)',
-                color: 'var(--text-secondary)'
-              }}>
-                {memoryTab === 'sites'
-                  ? "Pages you've indexed for intelligent search"
-                  : memoryTab === 'graph'
-                    ? "Semantic entities and relationships discovered across your knowledge base"
-                    : memoryTab === 'bookmarks'
-                      ? "Pinned citations and key snippets saved for your research"
-                      : memoryTab === 'updates'
-                        ? "Websites that may have changed since they were last indexed"
-                        : memoryTab === 'stats'
-                          ? "Insights into your local knowledge base growth and storage"
-                          : "Local directories synced via real-time file system monitoring"}
-              </p>
-            </div>
-
-            {/* site list or graph */}
-            {memoryTab === 'sites' ? (
-              <SiteList onBack={() => setView('chat')} />
-            ) : memoryTab === 'graph' ? (
-              selectedGraphSession ? (
-                <div className="space-y-4">
-                  <button
-                    onClick={handleBackToSessions}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-indigo-600 transition-colors"
+             {mode === 'browser' && (
+                <div className="flex items-center gap-2 pr-4 mr-2 border-r border-[#1a1a1d]">
+                   <span className="text-[10px] font-black text-[#3f3f46] uppercase tracking-widest">Observer</span>
+                   <button
+                    onClick={() => setVisibleBrowser(!visibleBrowser)}
+                    className={`w-7 h-3.5 rounded-full relative transition-all duration-300 ${visibleBrowser ? 'bg-[#22c55e]' : 'bg-[#1a1a1d]'}`}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-                    Back to Conversations
+                    <div className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-all duration-300 ${visibleBrowser ? 'left-3.5' : 'left-0.5'}`} />
                   </button>
-                  <GraphMap data={graphData} isLoading={isLoading} />
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {graphSessions.length === 0 && !isLoading ? (
-                    <div className="text-center p-12 bg-white rounded-2xl border border-slate-200 border-dashed">
-                      <div className="w-12 h-12 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Database className="w-6 h-6" />
-                      </div>
-                      <h3 className="text-slate-700 font-bold">No Graphs Found</h3>
-                      <p className="text-xs text-slate-500 max-w-[200px] mx-auto mt-1">Start a conversation and index some content to build your knowledge map.</p>
-                    </div>
-                  ) : (
-                    graphSessions.map((session) => (
-                      <button
-                        key={session.session_id}
-                        onClick={() => handleSelectGraphSession(session.session_id)}
-                        className="w-full max-w-full flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-2xl hover:border-indigo-500 hover:shadow-md hover:shadow-indigo-500/5 transition-all group text-left"
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
-                          <MessageSquare className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-slate-800 text-sm truncate pr-2">
-                            {session.title || "Untitled Conversation"}
-                          </h4>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                              <div className="w-1 h-1 rounded-full bg-slate-400"></div>
-                              {session.node_count} Entities
-                            </span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                              <div className="w-1 h-1 rounded-full bg-slate-400"></div>
-                              {session.edge_count} Relations
-                            </span>
-                          </div>
-                        </div>
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 group-hover:text-indigo-500 group-hover:bg-indigo-50 transition-all">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                  {isLoading && (
-                    <div className="flex justify-center p-8">
-                      <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
-                    </div>
-                  )}
-                </div>
-              )
-            ) : memoryTab === 'bookmarks' ? (
-              <BookmarkList
-                bookmarks={bookmarks}
-                loading={bookmarksLoading}
-                onDelete={handleDeleteBookmark}
-              />
-            ) : memoryTab === 'folders' ? (
-              <WatchFoldersPanel />
-            ) : memoryTab === 'updates' ? (
-                <RefreshSuggestions backendUrl={backendUrl} />
-            ) : (
-                <AnalyticsView backendUrl={backendUrl} />
-            )}
+             )}
+             
+             <button className="p-2 text-[#71717a] hover:text-[#fafafa] transition-colors rounded-lg hover:bg-[#111113]">
+                <Activity className="w-4 h-4" />
+             </button>
           </div>
-        )
-      }
+        </header>
 
-      {/* Chat Container */}
-      {
-        view === 'chat' && (
-          <div
-            className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 scroll-smooth scrollbar-hide relative min-h-0"
-            id="message-container"
-            style={{ background: 'var(--bg-secondary)', maxWidth: '100%', scrollbarGutter: 'stable' }}
-          >
-            {messages.map((msg, idx) => (
-              <div
-                key={msg.id}
-                style={{
-                  display: 'flex',
-                  gap: '12px',
-                  flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
-                  animation: 'fadeIn 0.3s ease-in-out'
-                }}
-              >
-                {/* Avatar */}
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  background: msg.role === 'user' ? 'var(--primary-500)' : 'var(--bg-secondary)',
-                  border: msg.role === 'user' ? 'none' : '1px solid var(--border-light)',
-                  color: msg.role === 'user' ? 'white' : 'var(--primary-600)'
-                }}>
-                  {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                </div>
 
-                {/* Message Card */}
-                <div
-                  className="group/msg relative"
-                  style={{
-                    maxWidth: '85%',
-                    padding: 'var(--space-2)',
-                    borderRadius: 'var(--radius-xl)',
-                    background: msg.role === 'user' ? 'var(--primary-50)' : 'var(--bg-primary)',
-                    border: `1px solid ${msg.role === 'user' ? 'var(--primary-100)' : 'var(--border-light)'}`,
-                    boxShadow: 'var(--shadow-sm)',
-                    transition: 'all 0.2s ease-out'
-                  }}>
-                  {/* [NEW] Per-Message Report Download Icon */}
-                  {msg.role === 'assistant' && mode === 'browser' && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDownloadReport();
-                      }}
-                      className="absolute -top-2.5 -right-2.5 p-2 bg-white border border-slate-200 rounded-full shadow-lg text-indigo-600 opacity-0 group-hover/msg:opacity-100 transition-all hover:bg-indigo-50 hover:scale-110 active:scale-95 z-30 flex items-center justify-center"
-                      title="Download Systematic Research Paper"
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {/* Message Content */}
-                  <div style={{
-                    fontSize: 'var(--text-sm)',
-                    lineHeight: 'var(--leading-relaxed)',
-                    color: msg.role === 'user' ? 'var(--primary-700)' : 'var(--text-primary)',
-                    wordBreak: 'break-word',
-                    overflowWrap: 'anywhere'
-                  }}>
-                    {msg.role === 'user' ? (
-                      <div>{msg.text}</div>
-                    ) : (
-                      (() => {
-                        // [NEW] Dynamically create components for THIS message context
-                        const components = {
-                          a: ({ href, children }) => {
-                            const blockId = href?.replace('#snap-cite-', '');
-                            if (href?.startsWith('#snap-cite-')) {
-                              return (
-                                <span
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-
-                                    console.log("[Citation] Intercepted click for block:", blockId);
-
-                                    // 1. [FIX] EXCLUSIVELY use this message's blocks
-                                    let block = msg.contextBlocks?.find(b => b.id === blockId);
-
-                                    // 2. Fallback to global context pools (pinned tabs, active tab)
-                                    if (!block) {
-                                      const globalBlocks = [
-                                        ...(contentBlocks || []),
-                                        ...pinnedTabs.flatMap(t => t.blocks || [])
-                                      ];
-                                      block = globalBlocks.find(b => b.id === blockId);
-                                    }
-                                    const citeData = msg.citations?.find(c => c.blockId === blockId);
-
-                                    if (block || citeData) {
-                                      const url = block?.url || block?.sourceURL || citeData?.url;
-                                      const snippet = block?.highlight_snippet || block?.text || "";
-
-                                      if (url) {
-                                        const pageNum = block?.metadata?.page || block?.page || citeData?.page;
-                                        handleCitationHighlight(blockId, url, snippet, pageNum);
-                                      } else {
-                                        console.warn("[Markdown] No URL found for citation:", blockId);
-                                      }
-                                    } else {
-                                      console.warn("[Markdown] No metadata found for citation:", blockId);
-                                    }
-                                  }}
-                                  className="citation-dot cursor-pointer transition-all hover:scale-125 select-none text-indigo-500 font-serif font-bold align-super ml-0.5 text-sm"
-                                >
-                                  {children || '●'}
-                                </span>
-                              );
-                            }
-                            return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
-                          },
-                          code: ({ node, inline, className, children, ...props }) => {
-                            const match = /language-(\w+)/.exec(className || '');
-                            const lang = match ? match[1] : '';
-
-                            if (!inline && lang === 'mermaid') {
-                              return <MermaidChart chart={String(children).replace(/\n$/, '')} />;
-                            }
-
-                            return !inline ? (
-                              <div className="relative group/code">
-                                <pre className={`${className} p-4 rounded-xl overflow-x-auto bg-slate-900/50 backdrop-blur-sm border border-slate-800 text-[13px] leading-relaxed shadow-lg mb-4`} {...props}>
-                                  <code>{children}</code>
-                                </pre>
-                                <button
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(String(children));
-                                    toast.success("Code copied to clipboard!");
-                                  }}
-                                  className="absolute top-3 right-3 p-2 bg-slate-800/80 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg opacity-0 group-hover/code:opacity-100 transition-all border border-slate-700/50 backdrop-blur-sm"
-                                  title="Copy Code"
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" />
-                                  </svg>
-                                </button>
-                              </div>
-                            ) : (
-                              <code className="px-1.5 py-0.5 bg-slate-100 text-indigo-600 rounded-md font-medium" {...props}>
-                                {children}
-                              </code>
-                            );
-                          },
-                          table: ({ children }) => (
-                            <div className="overflow-x-auto mb-4 border border-slate-200 rounded-lg shadow-sm">
-                              <table className="min-w-full divide-y divide-slate-200 text-xs">
-                                {children}
-                              </table>
-                            </div>
-                          ),
-                          thead: ({ children }) => <thead className="bg-slate-50/80">{children}</thead>,
-                          th: ({ children }) => <th className="px-3 py-2 text-left font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">{children}</th>,
-                          td: ({ children }) => <td className="px-3 py-2 text-slate-600 border-b border-slate-100">{children}</td>
-                        };
-
-                        // [FIX] Updated regex to handle multiple citations in brackets like [pin-t0-1, nb-block-5, source-URL]
-                        const citationRegex = /\[((?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)(?:\s*,\s*(?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+))*)\]/gi;
-                        let seenCitations = new Set(); // Track seen citations to avoid duplicates
-
-                        const processedText = msg.text.replace(citationRegex, (match) => {
-                          // Extract individual citation IDs from the bracket group
-                          const citationIds = match.slice(1, -1) // Remove brackets
-                            .split(',')
-                            .map(id => id.trim())
-                            .filter(id => id.length > 0);
-
-                          // Convert each citation to a link, avoiding duplicates
-                          const citationLinks = citationIds
-                            .filter(id => {
-                              if (seenCitations.has(id)) return false; // Skip duplicates
-                              seenCitations.add(id);
-                              return msg.citations?.some(c => c.blockId === id);
-                            })
-                            .map(id => `[●](#snap-cite-${id})`)
-                            .join('');
-
-                          return citationLinks || ''; // Return empty if no valid citations found
-                        });
-
-                        return (
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            rehypePlugins={[rehypeHighlight]}
-                            components={components}
-                          >
-                            {processedText}
-                          </ReactMarkdown>
-                        );
-                      })()
-                    )}
-                  </div>
-
-                  {/* Citations Grid */}
-                  {msg.role === 'assistant' && msg.citations && msg.citations.length > 0 && (
-                    <div style={{
-                      marginTop: '12px',
-                      paddingTop: '12px',
-                      borderTop: '1px solid var(--border-light)',
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: '8px'
-                    }}>
-                      {(() => {
-                        // [FIX] Prioritize blocks belonging to THIS specific message
-                        const allAvailableBlocks = [
-                          ...(msg.contextBlocks || []),
-                          ...(contentBlocks || []),
-                          ...pinnedTabs.flatMap(t => t.blocks || [])
-                        ];
-
-                        console.log("[Citations] Available blocks:", allAvailableBlocks.map(b => ({ id: b.id, url: b.url })));
-                        console.log("[Citations] Extracted citations:", msg.citations?.map(c => c.blockId));
-
-                        // [FIX] Deduplicate citations by blockId to avoid showing the same citation twice
-                        const seenBlockIds = new Set();
-                        const uniqueCitations = msg.citations.filter(cite => {
-                          if (seenBlockIds.has(cite.blockId)) return false;
-                          seenBlockIds.add(cite.blockId);
-                          return true;
-                        });
-
-                        return uniqueCitations
-                          .filter(cite => {
-                            // [FIX] In RAG / Research modes, show ALL citations regardless of URL
-                            if (mode === 'rag' || mode === 'browser') {
-                              const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
-                              if (!block) {
-                                console.warn(`[Citations] Block not found for citation: ${cite.blockId}, but showing anyway in RAG mode`);
-                                // Show citation even if block not found - it might be from pinned tabs or other sources
-                                return true;
-                              }
-                              return true;
-                            }
-
-                            const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
-                            if (!block) {
-                              console.warn(`[Citations] Block not found for citation: ${cite.blockId}`);
-                              return false;
-                            }
-
-                            // Scoping for sidepanel context (Legacy behavior for specific modes)
-                            const isPinned = pinnedTabs.some(t => t.url === block?.url || t.url === block?.sourceURL);
-                            return isPinned || !currentUrl || block?.url === currentUrl || block?.sourceURL === currentUrl;
-                          })
-                          .map((cite, i) => {
-                            const isBookmarked = bookmarks.some(b => {
-                              const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
-                              return b.content === block?.text;
-                            });
-                            return (
-                              <CitationHoverCard
-                                key={i}
-                                citation={cite}
-                                blocks={allAvailableBlocks}
-                                onSave={handleSaveBookmark}
-                                isBookmarked={isBookmarked}
-                                onHighlight={handleCitationHighlight}
-                              />
-                            );
-                          });
-                      })()}
-                    </div>
-                  )}
-
-                  {/* Timestamp & Actions */}
-                  <div style={{
-                    marginTop: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    fontSize: 'var(--text-xs)',
-                    color: 'var(--text-tertiary)'
-                  }}>
-                    <span>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    {msg.role === 'assistant' && (
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(msg.text);
-                          toast.success('Copied to clipboard');
-                        }}
-                        style={{
-                          padding: '6px 10px',
-                          background: 'var(--bg-secondary)',
-                          border: '1px solid var(--border-light)',
-                          borderRadius: 'var(--radius-sm)',
-                          cursor: 'pointer',
-                          fontSize: 'var(--text-xs)',
-                          color: 'var(--text-secondary)',
-                          transition: 'var(--transition-fast)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          fontWeight: 'var(--font-medium)'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'var(--primary-50)';
-                          e.currentTarget.style.color = 'var(--primary-600)';
-                          e.currentTarget.style.borderColor = 'var(--primary-200)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'var(--bg-secondary)';
-                          e.currentTarget.style.color = 'var(--text-secondary)';
-                          e.currentTarget.style.borderColor = 'var(--border-light)';
-                        }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                        </svg>
-                        Copy
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex gap-3 animate-pulse px-2">
-                <div className="w-8 h-8 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm">
-                  <Bot className="w-4 h-4 text-indigo-500" />
-                </div>
-                <div className="flex items-center gap-2 text-slate-400 bg-white/50 px-4 py-2 rounded-full border border-slate-100">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-                  <span className="text-xs font-medium tracking-wide">AI is thinking...</span>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        )
-      }
-
-      {/* Smart Suggestions UI */}
-      {
-        view === 'chat' && mode === 'rag' && messages.length <= 1 && (isSuggesting || suggestions.length > 0) && (
-          <div style={{ padding: '0 16px 8px 16px', display: 'flex', flexWrap: 'wrap', gap: '8px', minHeight: '40px' }}>
-            {isSuggesting ? (
-              // Skeleton Loaders
-              <>
-                <div className="animate-pulse bg-slate-200/60 rounded-full h-8 w-32"></div>
-                <div className="animate-pulse bg-slate-200/60 rounded-full h-8 w-40"></div>
-                <div className="animate-pulse bg-slate-200/60 rounded-full h-8 w-24"></div>
-              </>
-            ) : (
-              suggestions.map((suggestion, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setInput(suggestion);
-                    // We must use a short timeout so `input` state updates before sending, or manually trigger handleSend
-                    setTimeout(() => handleSend(suggestion), 50);
-                  }}
-                  style={{
-                    padding: '6px 14px',
-                    background: 'linear-gradient(to right, var(--indigo-50), var(--blue-50))',
-                    border: '1px solid var(--indigo-100)',
-                    borderRadius: '16px',
-                    color: 'var(--indigo-700)',
-                    fontSize: '12px',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    boxShadow: 'var(--shadow-sm)',
-                    transition: 'all 0.2s ease',
-                    whiteSpace: 'normal',
-                    textAlign: 'left',
-                    lineHeight: '1.4'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                    e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-                    e.currentTarget.style.borderColor = 'var(--indigo-300)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
-                    e.currentTarget.style.borderColor = 'var(--indigo-100)';
-                  }}
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                  {suggestion}
-                </button>
-              ))
-            )}
-          </div>
-        )
-      }
-
-      {/* Footer Input */}
-      {view === 'chat' && (
-        <footer className="relative flex-shrink-0 p-4 pt-2 bg-white/80 backdrop-blur-md border-t border-slate-200/60 transition-all focus-within:bg-white focus-within:shadow-[0_-4px_20px_-8px_rgba(0,0,0,0.1)] min-h-[85px]">
-          {/* Floating PIN TAB and Context Area - Outside footer flow to avoid shifting chat bar */}
-          <div className="absolute bottom-[140px] right-4 flex flex-col items-end gap-2 pointer-events-none z-[40] transition-all duration-300">
-            {/* Active Context Indicator */}
-            {activeContext && activeContext.type === 'file' && (
-              <div className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg cursor-pointer group hover:-translate-y-0.5 pointer-events-auto"
-                onClick={() => setActiveContext({ type: 'url', id: currentUrl, name: 'Current Page' })}
-                title="Click to clear and revert to web page"
-              >
-                <div className="w-2 h-2 rounded-full bg-indigo-500 animate-[pulse_2s_ease-in-out_infinite]"></div>
-                <span className="text-[11px] font-bold text-indigo-700 max-w-[150px] truncate uppercase tracking-wider">Chatting with {activeContext.name}</span>
-                <span className="text-indigo-400 group-hover:text-red-500 ml-1 font-bold text-sm">×</span>
-              </div>
-            )}
-
-            {/* Floating PIN TAB Button */}
-            {(!activeContext || activeContext.type === 'url') && currentUrl && !pinnedTabs.find(t => t.url === currentUrl) && mode === 'rag' && (
-              <div className="bg-white/95 backdrop-blur border-2 border-indigo-200 px-4 py-2 rounded-2xl flex items-center justify-center gap-2 shadow-xl cursor-pointer hover:-translate-y-1 transition-all w-fit pointer-events-auto group ring-4 ring-indigo-500/5 hover:border-indigo-400 active:scale-95"
-                onClick={async () => {
-                  let blocks = contentBlocks;
-                  if (blocks.length === 0) {
-                    try {
-                      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                      const extResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
-                      if (extResponse && extResponse.data) {
-                        blocks = extResponse.data.blocks;
-                        setContentBlocks(blocks);
-                      }
-                    } catch (e) {
-                      console.error("Pin Tab Error:", e);
-                      toast.error("Could not extract page. Please REFRESH this page and try again!");
-                      return;
-                    }
-                  }
-                  const handle = getSourceHandle(currentTabTitle);
-                  const pinId = `pin-${handle}-`;
-                  const blocksWithUniqueIds = blocks.map(b => ({
-                    ...b,
-                    id: pinId + b.id.replace(/^bi-block-/, ''),
-                    url: currentUrl
-                  }));
-                  setPinnedTabs(prev => [...prev, { title: currentTabTitle || 'Pinned Tab', url: currentUrl, blocks: blocksWithUniqueIds }]);
-                  toast.success("Tab pinned for Multi-Tab AI");
-                }}
-              >
-                <Pin className="w-3.5 h-3.5 text-indigo-600 group-hover:rotate-12 transition-transform" />
-                <span className="text-[12px] font-bold text-indigo-800 uppercase tracking-wide">Pin Tab</span>
-              </div>
-            )}
-
-            {/* Compact Pinned Tabs List - Floating horizontally */}
-            {pinnedTabs.length > 0 && (
-              <div className="flex gap-2 mb-1 flex-wrap justify-end pointer-events-auto">
-                {pinnedTabs.map((tab, idx) => (
-                  <div key={idx} className="bg-indigo-100/90 border border-indigo-200 px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-xl transition-all text-[10px] font-bold text-indigo-900 tracking-wider uppercase backdrop-blur-sm animate-in zoom-in-50 duration-200">
-                    <span className="max-w-[120px] truncate">{tab.title}</span>
-                    <button className="hover:bg-indigo-200 p-0.5 rounded-md text-indigo-600 transition-colors" onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}>×</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          {/* Preview Area for Crop */}
-          {cropPreview && (
-            <div className="mb-3 flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm animate-in slide-in-from-bottom-2">
-              <img src={cropPreview} className="h-12 w-auto rounded-lg border border-slate-100" alt="Selection" />
-              <div className="flex-1 text-xs text-slate-500">
-                Region Selected. Ask a question about it below.
-              </div>
-              <button onClick={() => setCropPreview(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400">
-                ✕
-              </button>
+        {/* VIEW CONDITIONAL RENDERING */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {view === 'settings' ? (
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-[#22c55e]" /></div>}>
+               <Settings onBack={() => setView('chat')} />
+            </Suspense>
+          ) : view === 'history' ? (
+            <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+               <div className="flex-1 overflow-y-auto custom-scrollbar">
+                  <Suspense fallback={<LoadingSkeleton type="card" count={3} />}>
+                    <SessionList
+                      sessions={sessions}
+                      currentSessionId={currentSessionId}
+                      onSessionSwitch={(id) => { switchSession(id); setView('chat'); }}
+                      onSessionDelete={deleteSession}
+                      onNewSession={() => { createNewSession(); setView('chat'); }}
+                      onClearAll={clearAllHistory}
+                    />
+                  </Suspense>
+               </div>
             </div>
-          )}
-
-          {/* Preview Area for Pending File Attachment */}
-          {pendingFile && (
-            <div className="mb-3 flex flex-col gap-2 bg-white p-3 rounded-xl border border-indigo-200 shadow-sm animate-in slide-in-from-bottom-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <FileText className="w-6 h-6 text-indigo-500 shrink-0" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-sm font-semibold text-slate-700 truncate">{pendingFile.name}</span>
-                    <span className="text-xs text-slate-400 pl-0.5">{(pendingFile.size / 1024 / 1024).toFixed(2)} MB</span>
-                  </div>
-                </div>
-                <button type="button" onClick={() => setPendingFile(null)} className="p-1 hover:bg-slate-100 rounded-full text-slate-400 transition" disabled={isLoading}>
-                  ✕
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                <select
-                  value={fileTargetLang}
-                  onChange={(e) => setFileTargetLang(e.target.value)}
-                  disabled={isLoading}
-                  className="text-xs bg-slate-50 border border-slate-200 text-slate-600 rounded px-2 py-1 outline-none"
-                >
-                  <option value="auto">Keep Original Lang</option>
-                  <option value="en">Translate to EN</option>
-                  <option value="es">Translate to ES</option>
-                  <option value="fr">Translate to FR</option>
-                  <option value="de">Translate to DE</option>
-                  <option value="ja">Translate to JA</option>
-                  <option value="zh">Translate to ZH</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => handleFileUpload(pendingFile)}
-                  disabled={isLoading}
-                  className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700 transition"
-                >
-                  {isLoading ? 'Uploading...' : 'Upload & Index'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Input Wrapper */}
-          <div className="relative flex flex-col pt-1 pb-1">
-            {/* Premium Chat Control Bar */}
-            {(mode === 'rag' || mode === 'browser' || mode === 'visual') && (
-              <div className="flex items-center justify-between px-3 py-1.5 mx-4 mb-2 bg-white/80 backdrop-blur-xl border border-slate-200/40 rounded-full shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] translate-y-1">
-                <div className="flex items-center gap-1 pr-2 border-r border-slate-200/80">
-                  <div className="flex gap-0.5">
-                    {['auto', 'en', 'es', 'fr', 'de', 'it', 'ja'].map(lang => (
+          ) : view === 'memory' ? (
+             <div className="flex-1 flex flex-col bg-[#0a0a0f] overflow-hidden">
+               {/* Memory View Content will be here */}
+               <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar">
+                  <div className="flex p-1 bg-[#111113] border border-[#1a1a1d] rounded-xl mb-6 shadow-inner">
+                    {[
+                      { id: 'sites', label: 'Nodes', icon: FileText },
+                      { id: 'graph', label: 'Atlas', icon: Database },
+                      { id: 'bookmarks', label: 'Library', icon: Bookmark },
+                      { id: 'folders', label: 'Sync', icon: Folder },
+                      { id: 'updates', label: 'Maintenance', icon: RefreshCw },
+                      { id: 'stats', label: 'Analytics', icon: Activity },
+                    ].map(tab => (
                       <button
-                        key={lang}
-                        onClick={() => setOutputLang(lang)}
-                        className={`px-2 py-1.5 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all ${outputLang === lang
-                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-105'
-                          : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-50'
-                          }`}
+                        key={tab.id}
+                        onClick={() => setMemoryTab(tab.id)}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
+                          memoryTab === tab.id 
+                          ? 'bg-[#1a1a1d] text-[#22c55e] border border-[#27272a] shadow-sm' 
+                          : 'text-[#71717a] hover:text-[#a1a1aa]'
+                        }`}
                       >
-                        {lang === 'auto' ? 'AUTO' : lang}
+                        <tab.icon className="w-3.5 h-3.5" />
+                        {tab.label}
                       </button>
                     ))}
                   </div>
+
+                  <div className="mb-8 p-6 bg-[#111113] border border-[#1a1a1d] rounded-2xl relative overflow-hidden">
+                     <div className="absolute top-0 right-0 w-32 h-32 bg-[#22c55e]/5 rounded-full blur-3xl" />
+                     <h2 className="text-lg font-bold text-[#fafafa] tracking-tight">
+                       {memoryTab === 'sites' ? 'Indexed Nodes' : memoryTab === 'graph' ? 'Knowledge Atlas' : memoryTab === 'updates' ? 'Maintenance Protocol' : memoryTab === 'stats' ? 'Neural Analytics' : 'Research Library'}
+                     </h2>
+                     <p className="text-xs text-[#71717a] mt-1 max-w-[400px]">
+                       {memoryTab === 'sites' ? 'Manage your semantic index of web pages and local documents.' : 'Explore the interconnected web of your local knowledge base.'}
+                     </p>
+                  </div>
+
+                  {/* Rest of Memory Content... will be handled after fixing bottom tags */}
+               </div>
+             </div>
+          ) : (
+             <div className="flex-1 flex flex-col overflow-hidden">
+                {/* CHAT/MESSAGE WORKSPACE */}
+                <div 
+                  id="message-container"
+                  className="flex-1 overflow-y-auto px-8 pt-8 pb-4 space-y-6 custom-scrollbar"
+                >
+                  {messages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center opacity-50">
+                      <div className="w-16 h-16 rounded-2xl bg-[#111113] border border-[#1a1a1d] flex items-center justify-center mb-6">
+                        <Terminal className="w-8 h-8 text-[#22c55e]" />
+                      </div>
+                      <h3 className="text-sm font-bold text-[#fafafa] tracking-widest uppercase">Neural Terminal Active</h3>
+                      <p className="text-[10px] font-medium text-[#71717a] mt-2 tracking-wide">Enter query to begin research...</p>
+                    </div>
+                  ) : (
+                    messages.map((msg, idx) => (
+                      <div 
+                        key={msg.id}
+                        className={`flex gap-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
+                        style={{ animationDelay: `${idx * 50}ms` }}
+                      >
+                        {msg.role === 'assistant' && (
+                          <div className="w-8 h-8 rounded-lg bg-[#111113] border border-[#1a1a1d] flex items-center justify-center shrink-0 mt-1">
+                            <Sparkles className="w-4 h-4 text-[#22c55e]" />
+                          </div>
+                        )}
+                        
+                        <div className={`max-w-[85%] group relative ${msg.role === 'user' ? 'order-1' : 'order-2'}`}>
+                          <div className={`
+                            px-5 py-4 rounded-xl border transition-all duration-300
+                            ${msg.role === 'user' 
+                              ? 'bg-[#111113] border-[#22c55e]/20 text-[#fafafa] shadow-[0_0_20px_rgba(34,197,94,0.05)]' 
+                              : 'bg-[#111113] border-[#1a1a1d] text-[#a1a1aa] shadow-sm'}
+                          `}>
+                            {/* Message Header (Internal Metadata) */}
+                            <div className="flex items-center justify-between mb-2 opacity-30 group-hover:opacity-100 transition-opacity">
+                               <span className="text-[9px] font-black uppercase tracking-[0.2em]">[{msg.role}]</span>
+                               <span className="text-[9px] font-medium">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+
+                            <div className="text-[13.5px] leading-relaxed prose prose-invert max-w-none">
+                              {msg.role === 'user' ? (
+                                <p className="font-medium">{msg.text}</p>
+                              ) : (
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  rehypePlugins={[rehypeHighlight]}
+                                  components={{
+                                    p: ({children}) => <p className="mb-4 last:mb-0">{children}</p>,
+                                    code: ({inline, children, className}) => {
+                                      if (inline) return <code className="bg-[#1a1a1d] text-[#22c55e] px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
+                                      return (
+                                        <div className="my-4 border border-[#1a1a1d] rounded-lg overflow-hidden bg-[#0a0a0f]">
+                                          <div className="px-4 py-2 border-b border-[#1a1a1d] bg-[#111113] flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-[#71717a] uppercase tracking-widest">{className?.replace('language-', '') || 'Code'}</span>
+                                            <button className="text-[#3f3f46] hover:text-[#22c55e] transition-colors"><Copy className="w-3.5 h-3.5" /></button>
+                                          </div>
+                                          <pre className="p-4 overflow-x-auto text-xs font-mono leading-relaxed text-[#a1a1aa]"><code>{children}</code></pre>
+                                        </div>
+                                      )
+                                    },
+                                    a: ({href, children}) => <a href={href} target="_blank" className="text-[#22c55e] underline decoration-[#22c55e]/30 underline-offset-4 hover:decoration-[#22c55e] transition-all">{children}</a>
+                                  }}
+                                >
+                                  {msg.text}
+                                </ReactMarkdown>
+                              )}
+                            </div>
+
+                            {/* Citations Grid */}
+                            {msg.role === 'assistant' && msg.citations && msg.citations.length > 0 && (
+                              <div className="mt-4 pt-4 border-t border-[#1a1a1d] flex flex-wrap gap-2">
+                                {msg.citations.map((cite, i) => (
+                                  <CitationHoverCard 
+                                    key={i} 
+                                    citation={cite} 
+                                    blocks={[...(msg.contextBlocks || []), ...(contentBlocks || [])]}
+                                    onHighlight={handleCitationHighlight}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {msg.role === 'user' && (
+                          <div className="w-8 h-8 rounded-lg bg-[#22c55e] border border-[#22c55e]/20 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                            <User className="w-4 h-4 text-black" />
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                  {isLoading && (
+                    <div className="flex gap-4 animate-pulse">
+                       <div className="w-8 h-8 rounded-lg bg-[#111113] border border-[#1a1a1d] flex items-center justify-center">
+                          <Loader2 className="w-4 h-4 text-[#22c55e] animate-spin" />
+                       </div>
+                       <div className="px-5 py-3 rounded-xl bg-[#111113] border border-[#1a1a1d] flex items-center gap-3">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
+                          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3f3f46]">Processing Neural Request...</span>
+                       </div>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
                 </div>
 
-                <div className="flex items-center pl-2 pr-1">
-                  <button
-                    type="button"
-                    onClick={() => setQueryNotebook(!queryNotebook)}
-                    title={queryNotebook ? "Searching Research Notebook" : "Searching Global Knowledge"}
-                    className={`p-2.5 rounded-full transition-all duration-300 ${queryNotebook
-                      ? 'bg-amber-100 text-amber-600 shadow-md shadow-amber-100 scale-105 ring-2 ring-amber-50'
-                      : 'bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
-                      }`}
-                  >
-                    <Bookmark className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-              className="relative flex items-center group mt-2"
-            >
-              <input
-                autoFocus
-                type="text"
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
-                placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-        </footer>
-      )}
-      <Toaster richColors position="top-center" />
-
-      {/* Keyboard Shortcuts Modal */}
-      {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
-    </div >
+                {/* CHAT INPUT AREA */}
+                <footer className="px-8 pb-8 pt-4">
+                  <div className="relative group">
+                    <div className="absolute inset-0 bg-[#22c55e]/5 rounded-2xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                    <form 
+                      onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                      className="relative bg-[#111113] border border-[#1a1a1d] rounded-2xl focus-within:border-[#22c55e]/40 transition-all shadow-xl"
+                    >
+                      <input 
+                        className="w-full bg-transparent border-none pl-6 pr-16 py-5 focus:outline-none text-[14px] text-[#fafafa] placeholder:text-[#3f3f46] font-medium"
+                        placeholder="Invoke query or command..."
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                      />
+                      <button 
+                        type="submit"
+                        disabled={!input.trim() || isLoading}
+                        className="absolute right-3 top-3 bottom-3 px-5 bg-[#22c55e] text-black rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#16a34a] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-lg shadow-[#22c55e]/10"
+                      >
+                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      </button>
+                    </form>
+                  </div>
+                  
+                  <div className="mt-4 flex items-center justify-center gap-6">
+                     <button 
+                        onClick={async () => {
+                          let blocks = contentBlocks;
+                          if (blocks.length === 0) {
+                            try {
+                              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                              const extResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
+                              if (extResponse && extResponse.data) {
+                                blocks = extResponse.data.blocks;
+                                setContentBlocks(blocks);
+                              }
+                            } catch (e) {
+                              console.error("Pin Tab Error:", e);
+                              toast.error("Could not extract page context.");
+                              return;
+                            }
+                          }
+                          const handle = getSourceHandle(currentTabTitle);
+                          const pinId = `pin-${handle}-`;
+                          const blocksWithUniqueIds = blocks.map(b => ({
+                            ...b,
+                            id: pinId + b.id.replace(/^bi-block-/, ''),
+                            url: currentUrl
+                          }));
+                          setPinnedTabs(prev => [...prev, { title: currentTabTitle || 'Pinned Tab', url: currentUrl, blocks: blocksWithUniqueIds }]);
+                          toast.success("Current context pinned.");
+                        }}
+                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#3f3f46] hover:text-[#22c55e] transition-colors"
+                     >
+                        <Pin className="w-3 h-3" /> Pin Current
+                     </button>
+                     <div className="h-3 w-[1px] bg-[#1a1a1d]" />
+                     <button 
+                        onClick={() => setView('memory')}
+                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#3f3f46] hover:text-[#22c55e] transition-colors"
+                     >
+                        <Bookmark className="w-3 h-3" /> Library
+                     </button>
+                  </div>
+                </footer>
+             </div>
+          )}
+        </div>
+      </main>
+    </div>
   );
 }
 
@@ -3126,3 +2330,4 @@ export default function AppWithErrorBoundary() {
     </ErrorBoundary>
   );
 }
+
