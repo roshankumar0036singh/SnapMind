@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Save, Key, ArrowLeft, Database, Upload, Download, Loader2, ShieldCheck, Globe, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+import { chrome } from '../background/api';
 
 export default function Settings({ onBack }) {
     const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -9,6 +10,7 @@ export default function Settings({ onBack }) {
     const [firecrawlApiKey, setFirecrawlApiKey] = useState('');
     const [groqApiKey, setGroqApiKey] = useState('');
     const [backendUrl, setBackendUrl] = useState('');
+    const [webMonitorEnabled, setWebMonitorEnabled] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
@@ -23,10 +25,27 @@ export default function Settings({ onBack }) {
                 if (result.backendUrl) setBackendUrl(result.backendUrl);
             });
         }
+        
+        // Fetch server-side settings
+        const fetchSettings = async () => {
+            try {
+                const settings = await chrome.getSettings();
+                if (settings && settings.web_monitor_enabled !== undefined) {
+                    // Handle both boolean and string "true"/"false"
+                    const isEnabled = String(settings.web_monitor_enabled).toLowerCase() === "true";
+                    setWebMonitorEnabled(isEnabled);
+                }
+            } catch (error) {
+                console.error("Failed to load server settings:", error);
+            }
+        };
+        fetchSettings();
     }, []);
 
-    const handleSave = () => {
+    const handleSave = async () => {
         setIsSaving(true);
+        
+        // Save local storage settings
         chrome.storage.local.set({
             geminiApiKey,
             mistralApiKey,
@@ -34,11 +53,24 @@ export default function Settings({ onBack }) {
             firecrawlApiKey,
             groqApiKey,
             backendUrl
-        }, () => {
+        }, async () => {
+            // Also ensure the server side toggle is in sync (though it usually updates instantly)
+            await chrome.updateSetting('web_monitor_enabled', webMonitorEnabled);
+            
             setIsSaving(false);
             setSaved(true);
             toast.success('Configuration updated');
             setTimeout(() => setSaved(false), 2000);
+        });
+    };
+
+    const toggleWebMonitor = async () => {
+        const newValue = !webMonitorEnabled;
+        setWebMonitorEnabled(newValue);
+        toast.promise(chrome.updateSetting('web_monitor_enabled', newValue), {
+            loading: 'Updating service state...',
+            success: (res) => `Web monitoring ${newValue ? 'enabled' : 'disabled'}`,
+            error: 'Failed to update service state'
         });
     };
 
@@ -108,8 +140,8 @@ export default function Settings({ onBack }) {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <div className="px-2 py-1 rounded bg-[#22c55e]/10 border border-[#22c55e]/20">
-                        <span className="text-[10px] font-black text-[#22c55e] uppercase tracking-tighter">v2.4.0-PRO</span>
+                    <div className="px-2 py-1 rounded bg-[#6366f1]/10 border border-[#6366f1]/20">
+                        <span className="text-[10px] font-black text-[#6366f1] uppercase tracking-tighter">v2.4.0-PRO</span>
                     </div>
                 </div>
             </header>
@@ -118,7 +150,7 @@ export default function Settings({ onBack }) {
                 {/* Section: API Keys */}
                 <section className="space-y-6">
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="w-1 h-4 bg-[#22c55e] rounded-full" />
+                        <div className="w-1 h-4 bg-[#6366f1] rounded-full" />
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#71717a]">Security & Authentication</h3>
                     </div>
 
@@ -141,7 +173,7 @@ export default function Settings({ onBack }) {
                                         value={field.value}
                                         onChange={(e) => field.setter(e.target.value)}
                                         placeholder={field.placeholder}
-                                        className="w-full bg-[#121214] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/20 transition-all"
+                                        className="w-full bg-[#121214] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all"
                                     />
                                 </div>
                                 <p className="text-[10px] text-[#52525b] font-medium">{field.desc}</p>
@@ -159,17 +191,45 @@ export default function Settings({ onBack }) {
                                 value={backendUrl}
                                 onChange={(e) => setBackendUrl(e.target.value)}
                                 placeholder="http://localhost:8000"
-                                className="w-full bg-[#121214] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#22c55e] focus:ring-1 focus:ring-[#22c55e]/20 transition-all"
+                                className="w-full bg-[#121214] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all"
                             />
                             <p className="text-[10px] text-[#52525b] font-medium">Point to your local or hosted SnapMind core server instance.</p>
                         </div>
                     </div>
                 </section>
 
+                {/* Section: Feature Control */}
+                <section className="space-y-6 pt-6 border-t border-[#1a1a1d]">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="w-1 h-4 bg-[#6366f1] rounded-full" />
+                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#71717a]">Feature Management</h3>
+                    </div>
+
+                    <div className="p-5 bg-[#121214] border border-[#27272a] rounded-xl flex items-center justify-between group hover:border-[#3f3f46] transition-all">
+                        <div className="flex items-center gap-4">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${webMonitorEnabled ? 'bg-[#6366f1]/10 text-[#6366f1]' : 'bg-[#1a1a1d] text-[#3f3f46]'}`}>
+                                <Zap className={`w-5 h-5 ${webMonitorEnabled ? 'fill-current' : ''}`} />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-bold text-[#fafafa] uppercase tracking-wide">Web Monitoring & Auto-Suggestions</h4>
+                                <p className="text-[10px] text-[#71717a] mt-0.5">Periodically check indexed sites for updates and suggest re-indexing.</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={toggleWebMonitor}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${webMonitorEnabled ? 'bg-[#6366f1]' : 'bg-[#27272a]'}`}
+                        >
+                            <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${webMonitorEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                            />
+                        </button>
+                    </div>
+                </section>
+
                 {/* Section: Data Management */}
                 <section className="space-y-6 pt-6 border-t border-[#1a1a1d]">
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="w-1 h-4 bg-[#22c55e] rounded-full" />
+                        <div className="w-1 h-4 bg-[#6366f1] rounded-full" />
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#71717a]">Data Portability</h3>
                     </div>
 
@@ -178,7 +238,7 @@ export default function Settings({ onBack }) {
                             onClick={handleBackup}
                             className="flex flex-col items-start gap-3 p-5 bg-[#121214] border border-[#27272a] rounded-xl hover:border-[#3f3f46] hover:bg-[#18181b] transition-all group"
                         >
-                            <div className="p-2 bg-[#27272a] rounded-lg group-hover:bg-[#22c55e]/10 group-hover:text-[#22c55e] transition-colors">
+                            <div className="p-2 bg-[#27272a] rounded-lg group-hover:bg-[#6366f1]/10 group-hover:text-[#6366f1] transition-colors">
                                 <Download className="w-5 h-5" />
                             </div>
                             <div className="text-left">
@@ -191,7 +251,7 @@ export default function Settings({ onBack }) {
                             onClick={handleRestore}
                             className="flex flex-col items-start gap-3 p-5 bg-[#121214] border border-[#27272a] rounded-xl hover:border-[#3f3f46] hover:bg-[#18181b] transition-all group"
                         >
-                            <div className="p-2 bg-[#27272a] rounded-lg group-hover:bg-[#22c55e]/10 group-hover:text-[#22c55e] transition-colors">
+                            <div className="p-2 bg-[#27272a] rounded-lg group-hover:bg-[#6366f1]/10 group-hover:text-[#6366f1] transition-colors">
                                 <Upload className="w-5 h-5" />
                             </div>
                             <div className="text-left">
@@ -205,23 +265,23 @@ export default function Settings({ onBack }) {
                 {/* Section: Maintenance */}
                 <section className="space-y-6 pt-6 border-t border-[#1a1a1d]">
                     <div className="flex items-center gap-3 mb-2">
-                        <div className="w-1 h-4 bg-[#22c55e] rounded-full" />
+                        <div className="w-1 h-4 bg-[#6366f1] rounded-full" />
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#71717a]">System Integrity</h3>
                     </div>
                     
-                    <div className="p-5 bg-[#22c55e]/5 border border-[#22c55e]/10 rounded-xl flex items-center justify-between">
+                    <div className="p-5 bg-[#6366f1]/5 border border-[#6366f1]/10 rounded-xl flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-[#22c55e]/20 flex items-center justify-center">
-                                <ShieldCheck className="w-5 h-5 text-[#22c55e]" />
+                            <div className="w-10 h-10 rounded-full bg-[#6366f1]/20 flex items-center justify-center">
+                                <ShieldCheck className="w-5 h-5 text-[#6366f1]" />
                             </div>
                             <div>
                                 <h4 className="text-xs font-bold text-[#fafafa] uppercase tracking-wide">Secure Storage Active</h4>
-                                <p className="text-[10px] text-[#22c55e]/70">Local secrets are encrypted using AES-256 standard.</p>
+                                <p className="text-[10px] text-[#6366f1]/70">Local secrets are encrypted using AES-256 standard.</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse" />
-                            <span className="text-[10px] font-black text-[#22c55e] uppercase">Verified</span>
+                            <div className="w-2 h-2 rounded-full bg-[#6366f1] animate-pulse" />
+                            <span className="text-[10px] font-black text-[#6366f1] uppercase">Verified</span>
                         </div>
                     </div>
                 </section>
@@ -240,8 +300,8 @@ export default function Settings({ onBack }) {
                     disabled={isSaving}
                     className={`flex items-center gap-3 px-8 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${
                         saved 
-                        ? 'bg-[#22c55e] text-[#09090b] shadow-[0_0_20px_rgba(34,197,94,0.3)]' 
-                        : 'bg-[#fafafa] text-[#09090b] hover:bg-[#22c55e] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]'
+                        ? 'bg-[#6366f1] text-[#09090b] shadow-[0_0_20px_rgba(34,197,94,0.3)]' 
+                        : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]'
                     } disabled:opacity-50`}
                 >
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (saved ? 'All Systems Go' : 'Commit Changes')}

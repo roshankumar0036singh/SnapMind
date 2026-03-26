@@ -52,7 +52,7 @@ export default function RefreshSuggestions({ backendUrl }) {
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center p-20 space-y-4 bg-[#09090b] min-h-full">
-                <Loader2 className="w-8 h-8 text-[#22c55e] animate-spin" />
+                <Loader2 className="w-8 h-8 text-[#6366f1] animate-spin" />
                 <p className="text-[11px] font-black uppercase tracking-widest text-[#71717a]">Scanning for Stale Records...</p>
             </div>
         );
@@ -62,7 +62,7 @@ export default function RefreshSuggestions({ backendUrl }) {
         return (
             <div className="p-12 text-center bg-[#09090b] min-h-screen">
                 <div className="max-w-md mx-auto p-12 rounded-2xl border border-dashed border-[#27272a] bg-[#121214] animate-in fade-in zoom-in-95 duration-500">
-                    <div className="w-16 h-16 bg-[#22c55e]/10 border border-[#22c55e]/20 text-[#22c55e] rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(34,197,94,0.1)]">
+                    <div className="w-16 h-16 bg-[#6366f1]/10 border border-[#6366f1]/20 text-[#6366f1] rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(34,197,94,0.1)]">
                         <ShieldCheck className="w-8 h-8" />
                     </div>
                     <h3 className="text-[#fafafa] font-black text-sm uppercase tracking-[0.2em]">Library Integral</h3>
@@ -71,7 +71,7 @@ export default function RefreshSuggestions({ backendUrl }) {
                     </p>
                     <button 
                       onClick={fetchSuggestions}
-                      className="mt-8 px-6 py-2 text-[10px] font-black text-[#22c55e] border border-[#22c55e]/20 hover:bg-[#22c55e]/10 rounded-lg transition-all uppercase tracking-widest"
+                      className="mt-8 px-6 py-2 text-[10px] font-black text-[#6366f1] border border-[#6366f1]/20 hover:bg-[#6366f1]/10 rounded-lg transition-all uppercase tracking-widest"
                     >
                         Force Rescan
                     </button>
@@ -99,13 +99,13 @@ export default function RefreshSuggestions({ backendUrl }) {
                 {suggestions.map((item) => (
                     <div 
                         key={item.id}
-                        className="group bg-[#121214] border border-[#27272a] rounded-xl overflow-hidden hover:border-[#22c55e]/30 transition-all duration-300"
+                        className="group bg-[#121214] border border-[#27272a] rounded-xl overflow-hidden hover:border-[#6366f1]/30 transition-all duration-300"
                     >
                         <div className="flex items-stretch gap-0">
-                            <div className="w-1 bg-[#f59e0b] group-hover:bg-[#22c55e] transition-colors" />
+                            <div className="w-1 bg-[#f59e0b] group-hover:bg-[#6366f1] transition-colors" />
                             
                             <div className="flex-1 p-5 flex items-start gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-[#18181b] border border-[#27272a] text-[#71717a] flex items-center justify-center flex-shrink-0 group-hover:bg-[#22c55e]/10 group-hover:text-[#22c55e] group-hover:border-[#22c55e]/20 transition-all duration-300">
+                                <div className="w-10 h-10 rounded-xl bg-[#18181b] border border-[#27272a] text-[#71717a] flex items-center justify-center flex-shrink-0 group-hover:bg-[#6366f1]/10 group-hover:text-[#6366f1] group-hover:border-[#6366f1]/20 transition-all duration-300">
                                     <Clock className="w-5 h-5" />
                                 </div>
                                 
@@ -118,7 +118,7 @@ export default function RefreshSuggestions({ backendUrl }) {
                                             href={item.url} 
                                             target="_blank" 
                                             rel="noopener noreferrer"
-                                            className="text-[#3f3f46] hover:text-[#22c55e] transition-colors p-1"
+                                            className="text-[#3f3f46] hover:text-[#6366f1] transition-colors p-1"
                                         >
                                             <ExternalLink className="w-3.5 h-3.5" />
                                         </a>
@@ -136,7 +136,7 @@ export default function RefreshSuggestions({ backendUrl }) {
                                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
                                                 refreshing === item.url 
                                                 ? 'bg-[#18181b] text-[#3f3f46] cursor-not-allowed border border-[#27272a]' 
-                                                : 'bg-[#fafafa] text-[#09090b] hover:bg-[#22c55e] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)] active:scale-95'
+                                                : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)] active:scale-95'
                                             }`}
                                         >
                                             {refreshing === item.url ? (
@@ -162,7 +162,7 @@ export default function RefreshSuggestions({ backendUrl }) {
             
             <footer className="pt-12 pb-6 text-center border-t border-[#1a1a1d]">
                 <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full border border-[#27272a] bg-[#121214] shadow-inner">
-                    <Activity className="w-3.5 h-3.5 text-[#22c55e]" />
+                    <Activity className="w-3.5 h-3.5 text-[#6366f1]" />
                     <span className="text-[9px] font-black text-[#71717a] uppercase tracking-[0.2em] px-2">Web State Monitor Active • Infrastructure Status: Optimal</span>
                 </div>
             </footer>

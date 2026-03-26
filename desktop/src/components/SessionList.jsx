@@ -35,7 +35,7 @@ export default function SessionList({
                 </div>
                 <button
                     onClick={onNewSession}
-                    className="p-1.5 hover:bg-[#1a1a1d] rounded-lg text-[#22c55e] transition-all hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] active:scale-95 border border-[#22c55e]/10"
+                    className="p-1.5 hover:bg-[#1a1a1d] rounded-lg text-[#6366f1] transition-all hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] active:scale-95 border border-[#6366f1]/10"
                     title="New Instance"
                 >
                     <Plus className="w-4 h-4" />
@@ -57,12 +57,12 @@ export default function SessionList({
                             key={session.id}
                             onClick={() => onSessionSwitch(session.id)}
                             className={`group relative p-3 rounded-xl cursor-pointer transition-all border ${session.id === currentSessionId
-                                ? 'bg-[#22c55e]/5 border-[#22c55e]/30 shadow-[0_4px_20px_-8px_rgba(34,197,94,0.1)]'
+                                ? 'bg-[#6366f1]/5 border-[#6366f1]/30 shadow-[0_4px_20px_-8px_rgba(34,197,94,0.1)]'
                                 : 'bg-[#121214] border-[#1a1a1d] hover:border-[#27272a] hover:bg-[#18181b]'
                                 }`}
                         >
                             <div className="flex items-start gap-3">
-                                <div className={`mt-0.5 p-1.5 rounded-lg transition-colors ${session.id === currentSessionId ? 'bg-[#22c55e]/10 text-[#22c55e]' : 'bg-[#18181b] text-[#3f3f46] group-hover:text-[#71717a]'}`}>
+                                <div className={`mt-0.5 p-1.5 rounded-lg transition-colors ${session.id === currentSessionId ? 'bg-[#6366f1]/10 text-[#6366f1]' : 'bg-[#18181b] text-[#3f3f46] group-hover:text-[#71717a]'}`}>
                                     <MessageSquare className="w-3.5 h-3.5" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -70,7 +70,7 @@ export default function SessionList({
                                         {session.title || "Untitled Instance"}
                                     </div>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <div className={`w-1 h-1 rounded-full ${session.id === currentSessionId ? 'bg-[#22c55e] animate-pulse' : 'bg-[#3f3f46]'}`} />
+                                        <div className={`w-1 h-1 rounded-full ${session.id === currentSessionId ? 'bg-[#6366f1] animate-pulse' : 'bg-[#3f3f46]'}`} />
                                         <div className="text-[9px] font-black text-[#3f3f46] uppercase tracking-widest">
                                             {new Date(session.updatedAt).toLocaleDateString()}
                                         </div>
@@ -96,14 +96,14 @@ export default function SessionList({
             {tags.length > 0 && (
                 <div className="p-3 border-t border-[#1a1a1d] bg-[#0a0a0c]">
                     <div className="flex items-center gap-2 mb-3 px-1">
-                        <Tag className="w-3 h-3 text-[#22c55e]" />
+                        <Tag className="w-3 h-3 text-[#6366f1]" />
                         <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-[#71717a]">Semantic Schema</h4>
                     </div>
                     <div className="flex flex-wrap gap-1.5 px-1 max-h-[120px] overflow-y-auto scrollbar-hide">
                         {tags.map((tag, idx) => (
                             <div
                                 key={idx}
-                                className="px-2 py-1 bg-[#121214] border border-[#27272a] text-[#a1a1aa] text-[9px] font-black uppercase tracking-tighter rounded hover:border-[#22c55e]/50 hover:text-[#22c55e] cursor-pointer transition-all"
+                                className="px-2 py-1 bg-[#121214] border border-[#27272a] text-[#a1a1aa] text-[9px] font-black uppercase tracking-tighter rounded hover:border-[#6366f1]/50 hover:text-[#6366f1] cursor-pointer transition-all"
                             >
                                 {tag}
                             </div>

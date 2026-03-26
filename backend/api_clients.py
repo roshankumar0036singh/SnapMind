@@ -69,15 +69,19 @@ def get_hf_token(api_keys=None):
     return key.strip() if key else key
 def check_connectivity():
     """
-    Check if the system has internet connectivity by attempting to connect 
-    to a stable public DNS server (Google's 8.8.8.8) on port 53.
+    Check if the system has internet connectivity by attempting to resolve
+    a stable domain name (google.com).
     """
+    import socket
     try:
-        import socket
-        # Set a short timeout (2s) to avoid hanging the UI
-        socket.setdefaulttimeout(2)
-        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("8.8.8.8", 53))
+        # Use a local socket with a short timeout to check resolution
+        socket.create_connection(("8.8.8.8", 53), timeout=2).close()
         return True
-    except (socket.error, Exception):
-        print("[OFFLINE] No internet connectivity detected.")
-        return False
+    except Exception:
+        try:
+            # Fallback to DNS resolution
+            socket.gethostbyname("google.com")
+            return True
+        except Exception:
+            print("[OFFLINE] No internet connectivity detected.")
+            return False

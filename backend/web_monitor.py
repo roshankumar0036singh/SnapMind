@@ -9,6 +9,27 @@ from rag_pipeline import ingest_website_logic
 def get_content_hash(text):
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
+def is_web_monitor_enabled():
+    """Checks the database to see if web monitoring is enabled."""
+    from database import get_db_pool
+    pool = get_db_pool()
+    if not pool: return True # Default to True if DB is unavailable
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT value FROM settings WHERE key = 'web_monitor_enabled'")
+                row = cur.fetchone()
+                if row:
+                    # value is JSONB, so it might be a string "true" or boolean true
+                    val = row[0]
+                    if isinstance(val, str):
+                        return val.lower() == "true"
+                    return bool(val)
+        return True
+    except Exception as e:
+        print(f"[WEB-MONITOR] Error checking settings: {e}")
+        return True
+
 async def check_for_updates():
     """
     Checks indexed URLs and compares their current content with stored content.
@@ -18,6 +39,10 @@ async def check_for_updates():
     if not pool: return
 
     try:
+        # [NEW] Check if enabled before running
+        if not is_web_monitor_enabled():
+            return
+
         if not check_connectivity():
             return
 
@@ -27,11 +52,12 @@ async def check_for_updates():
                 # For this implementation, we check the 'documents' table's oldest entries
                 # and cross-reference with 'refresh_suggestions' to avoid duplicates.
                 cur.execute("""
-                    SELECT DISTINCT source_url 
+                    SELECT source_url 
                     FROM documents 
                     WHERE source_url LIKE 'http%' 
                     AND source_url NOT IN (SELECT url FROM refresh_suggestions WHERE status = 'pending')
-                    ORDER BY created_at ASC 
+                    GROUP BY source_url
+                    ORDER BY MIN(created_at) ASC 
                     LIMIT 3
                 """)
                 urls = cur.fetchall()
@@ -50,10 +76,11 @@ async def check_for_updates():
                         # Simplified: Just mark as 'suggested' if it's older than 7 days
                         # and let the user trigger the actual re-scrape.
                         
+                        from datetime import timezone
                         cur.execute("SELECT MAX(created_at) FROM documents WHERE source_url = %s", (url,))
                         last_indexed = cur.fetchone()[0]
                         
-                        if last_indexed and last_indexed < datetime.now() - timedelta(days=7):
+                        if last_indexed and last_indexed < datetime.now(timezone.utc) - timedelta(days=7):
                             print(f"[WEB-MONITOR] Suggesting refresh for {url}")
                             cur.execute("""
                                 INSERT INTO refresh_suggestions (url, last_indexed_at, reason)

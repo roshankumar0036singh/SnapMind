@@ -1,33 +1,29 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, dialog } = require('electron');
 const path = require('node:path');
-const { startFileWatcher } = require('./services/file_watcher'); // Modified import
-const { startClipboardMonitor } = require('./services/clipboard_monitor'); // New import
+const fileWatcher = require('./services/file_watcher');
+const clipboardMonitor = require('./services/clipboard_monitor');
 
 let mainWindow;
 let tray = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 600,
-    height: 800,
+    width: 1000,
+    height: 750,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      // Security measures
       nodeIntegration: false,
       contextIsolation: true,
     },
     title: 'SnapMind',
     icon: path.join(__dirname, '..', 'src', 'assets', 'icon.png'),
-    // Hide initially to prevent flickering
     show: false,
-    frame: false, // Added
-    transparent: true, // Added
-    alwaysOnTop: true, // Added
+    backgroundColor: '#09090b',
   });
 
   // Start Background Monitors
-  startFileWatcher(mainWindow); // Modified call
-  startClipboardMonitor(mainWindow); // Added call
+  // File watcher doesn't need a main window but might emit events
+  clipboardMonitor.startClipboardMonitor(mainWindow);
 
   // In dev mode load from Vite dev server, otherwise load built files
   const isDev = !app.isPackaged;

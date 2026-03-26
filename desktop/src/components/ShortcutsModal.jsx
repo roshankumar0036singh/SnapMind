@@ -16,7 +16,7 @@ export default function ShortcutsModal({ onClose }) {
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-[#27272a] bg-[#18181b]/50">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-[#22c55e]/10 flex items-center justify-center text-[#22c55e] border border-[#22c55e]/20">
+                        <div className="w-8 h-8 rounded-lg bg-[#6366f1]/10 flex items-center justify-center text-[#6366f1] border border-[#6366f1]/20">
                             <Command className="w-4 h-4" />
                         </div>
                         <div>
@@ -56,7 +56,7 @@ export default function ShortcutsModal({ onClose }) {
                 {/* Footer */}
                 <div className="px-6 py-4 bg-[#09090b] border-t border-[#27272a] flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Zap className="w-3 h-3 text-[#22c55e]" />
+                        <Zap className="w-3 h-3 text-[#6366f1]" />
                         <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#3f3f46]">System v2.4a</span>
                     </div>
                     <p className="text-[9px] font-black text-[#3f3f46] uppercase tracking-widest">

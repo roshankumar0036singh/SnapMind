@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import os
+import asyncio # [NEW] Required for loops
+import json # [NEW] Required for JSON manipulation
 from dotenv import load_dotenv
 
 # Import our pipeline logic
@@ -70,6 +72,17 @@ async def lifespan(app: FastAPI):
         print("Shutting down database pool...")
         pool.close()
 
+app = FastAPI(title="Snapmind Backend", lifespan=lifespan)
+
+# Allow CORS for Chrome Extension
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, restrict to extension ID
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/admin/refresh-suggestions")
 async def get_refresh_suggestions():
     """
@@ -112,16 +125,6 @@ async def trigger_refresh(request: dict):
     return result
 
 
-app = FastAPI(title="Snapmind Backend", lifespan=lifespan)
-
-# Allow CORS for Chrome Extension
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to extension ID
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 class BrowserRequest(BaseModel):
     query: str
@@ -810,6 +813,44 @@ def delete_site(site_id: str):
             conn.commit()
         return {"success": True, "deleted_url": site_id}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/admin/settings")
+def get_all_settings():
+    """Retrieves all persisted application settings."""
+    from database import get_db_pool
+    try:
+        pool = get_db_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT key, value FROM settings")
+                rows = cur.fetchall()
+                # Return as a dictionary of key: value
+                return {row[0]: row[1] for row in rows}
+    except Exception as e:
+        print(f"Error fetching settings: {e}")
+        return {}
+
+@app.post("/admin/settings")
+async def update_setting(request: dict):
+    """Updates a specific setting. Expects {key: string, value: any}."""
+    from database import get_db_pool
+    key = request.get("key")
+    value = request.get("value")
+    if not key: raise HTTPException(status_code=400, detail="Key is required")
+    
+    try:
+        pool = get_db_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO settings (key, value) VALUES (%s, %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                    (key, json.dumps(value))
+                )
+                conn.commit()
+        return {"success": True, "key": key, "value": value}
+    except Exception as e:
+        print(f"Error updating setting {key}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- Export Endpoints (Phase 4.1) ---

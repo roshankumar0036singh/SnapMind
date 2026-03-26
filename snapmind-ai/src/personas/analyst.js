@@ -1,6 +1,6 @@
 import { CSVLoader } from '@langchain/community/document_loaders/fs/csv';
-import { MemoryVectorStore } from 'langchain/vectorstores/memory';
-import { OllamaEmbeddings } from '@langchain/community/embeddings/ollama';
+import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
+import { OllamaEmbeddings } from '@langchain/ollama';
 import { MistralAIEmbeddings } from '@langchain/mistralai';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { getLLM } from '../utils/llm.js';

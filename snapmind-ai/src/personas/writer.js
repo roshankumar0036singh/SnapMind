@@ -1,7 +1,7 @@
-import { WebBaseLoader } from '@langchain/community/document_loaders/web/web_base';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-import { MemoryVectorStore } from 'langchain/vectorstores/memory';
-import { OllamaEmbeddings } from '@langchain/community/embeddings/ollama';
+import { CheerioWebBaseLoader } from '@langchain/community/document_loaders/web/cheerio';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
+import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
+import { OllamaEmbeddings } from '@langchain/ollama';
 import { MistralAIEmbeddings } from '@langchain/mistralai';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { getLLM } from '../utils/llm.js';
@@ -30,8 +30,13 @@ export async function startWriter(options = {}) {
   const spinner = ora(`Scraping ${urlList.length} sources...`).start();
   
   try {
-    const loader = new WebBaseLoader(urlList);
-    const rawDocs = await loader.load();
+    const loader = new CheerioWebBaseLoader(urlList[0]); // Cheerio standard loader single URL for now or multiple docs
+    const rawDocs = [];
+    for (const url of urlList) {
+       const uLoader = new CheerioWebBaseLoader(url);
+       const docs = await uLoader.load();
+       rawDocs.push(...docs);
+    }
     
     const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1500, chunkOverlap: 200 });
     const docs = await splitter.splitDocuments(rawDocs);

@@ -1,8 +1,8 @@
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
-import { DirectoryLoader } from 'langchain/document_loaders/fs/directory';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-import { MemoryVectorStore } from 'langchain/vectorstores/memory';
-import { OllamaEmbeddings } from '@langchain/community/embeddings/ollama';
+import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
+import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
+import { OllamaEmbeddings } from '@langchain/ollama';
 import { MistralAIEmbeddings } from '@langchain/mistralai';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { getLLM } from '../utils/llm.js';
@@ -10,6 +10,7 @@ import { getKey } from '../utils/credentials.js';
 import config from '../utils/config.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
 import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
+import { exportSession } from '../utils/exporter.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -90,7 +91,7 @@ export async function startScholar(options = {}) {
 
       if (query.toLowerCase() === '/cite') {
         const citeSpinner = ora('Generating BibTeX citations...').start();
-        const sources = [...new Set(docs.map(d => path.basename(d.metadata.source)))];
+        const sources = [...new Set(vectorStore.memoryVectors.map(v => path.basename(v.metadata?.source || 'document')))];
         const bibtex = sources.map(s => `@article{${s.replace(/\s+/g, '_')},\n  title={${s}},\n  author={SnapMind Scholar},\n  year={${new Date().getFullYear()}}\n}`).join('\n\n');
         
         const bibFile = path.join(path.dirname(targetPath), 'citations.bib');
@@ -102,7 +103,7 @@ export async function startScholar(options = {}) {
       const chatSpinner = ora('Researching...').start();
       try {
         const results = await vectorStore.similaritySearch(query, 5);
-        const context = results.map(r => `Source: ${path.basename(r.metadata.source)}\nContent: ${r.pageContent}`).join('\n\n');
+        const context = results.map(r => `Source: ${path.basename(r.metadata?.source || 'Doc')}\nContent: ${r.pageContent}`).join('\n\n');
         
         const systemPrompt = query.startsWith('/research') 
           ? 'You are SnapMind Scholar. This is a DEEP RESEARCH task. Synthesize all sources into a cohesive academic summary. Compare perspectives if they differ.'
@@ -115,7 +116,6 @@ export async function startScholar(options = {}) {
 
         chatSpinner.stop();
         console.log(chalk.cyan('\n' + response.content + '\n'));
-
         
         history.push({ role: 'user', content: query });
         history.push({ role: 'assistant', content: response.content });
@@ -131,7 +131,6 @@ export async function startScholar(options = {}) {
         handleError(e);
       }
     }
-
   } catch (error) {
     handleError(error);
   }

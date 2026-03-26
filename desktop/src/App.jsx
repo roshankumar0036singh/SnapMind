@@ -1,12 +1,12 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, GitBranch, Bookmark, Globe, Video, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
 import { toast, Toaster } from 'sonner';
-import { apiClient } from '../background/api';
+import { apiClient, chrome } from './background/api';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import ShortcutsModal from './components/ShortcutsModal';
@@ -20,6 +20,8 @@ import MermaidChart from './components/MermaidChart';
 import WatchFoldersPanel from './components/WatchFoldersPanel';
 import RefreshSuggestions from './components/RefreshSuggestions';
 import AnalyticsView from './components/AnalyticsView';
+import Onboarding from './components/Onboarding';
+import SplashScreen from './components/SplashScreen';
 
 // Custom Markdown Components
 
@@ -423,6 +425,8 @@ const BookmarkList = ({ bookmarks, loading, onDelete }) => {
 };
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true); // Always show splash on mount
+  const [isOnboarded, setIsOnboarded] = useState(() => localStorage.getItem('snapmind_onboarded') === 'true');
   const [view, setView] = useState('chat'); // 'chat' | 'settings'
   const [mode, setMode] = useState('rag'); // 'rag' | 'visual'
   const [input, setInput] = useState('');
@@ -1945,18 +1949,27 @@ function App() {
 
 
 
+  // --- Splash & Onboarding Gate ---
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+  }
+
+  if (!isOnboarded) {
+    return <Onboarding onComplete={() => setIsOnboarded(true)} />;
+  }
+
   return (
-    <div className="flex h-screen w-full bg-[#09090b] text-[#a1a1aa] font-sans overflow-hidden selection:bg-[#22c55e]/30 selection:text-white">
+    <div className="flex h-screen w-full bg-[#07070a] text-[#a1a1aa] font-sans overflow-hidden selection:bg-[#6366f1]/30 selection:text-white">
       {/* SIDEBAR NAVIGATION (240px) */}
-      <aside className="w-[240px] bg-[#0b0b0d] border-r border-[#1a1a1d] flex flex-col z-50 pt-12">
+      <aside className="w-[240px] bg-[#0a0a0e] border-r border-[#1e1e26] flex flex-col z-50 pt-12">
         <div className="px-6 mb-8 group cursor-default">
-          <div className="flex items-center gap-3 py-3 px-4 bg-[#111113] border border-[#27272a] rounded-xl shadow-inner">
-             <div className="w-8 h-8 rounded-lg bg-[#09090b] border border-[#1a1a1d] flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-[#22c55e]" />
+          <div className="flex items-center gap-3 py-3 px-4 bg-[#0f0f14] border border-[#2a2a35] rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
+             <div className="w-8 h-8 rounded-lg bg-[#07070a] border border-[#1e1e26] flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-[#6366f1]" />
              </div>
              <div className="min-w-0">
-                <p className="text-[11px] font-black text-[#fafafa] tracking-wider uppercase">Mainframe</p>
-                <p className="text-[9px] font-bold text-[#71717a] uppercase tracking-[0.2em] mt-0.5">Local Instance</p>
+                <p className="text-[11px] font-black text-[#f4f4f5] tracking-wider uppercase font-display">Mainframe</p>
+                <p className="text-[9px] font-bold text-[#6366f1] uppercase tracking-[0.2em] mt-0.5">Local Instance</p>
              </div>
           </div>
         </div>
@@ -1973,54 +1986,54 @@ function App() {
               onClick={() => { setMode(item.id); setView('chat'); if (item.id === 'visual') handleRegionScan(); }}
               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                 mode === item.id && view === 'chat'
-                ? 'bg-[#111113] text-[#fafafa] border border-[#27272a] shadow-lg' 
-                : 'text-[#71717a] hover:text-[#fafafa] hover:bg-[#111113]/50'
+                ? 'bg-[#0f0f14] text-[#f4f4f5] border border-[#2a2a35] shadow-sm' 
+                : 'text-[#71717a] hover:text-[#f4f4f5] hover:bg-[#0f0f14]/50'
               }`}
             >
               {mode === item.id && view === 'chat' && (
-                <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-[#22c55e] rounded-full shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+                <div className="absolute left-0 top-2 bottom-2 w-0.5 bg-[#6366f1] rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
               )}
               <item.icon className={`w-4 h-4 transition-colors ${
-                mode === item.id && view === 'chat' ? 'text-[#22c55e]' : 'group-hover:text-[#22c55e]'
+                mode === item.id && view === 'chat' ? 'text-[#6366f1]' : 'group-hover:text-[#6366f1]'
               }`} />
               {item.label}
             </button>
           ))}
           
-          <div className="pt-4 border-t border-[#1a1a1d] mt-4 space-y-1.5">
+          <div className="pt-4 border-t border-[#1e1e26] mt-4 space-y-1.5">
              <button
                onClick={() => setView('history')}
                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all group ${
-                 view === 'history' ? 'bg-[#111113] text-[#fafafa] border border-[#27272a]' : 'text-[#71717a] hover:text-[#fafafa]'
+                 view === 'history' ? 'bg-[#0f0f14] text-[#f4f4f5] border border-[#2a2a35]' : 'text-[#71717a] hover:text-[#f4f4f5]'
                }`}
              >
-               <History className={`w-4 h-4 ${view === 'history' ? 'text-[#22c55e]' : ''}`} />
+               <History className={`w-4 h-4 ${view === 'history' ? 'text-[#6366f1]' : ''}`} />
                Research Logs
              </button>
              <button
                onClick={() => setView('settings')}
                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all group ${
-                 view === 'settings' ? 'bg-[#111113] text-[#fafafa] border border-[#27272a]' : 'text-[#71717a] hover:text-[#fafafa]'
+                 view === 'settings' ? 'bg-[#0f0f14] text-[#f4f4f5] border border-[#2a2a35]' : 'text-[#71717a] hover:text-[#f4f4f5]'
                }`}
              >
-               <SettingsIcon className={`w-4 h-4 ${view === 'settings' ? 'text-[#22c55e]' : ''}`} />
+               <SettingsIcon className={`w-4 h-4 ${view === 'settings' ? 'text-[#6366f1]' : ''}`} />
                Controller
              </button>
           </div>
         </nav>
 
         <div className="p-6">
-          <div className="p-4 rounded-xl bg-[#09090b] border border-[#1a1a1d] group hover:border-[#27272a] transition-all">
+          <div className="p-4 rounded-xl bg-[#07070a] border border-[#1e1e26] group hover:border-[#2a2a35] transition-all">
              <div className="flex items-center justify-between mb-3">
                 <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#3f3f46]">Core Status</span>
                 <div className="flex gap-1">
-                   <div className="w-1 h-1 rounded-full bg-[#22c55e]" />
-                   <div className="w-1 h-1 rounded-full bg-[#22c55e] opacity-50" />
-                   <div className="w-1 h-1 rounded-full bg-[#22c55e] opacity-20" />
+                   <div className="w-1 h-1 rounded-full bg-[#6366f1]" />
+                   <div className="w-1 h-1 rounded-full bg-[#6366f1] opacity-50" />
+                   <div className="w-1 h-1 rounded-full bg-[#6366f1] opacity-20" />
                 </div>
              </div>
-             <p className="text-[11px] font-bold text-[#fafafa] flex items-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#22c55e]" />
+             <p className="text-[11px] font-bold text-[#f4f4f5] flex items-center gap-2">
+                <ShieldCheck className="w-3.5 h-3.5 text-[#6366f1]" />
                 Secured
              </p>
           </div>
@@ -2030,10 +2043,10 @@ function App() {
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col relative">
         {/* DESKTOP TITLE BAR (Draggable) */}
-        <div className="h-10 border-b border-[#1a1a1d] bg-[#09090b]/80 backdrop-blur-xl flex items-center justify-between px-6 z-50 shrink-0" style={{ WebkitAppRegion: 'drag' }}>
+        <div className="h-10 border-b border-[#1e1e26] bg-[#07070a]/80 backdrop-blur-xl flex items-center justify-between px-6 z-50 shrink-0" style={{ WebkitAppRegion: 'drag' }}>
           <div className="flex items-center gap-3">
-             <div className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse shadow-[0_0_8px_#22c55e]" />
-             <span className="text-[10px] font-bold text-[#71717a] uppercase tracking-[0.3em]">SnapMind <span className="text-[#3f3f46]">Console</span></span>
+             <div className="w-2 h-2 rounded-full bg-[#6366f1] animate-pulse shadow-[0_0_8px_#6366f1]" />
+             <span className="text-[10px] font-bold text-[#71717a] uppercase tracking-[0.3em] font-display">SnapMind <span className="text-[#3f3f46]">Console</span></span>
           </div>
           
           <div className="flex items-center -mr-2 no-drag" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -2066,7 +2079,7 @@ function App() {
                    <span className="text-[10px] font-black text-[#3f3f46] uppercase tracking-widest">Observer</span>
                    <button
                     onClick={() => setVisibleBrowser(!visibleBrowser)}
-                    className={`w-7 h-3.5 rounded-full relative transition-all duration-300 ${visibleBrowser ? 'bg-[#22c55e]' : 'bg-[#1a1a1d]'}`}
+                    className={`w-7 h-3.5 rounded-full relative transition-all duration-300 ${visibleBrowser ? 'bg-[#6366f1]' : 'bg-[#1a1a1d]'}`}
                   >
                     <div className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full transition-all duration-300 ${visibleBrowser ? 'left-3.5' : 'left-0.5'}`} />
                   </button>
@@ -2083,7 +2096,7 @@ function App() {
         {/* VIEW CONDITIONAL RENDERING */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {view === 'settings' ? (
-            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-[#22c55e]" /></div>}>
+            <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-[#6366f1]" /></div>}>
                <Settings onBack={() => setView('chat')} />
             </Suspense>
           ) : view === 'history' ? (
@@ -2119,7 +2132,7 @@ function App() {
                         onClick={() => setMemoryTab(tab.id)}
                         className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider transition-all ${
                           memoryTab === tab.id 
-                          ? 'bg-[#1a1a1d] text-[#22c55e] border border-[#27272a] shadow-sm' 
+                          ? 'bg-[#1a1a1d] text-[#6366f1] border border-[#27272a] shadow-sm' 
                           : 'text-[#71717a] hover:text-[#a1a1aa]'
                         }`}
                       >
@@ -2130,7 +2143,7 @@ function App() {
                   </div>
 
                   <div className="mb-8 p-6 bg-[#111113] border border-[#1a1a1d] rounded-2xl relative overflow-hidden">
-                     <div className="absolute top-0 right-0 w-32 h-32 bg-[#22c55e]/5 rounded-full blur-3xl" />
+                     <div className="absolute top-0 right-0 w-32 h-32 bg-[#6366f1]/5 rounded-full blur-3xl" />
                      <h2 className="text-lg font-bold text-[#fafafa] tracking-tight">
                        {memoryTab === 'sites' ? 'Indexed Nodes' : memoryTab === 'graph' ? 'Knowledge Atlas' : memoryTab === 'updates' ? 'Maintenance Protocol' : memoryTab === 'stats' ? 'Neural Analytics' : 'Research Library'}
                      </h2>
@@ -2152,7 +2165,7 @@ function App() {
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center opacity-50">
                       <div className="w-16 h-16 rounded-2xl bg-[#111113] border border-[#1a1a1d] flex items-center justify-center mb-6">
-                        <Terminal className="w-8 h-8 text-[#22c55e]" />
+                        <Terminal className="w-8 h-8 text-[#6366f1]" />
                       </div>
                       <h3 className="text-sm font-bold text-[#fafafa] tracking-widest uppercase">Neural Terminal Active</h3>
                       <p className="text-[10px] font-medium text-[#71717a] mt-2 tracking-wide">Enter query to begin research...</p>
@@ -2166,7 +2179,7 @@ function App() {
                       >
                         {msg.role === 'assistant' && (
                           <div className="w-8 h-8 rounded-lg bg-[#111113] border border-[#1a1a1d] flex items-center justify-center shrink-0 mt-1">
-                            <Sparkles className="w-4 h-4 text-[#22c55e]" />
+                            <Sparkles className="w-4 h-4 text-[#6366f1]" />
                           </div>
                         )}
                         
@@ -2174,7 +2187,7 @@ function App() {
                           <div className={`
                             px-5 py-4 rounded-xl border transition-all duration-300
                             ${msg.role === 'user' 
-                              ? 'bg-[#111113] border-[#22c55e]/20 text-[#fafafa] shadow-[0_0_20px_rgba(34,197,94,0.05)]' 
+                              ? 'bg-[#111113] border-[#6366f1]/20 text-[#fafafa] shadow-[0_0_20px_rgba(34,197,94,0.05)]' 
                               : 'bg-[#111113] border-[#1a1a1d] text-[#a1a1aa] shadow-sm'}
                           `}>
                             {/* Message Header (Internal Metadata) */}
@@ -2193,18 +2206,18 @@ function App() {
                                   components={{
                                     p: ({children}) => <p className="mb-4 last:mb-0">{children}</p>,
                                     code: ({inline, children, className}) => {
-                                      if (inline) return <code className="bg-[#1a1a1d] text-[#22c55e] px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
+                                      if (inline) return <code className="bg-[#1a1a1d] text-[#6366f1] px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
                                       return (
                                         <div className="my-4 border border-[#1a1a1d] rounded-lg overflow-hidden bg-[#0a0a0f]">
                                           <div className="px-4 py-2 border-b border-[#1a1a1d] bg-[#111113] flex items-center justify-between">
                                             <span className="text-[10px] font-black text-[#71717a] uppercase tracking-widest">{className?.replace('language-', '') || 'Code'}</span>
-                                            <button className="text-[#3f3f46] hover:text-[#22c55e] transition-colors"><Copy className="w-3.5 h-3.5" /></button>
+                                            <button className="text-[#3f3f46] hover:text-[#6366f1] transition-colors"><Copy className="w-3.5 h-3.5" /></button>
                                           </div>
                                           <pre className="p-4 overflow-x-auto text-xs font-mono leading-relaxed text-[#a1a1aa]"><code>{children}</code></pre>
                                         </div>
                                       )
                                     },
-                                    a: ({href, children}) => <a href={href} target="_blank" className="text-[#22c55e] underline decoration-[#22c55e]/30 underline-offset-4 hover:decoration-[#22c55e] transition-all">{children}</a>
+                                    a: ({href, children}) => <a href={href} target="_blank" className="text-[#6366f1] underline decoration-[#6366f1]/30 underline-offset-4 hover:decoration-[#6366f1] transition-all">{children}</a>
                                   }}
                                 >
                                   {msg.text}
@@ -2229,7 +2242,7 @@ function App() {
                         </div>
 
                         {msg.role === 'user' && (
-                          <div className="w-8 h-8 rounded-lg bg-[#22c55e] border border-[#22c55e]/20 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                          <div className="w-8 h-8 rounded-lg bg-[#6366f1] border border-[#6366f1]/20 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
                             <User className="w-4 h-4 text-black" />
                           </div>
                         )}
@@ -2239,10 +2252,10 @@ function App() {
                   {isLoading && (
                     <div className="flex gap-4 animate-pulse">
                        <div className="w-8 h-8 rounded-lg bg-[#111113] border border-[#1a1a1d] flex items-center justify-center">
-                          <Loader2 className="w-4 h-4 text-[#22c55e] animate-spin" />
+                          <Loader2 className="w-4 h-4 text-[#6366f1] animate-spin" />
                        </div>
                        <div className="px-5 py-3 rounded-xl bg-[#111113] border border-[#1a1a1d] flex items-center gap-3">
-                          <div className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#6366f1]" />
                           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3f3f46]">Processing Neural Request...</span>
                        </div>
                     </div>
@@ -2253,10 +2266,10 @@ function App() {
                 {/* CHAT INPUT AREA */}
                 <footer className="px-8 pb-8 pt-4">
                   <div className="relative group">
-                    <div className="absolute inset-0 bg-[#22c55e]/5 rounded-2xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                    <div className="absolute inset-0 bg-[#6366f1]/5 rounded-2xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <form 
                       onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                      className="relative bg-[#111113] border border-[#1a1a1d] rounded-2xl focus-within:border-[#22c55e]/40 transition-all shadow-xl"
+                      className="relative bg-[#111113] border border-[#1a1a1d] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl"
                     >
                       <input 
                         className="w-full bg-transparent border-none pl-6 pr-16 py-5 focus:outline-none text-[14px] text-[#fafafa] placeholder:text-[#3f3f46] font-medium"
@@ -2267,7 +2280,7 @@ function App() {
                       <button 
                         type="submit"
                         disabled={!input.trim() || isLoading}
-                        className="absolute right-3 top-3 bottom-3 px-5 bg-[#22c55e] text-black rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#16a34a] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-lg shadow-[#22c55e]/10"
+                        className="absolute right-3 top-3 bottom-3 px-5 bg-[#6366f1] text-black rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#16a34a] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-lg shadow-[#6366f1]/10"
                       >
                         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                       </button>
@@ -2302,14 +2315,14 @@ function App() {
                           setPinnedTabs(prev => [...prev, { title: currentTabTitle || 'Pinned Tab', url: currentUrl, blocks: blocksWithUniqueIds }]);
                           toast.success("Current context pinned.");
                         }}
-                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#3f3f46] hover:text-[#22c55e] transition-colors"
+                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#3f3f46] hover:text-[#6366f1] transition-colors"
                      >
                         <Pin className="w-3 h-3" /> Pin Current
                      </button>
                      <div className="h-3 w-[1px] bg-[#1a1a1d]" />
                      <button 
                         onClick={() => setView('memory')}
-                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#3f3f46] hover:text-[#22c55e] transition-colors"
+                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[#3f3f46] hover:text-[#6366f1] transition-colors"
                      >
                         <Bookmark className="w-3 h-3" /> Library
                      </button>

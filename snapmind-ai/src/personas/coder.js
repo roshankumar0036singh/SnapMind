@@ -1,8 +1,8 @@
-import { DirectoryLoader } from 'langchain/document_loaders/fs/directory';
-import { TextLoader } from 'langchain/document_loaders/fs/text';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-import { MemoryVectorStore } from 'langchain/vectorstores/memory';
-import { OllamaEmbeddings } from '@langchain/community/embeddings/ollama';
+import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
+import { TextLoader } from '@langchain/classic/document_loaders/fs/text';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
+import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
+import { OllamaEmbeddings } from '@langchain/ollama';
 import { MistralAIEmbeddings } from '@langchain/mistralai';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { getLLM } from '../utils/llm.js';
@@ -10,6 +10,7 @@ import { getKey } from '../utils/credentials.js';
 import config from '../utils/config.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
 import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
+import { exportSession } from '../utils/exporter.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -96,7 +97,6 @@ export async function startCoder(options = {}) {
       if (query.toLowerCase() === '/diagram') {
         const diagramSpinner = ora('Generating architecture diagram...').start();
         try {
-          // Search for high-level structure
           const archResults = await vectorStore.similaritySearch('main entry point, app structure, core modules, architecture', 10);
           const archContext = archResults.map(r => `File: ${path.relative(targetPath, r.metadata.source)}\nContent:\n${r.pageContent}`).join('\n\n---\n\n');
           
@@ -113,7 +113,6 @@ export async function startCoder(options = {}) {
           await fs.writeFile(archFile, archContent);
           
           diagramSpinner.succeed(`Architecture diagram saved to ${chalk.bold('ARCHITECTURE.md')}`);
-          console.log(chalk.gray('(Note: GitHub and most Markdown editors will render this automatically)\n'));
           continue;
         } catch (e) {
           diagramSpinner.fail('Diagram generation failed.');
@@ -123,7 +122,6 @@ export async function startCoder(options = {}) {
       }
 
       const chatSpinner = ora('Scanning logic...').start();
-
       try {
         const results = await vectorStore.similaritySearch(query, 4);
         const context = results.map(r => `File: ${path.relative(targetPath, r.metadata.source)}\nContent:\n${r.pageContent}`).join('\n\n---\n\n');
@@ -143,7 +141,6 @@ export async function startCoder(options = {}) {
         handleError(e);
       }
     }
-
   } catch (error) {
     handleError(error);
   }

@@ -1,6 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { MemoryVectorStore } from 'langchain/vectorstores/memory';
+import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
 import ora from 'ora';
 
 const CACHE_DIR = path.join(process.cwd(), '.snapmind_cache');
