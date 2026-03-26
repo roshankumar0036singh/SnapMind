@@ -62,7 +62,7 @@ export default function RefreshSuggestions({ backendUrl }) {
         return (
             <div className="p-12 text-center bg-[#09090b] min-h-screen">
                 <div className="max-w-md mx-auto p-12 rounded-2xl border border-dashed border-[#27272a] bg-[#121214] animate-in fade-in zoom-in-95 duration-500">
-                    <div className="w-16 h-16 bg-[#6366f1]/10 border border-[#6366f1]/20 text-[#6366f1] rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(34,197,94,0.1)]">
+                    <div className="w-16 h-16 bg-[#6366f1]/10 border border-[#6366f1]/20 text-[#6366f1] rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(99,102,241,0.1)]">
                         <ShieldCheck className="w-8 h-8" />
                     </div>
                     <h3 className="text-[#fafafa] font-black text-sm uppercase tracking-[0.2em]">Library Integral</h3>
@@ -136,7 +136,7 @@ export default function RefreshSuggestions({ backendUrl }) {
                                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
                                                 refreshing === item.url 
                                                 ? 'bg-[#18181b] text-[#3f3f46] cursor-not-allowed border border-[#27272a]' 
-                                                : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:shadow-[0_0_20px_rgba(34,197,94,0.2)] active:scale-95'
+                                                : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] active:scale-95'
                                             }`}
                                         >
                                             {refreshing === item.url ? (

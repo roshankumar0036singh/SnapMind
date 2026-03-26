@@ -106,20 +106,28 @@ ipcMain.handle('get-version', () => app.getVersion());
 
 // File Watcher IPC
 ipcMain.handle('select-file', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    filters: [{ name: 'SnapMind Backup', extensions: ['json'] }]
-  });
-  if (result.canceled) return null;
-  return result.filePaths[0];
+  try {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'SnapMind Backup', extensions: ['json'] }]
+    });
+    if (result.canceled) return { success: true, data: null };
+    return { success: true, data: result.filePaths[0] };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 ipcMain.handle('select-folder', async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory']
-  });
-  if (result.canceled) return null;
-  return result.filePaths[0];
+  try {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory']
+    });
+    if (result.canceled) return { success: true, data: null };
+    return { success: true, data: result.filePaths[0] };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 ipcMain.handle('add-watch-folder', async (event, folderPath) => {

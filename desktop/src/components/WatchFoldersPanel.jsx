@@ -84,7 +84,7 @@ export default function WatchFoldersPanel() {
         </div>
         <button
           onClick={handleAddFolder}
-          className="flex items-center gap-2 px-4 py-2 bg-[#fafafa] hover:bg-[#6366f1] text-[#09090b] text-[10px] font-black uppercase tracking-widest rounded-lg transition-all hover:shadow-[0_0_20px_rgba(34,197,94,0.3)] active:scale-95"
+          className="flex items-center gap-2 px-4 py-2 bg-[#fafafa] hover:bg-[#6366f1] text-[#09090b] text-[10px] font-black uppercase tracking-widest rounded-lg transition-all hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] active:scale-95"
         >
           <FolderPlus className="w-3.5 h-3.5" /> Mount Directory
         </button>

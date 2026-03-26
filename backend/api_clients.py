@@ -22,6 +22,16 @@ except Exception as e:
     print(f"[ERROR] Unexpected Error importing mistralai: {e}")
     Mistral = None
 
+def get_openai_client(api_keys=None):
+    api_keys = api_keys or {}
+    key = api_keys.get("openai")
+    if not key:
+        key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("Missing OPENAI_API_KEY")
+    import openai
+    return openai.OpenAI(api_key=key.strip())
+
 def get_gemini_client(api_keys=None):
     api_keys = api_keys or {}
     key = api_keys.get("gemini")

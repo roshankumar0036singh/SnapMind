@@ -52,10 +52,12 @@ class PostgresService {
         return { success: true, tier: 'embedded' };
       }
     } catch (e) {
-      console.error('[DB] All database tiers failed.', e.message);
-      this.status = 'error';
-      return { success: false, error: 'All database tiers failed' };
+      console.error('[DB] Tier 3 Failed.', e.message);
     }
+    
+    // If all tiers fail
+    this.status = 'error';
+    return { success: false, error: 'All 3 database tiers failed to start. Please install Docker or PostgreSQL locally.' };
   }
 
   async startDockerPostgres() {
@@ -110,8 +112,7 @@ class PostgresService {
   async startEmbeddedPostgres() {
     // Placeholder for embedded postgres extraction and execution
     // You would bundle binaries for win/mac/linux and child_process.spawn them
-    console.log('[DB] Embedded Postgres not yet bundled. Please install Docker or Postgres locally for the POC.');
-    // resolve(false);
+    console.log('[DB] Embedded Postgres not yet bundled. Please install Docker Desktop or PostgreSQL natively.');
     return false; // Fail for now until bundled
   }
 

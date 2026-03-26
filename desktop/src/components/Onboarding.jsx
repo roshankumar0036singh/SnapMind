@@ -277,7 +277,7 @@ export default function Onboarding({ onComplete }) {
                                     <div className="relative">
                                         <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${
                                             isTesting ? 'border-[#6366f1]/30 bg-[#6366f1]/5' :
-                                            testResult === 'success' ? 'border-[#22c55e] bg-[#22c55e]/10 shadow-[0_0_30px_rgba(34,197,94,0.2)]' :
+                                            testResult === 'success' ? 'border-[#22c55e] bg-[#22c55e]/10 shadow-[0_0_30px_rgba(99,102,241,0.2)]' :
                                             'border-[#2a2a35] bg-[#0a0a0e]'
                                         }`}>
                                             {isTesting ? (

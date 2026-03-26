@@ -300,8 +300,8 @@ export default function Settings({ onBack }) {
                     disabled={isSaving}
                     className={`flex items-center gap-3 px-8 py-2.5 rounded-lg text-[11px] font-black uppercase tracking-widest transition-all ${
                         saved 
-                        ? 'bg-[#6366f1] text-[#09090b] shadow-[0_0_20px_rgba(34,197,94,0.3)]' 
-                        : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:shadow-[0_0_20px_rgba(34,197,94,0.3)]'
+                        ? 'bg-[#6366f1] text-[#09090b] shadow-[0_0_20px_rgba(99,102,241,0.3)]' 
+                        : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:shadow-[0_0_20px_rgba(99,102,241,0.3)]'
                     } disabled:opacity-50`}
                 >
                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : (saved ? 'All Systems Go' : 'Commit Changes')}

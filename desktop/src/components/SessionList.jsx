@@ -35,7 +35,7 @@ export default function SessionList({
                 </div>
                 <button
                     onClick={onNewSession}
-                    className="p-1.5 hover:bg-[#1a1a1d] rounded-lg text-[#6366f1] transition-all hover:shadow-[0_0_15px_rgba(34,197,94,0.2)] active:scale-95 border border-[#6366f1]/10"
+                    className="p-1.5 hover:bg-[#1a1a1d] rounded-lg text-[#6366f1] transition-all hover:shadow-[0_0_15px_rgba(99,102,241,0.2)] active:scale-95 border border-[#6366f1]/10"
                     title="New Instance"
                 >
                     <Plus className="w-4 h-4" />
@@ -57,7 +57,7 @@ export default function SessionList({
                             key={session.id}
                             onClick={() => onSessionSwitch(session.id)}
                             className={`group relative p-3 rounded-xl cursor-pointer transition-all border ${session.id === currentSessionId
-                                ? 'bg-[#6366f1]/5 border-[#6366f1]/30 shadow-[0_4px_20px_-8px_rgba(34,197,94,0.1)]'
+                                ? 'bg-[#6366f1]/5 border-[#6366f1]/30 shadow-[0_4px_20px_-8px_rgba(99,102,241,0.1)]'
                                 : 'bg-[#121214] border-[#1a1a1d] hover:border-[#27272a] hover:bg-[#18181b]'
                                 }`}
                         >

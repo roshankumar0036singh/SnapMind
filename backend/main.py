@@ -52,6 +52,13 @@ async def web_monitor_background_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: Run Migrations Safely
+    from migrations import run_migrations
+    try:
+        run_migrations()
+    except Exception as e:
+        print(f"[FATAL] Migrations failed to run: {e}")
+        
     # Startup: Start Background Tasks
     sync_task = asyncio.create_task(background_sync_loop())
     monitor_task = asyncio.create_task(web_monitor_background_loop())

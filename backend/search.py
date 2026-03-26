@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 db_pool = get_db_pool()
 
-from api_clients import get_mistral_client
+from api_clients import get_mistral_client, get_openai_client, get_gemini_client
 
 # Import hybrid search, reranking, and configuration
 from hybrid_search import HybridSearcher
@@ -1199,32 +1199,86 @@ Question: {query}
         # 3. Current User Question
         final_messages.append({"role": "user", "content": query})
 
+        active_provider = (api_keys or {}).get("llm_provider", LLMProviderConfig.PROVIDER).lower()
+        active_model = (api_keys or {}).get("llm_model", "")
+
         full_response = ""
         
-        if LLMProviderConfig.PROVIDER in ["local", "hybrid"]:
-            # Insert the system prompt as the first message if needed by Ollama
+        if active_provider in ["local", "hybrid", "ollama"]:
+            model_target = active_model or LLMProviderConfig.OLLAMA_GENERATION_MODEL
+            model_used = f"Ollama ({model_target})"
+            print(f"[LLM] Streaming with local Ollama model: {model_target}")
             stream_response = ollama_client.chat_stream(
                 messages=final_messages,
-                model=LLMProviderConfig.OLLAMA_GENERATION_MODEL
+                model=model_target
             )
             for text_chunk in stream_response:
                 full_response += text_chunk
                 if output_lang and output_lang not in ["auto", "en", "unknown"]:
-                    continue # Do not yield english blocks if we intend to translate at the end
+                    continue
                 yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
-        else:
+                
+        elif active_provider == "openai":
+            model_target = active_model or "gpt-4o-mini"
+            model_used = f"OpenAI ({model_target})"
+            print(f"[LLM] Streaming with OpenAI model: {model_target}")
+            client = get_openai_client(api_keys)
+            stream_response = client.chat.completions.create(
+                model=model_target,
+                messages=final_messages,
+                stream=True
+            )
+            for chunk in stream_response:
+                if chunk.choices[0].delta.content is not None:
+                    text_chunk = chunk.choices[0].delta.content
+                    full_response += text_chunk
+                    if output_lang and output_lang not in ["auto", "en", "unknown"]:
+                        continue
+                    yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
+                    
+        elif active_provider == "gemini":
+            model_target = active_model or "gemini-2.0-flash"
+            model_used = f"Gemini ({model_target})"
+            print(f"[LLM] Streaming with Gemini model: {model_target}")
+            client = get_gemini_client(api_keys)
+            # Gemini strictly enforces alternating user/model roles and single system instructions
+            gemini_system_instruction = final_messages[0]["content"] if final_messages and final_messages[0]["role"] == "system" else ""
+            gemini_contents = []
+            for m in final_messages:
+                if m["role"] != "system":
+                    parts = [{"text": m["content"]}]
+                    # Map standard roles to Gemini roles
+                    r = "user" if m["role"] == "user" else "model"
+                    gemini_contents.append({"role": r, "parts": parts})
+                    
+            from google.genai import types
+            stream_response = client.models.generate_content_stream(
+                model=model_target,
+                contents=gemini_contents,
+                config=types.GenerateContentConfig(system_instruction=gemini_system_instruction)
+            )
+            for chunk in stream_response:
+                text_chunk = chunk.text
+                full_response += text_chunk
+                if output_lang and output_lang not in ["auto", "en", "unknown"]:
+                    continue
+                yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
+
+        else: # Standard Mistral fallback
+            model_target = active_model or "mistral-small-latest"
+            model_used = f"Mistral ({model_target})"
+            print(f"[LLM] Streaming with Mistral model: {model_target}")
             client = get_mistral_client(api_keys)
             stream_response = client.chat.stream(
-                model="mistral-small-latest",
+                model=model_target,
                 messages=final_messages,
             )
             for chunk in stream_response:
                  if chunk.data.choices[0].delta.content:
                     text_chunk = chunk.data.choices[0].delta.content
                     full_response += text_chunk
-                    # [NEW] Wait to yield tokens if we need to translate the whole stream first.
                     if output_lang and output_lang not in ["auto", "en", "unknown"]:
-                        continue # Do not yield english blocks if we intend to translate at the end
+                        continue
                     yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
         
         # [NEW] Post-Translation via Lingo.dev for stream

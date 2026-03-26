@@ -1960,8 +1960,8 @@ function App() {
 
   return (
     <div className="flex h-screen w-full bg-[#07070a] text-[#a1a1aa] font-sans overflow-hidden selection:bg-[#6366f1]/30 selection:text-white">
-      {/* SIDEBAR NAVIGATION (240px) */}
-      <aside className="w-[240px] bg-[#0a0a0e] border-r border-[#1e1e26] flex flex-col z-50 pt-12">
+      {/* SIDEBAR NAVIGATION (280px) */}
+      <aside className="w-[280px] bg-[#0a0a0e] border-r border-[#1e1e26] flex flex-col z-50 pt-12">
         <div className="px-6 mb-8 group cursor-default">
           <div className="flex items-center gap-3 py-3 px-4 bg-[#0f0f14] border border-[#2a2a35] rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
              <div className="w-8 h-8 rounded-lg bg-[#07070a] border border-[#1e1e26] flex items-center justify-center">
@@ -2164,10 +2164,10 @@ function App() {
                 >
                   {messages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center opacity-50">
-                      <div className="w-16 h-16 rounded-2xl bg-[#111113] border border-[#1a1a1d] flex items-center justify-center mb-6">
+                      <div className="w-16 h-16 rounded-2xl bg-[#0f0f14] border border-[#1e1e26] flex items-center justify-center mb-6">
                         <Terminal className="w-8 h-8 text-[#6366f1]" />
                       </div>
-                      <h3 className="text-sm font-bold text-[#fafafa] tracking-widest uppercase">Neural Terminal Active</h3>
+                      <h3 className="text-sm font-bold text-[#f4f4f5] tracking-widest uppercase">Neural Terminal Active</h3>
                       <p className="text-[10px] font-medium text-[#71717a] mt-2 tracking-wide">Enter query to begin research...</p>
                     </div>
                   ) : (
@@ -2187,8 +2187,8 @@ function App() {
                           <div className={`
                             px-5 py-4 rounded-xl border transition-all duration-300
                             ${msg.role === 'user' 
-                              ? 'bg-[#111113] border-[#6366f1]/20 text-[#fafafa] shadow-[0_0_20px_rgba(34,197,94,0.05)]' 
-                              : 'bg-[#111113] border-[#1a1a1d] text-[#a1a1aa] shadow-sm'}
+                              ? 'bg-[#0f0f14] border-[#6366f1]/20 text-[#f4f4f5] shadow-[0_0_20px_rgba(99,102,241,0.05)]' 
+                              : 'bg-[#0f0f14] border-[#1e1e26] text-[#a1a1aa] shadow-sm'}
                           `}>
                             {/* Message Header (Internal Metadata) */}
                             <div className="flex items-center justify-between mb-2 opacity-30 group-hover:opacity-100 transition-opacity">
@@ -2208,8 +2208,8 @@ function App() {
                                     code: ({inline, children, className}) => {
                                       if (inline) return <code className="bg-[#1a1a1d] text-[#6366f1] px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
                                       return (
-                                        <div className="my-4 border border-[#1a1a1d] rounded-lg overflow-hidden bg-[#0a0a0f]">
-                                          <div className="px-4 py-2 border-b border-[#1a1a1d] bg-[#111113] flex items-center justify-between">
+                                        <div className="my-4 border border-[#1e1e26] rounded-lg overflow-hidden bg-[#07070a]">
+                                          <div className="px-4 py-2 border-b border-[#1e1e26] bg-[#0f0f14] flex items-center justify-between">
                                             <span className="text-[10px] font-black text-[#71717a] uppercase tracking-widest">{className?.replace('language-', '') || 'Code'}</span>
                                             <button className="text-[#3f3f46] hover:text-[#6366f1] transition-colors"><Copy className="w-3.5 h-3.5" /></button>
                                           </div>
@@ -2242,7 +2242,7 @@ function App() {
                         </div>
 
                         {msg.role === 'user' && (
-                          <div className="w-8 h-8 rounded-lg bg-[#6366f1] border border-[#6366f1]/20 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                          <div className="w-8 h-8 rounded-lg bg-[#6366f1] border border-[#6366f1]/20 flex items-center justify-center shrink-0 mt-1 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
                             <User className="w-4 h-4 text-black" />
                           </div>
                         )}
@@ -2251,10 +2251,10 @@ function App() {
                   )}
                   {isLoading && (
                     <div className="flex gap-4 animate-pulse">
-                       <div className="w-8 h-8 rounded-lg bg-[#111113] border border-[#1a1a1d] flex items-center justify-center">
+                       <div className="w-8 h-8 rounded-lg bg-[#0f0f14] border border-[#1e1e26] flex items-center justify-center">
                           <Loader2 className="w-4 h-4 text-[#6366f1] animate-spin" />
                        </div>
-                       <div className="px-5 py-3 rounded-xl bg-[#111113] border border-[#1a1a1d] flex items-center gap-3">
+                       <div className="px-5 py-3 rounded-xl bg-[#0f0f14] border border-[#1e1e26] flex items-center gap-3">
                           <div className="w-1.5 h-1.5 rounded-full bg-[#6366f1]" />
                           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3f3f46]">Processing Neural Request...</span>
                        </div>
@@ -2269,10 +2269,10 @@ function App() {
                     <div className="absolute inset-0 bg-[#6366f1]/5 rounded-2xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <form 
                       onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                      className="relative bg-[#111113] border border-[#1a1a1d] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl"
+                      className="relative bg-[#0f0f14] border border-[#1e1e26] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl"
                     >
                       <input 
-                        className="w-full bg-transparent border-none pl-6 pr-16 py-5 focus:outline-none text-[14px] text-[#fafafa] placeholder:text-[#3f3f46] font-medium"
+                        className="w-full bg-transparent border-none pl-6 pr-16 py-5 focus:outline-none text-[14px] text-[#f4f4f5] placeholder:text-[#3f3f46] font-medium"
                         placeholder="Invoke query or command..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}

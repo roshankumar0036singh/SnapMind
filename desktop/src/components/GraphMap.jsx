@@ -246,7 +246,7 @@ const GraphMap = ({ data, isLoading }) => {
                     </span>
                 </div>
                 {hoveredNode && (
-                    <div className="px-4 py-2 bg-[#22c55e] text-[#09090b] rounded-lg shadow-[0_0_30px_rgba(34,197,94,0.4)] animate-in fade-in slide-in-from-left-2 duration-300">
+                    <div className="px-4 py-2 bg-[#22c55e] text-[#09090b] rounded-lg shadow-[0_0_30px_rgba(99,102,241,0.4)] animate-in fade-in slide-in-from-left-2 duration-300">
                         <span className="text-[11px] font-black uppercase tracking-tighter">{hoveredNode}</span>
                     </div>
                 )}
@@ -262,7 +262,7 @@ const GraphMap = ({ data, isLoading }) => {
                     <button 
                         key={i}
                         onClick={btn.action} 
-                        className="p-2.5 bg-[#121214] border border-[#27272a] rounded-lg shadow-xl hover:border-[#22c55e] hover:text-[#22c55e] text-[#71717a] transition-all hover:shadow-[0_0_15px_rgba(34,197,94,0.1)] active:scale-90"
+                        className="p-2.5 bg-[#121214] border border-[#27272a] rounded-lg shadow-xl hover:border-[#22c55e] hover:text-[#22c55e] text-[#71717a] transition-all hover:shadow-[0_0_15px_rgba(99,102,241,0.1)] active:scale-90"
                         title={btn.label}
                     >
                         <btn.icon className="w-4 h-4" />
