@@ -70,6 +70,102 @@ MIGRATIONS = [
             VALUES ('web_monitor_enabled', 'true'::jsonb) 
             ON CONFLICT (key) DO NOTHING;
         """
+    },
+    {
+        "version": 2,
+        "name": "hybrid_search_and_jobs",
+        "sql": """
+            -- 1. Create Ingestion Jobs tracking table
+            CREATE TABLE IF NOT EXISTS ingestion_jobs (
+                job_id SERIAL PRIMARY KEY,
+                url TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'processing',
+                message TEXT,
+                chunks_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- 2. Add GIN index for full-text search
+            CREATE INDEX IF NOT EXISTS documents_content_fts_idx ON documents USING GIN (to_tsvector('english', content));
+
+            -- 3. Advanced Hybrid Search Function (Vector + Keyword)
+            -- [FIX] Drop first to avoid signature mismatch errors
+            DROP FUNCTION IF EXISTS hybrid_search_documents(vector, text, float, integer, text, float, float);
+            
+            CREATE OR REPLACE FUNCTION hybrid_search_documents(
+                query_embedding vector(768),
+                query_text TEXT,
+                match_threshold FLOAT,
+                match_count INTEGER,
+                filter_source_url TEXT,
+                vector_weight FLOAT DEFAULT 0.5,
+                keyword_weight FLOAT DEFAULT 0.5
+            ) RETURNS TABLE (
+                id TEXT,
+                url TEXT,
+                content TEXT,
+                metadata JSONB,
+                similarity FLOAT,
+                bm25_score FLOAT,
+                combined_score FLOAT
+            ) LANGUAGE plpgsql AS $$
+            BEGIN
+                RETURN QUERY
+                WITH vector_matches AS (
+                    SELECT 
+                        d.id,
+                        1 - (d.embedding <=> query_embedding) AS sim
+                    FROM documents d
+                    WHERE (filter_source_url IS NULL OR d.url LIKE filter_source_url)
+                      AND 1 - (d.embedding <=> query_embedding) > match_threshold
+                    ORDER BY d.embedding <=> query_embedding
+                    LIMIT match_count * 2
+                ),
+                keyword_matches AS (
+                    SELECT 
+                        d.id,
+                        ts_rank(to_tsvector('english', d.content), websearch_to_tsquery('english', query_text)) AS rank
+                    FROM documents d
+                    WHERE (filter_source_url IS NULL OR d.url LIKE filter_source_url)
+                      AND to_tsvector('english', d.content) @@ websearch_to_tsquery('english', query_text)
+                    ORDER BY rank DESC
+                    LIMIT match_count * 2
+                )
+                SELECT 
+                    d.id,
+                    d.url,
+                    d.content,
+                    d.metadata,
+                    COALESCE(v.sim, 0)::FLOAT AS similarity,
+                    COALESCE(k.rank, 0)::FLOAT AS bm25_score,
+                    (COALESCE(v.sim, 0) * vector_weight + COALESCE(k.rank, 0) * keyword_weight)::FLOAT AS combined_score
+                FROM documents d
+                LEFT JOIN vector_matches v ON d.id = v.id
+                LEFT JOIN keyword_matches k ON d.id = k.id
+                WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+                ORDER BY combined_score DESC
+                LIMIT match_count;
+            END;
+            $$;
+        """
+    },
+    {
+        "version": 3,
+        "name": "web_monitor_fingerprints",
+        "sql": """
+            -- 1. Table to track unique content fingerprints for change detection
+            CREATE TABLE IF NOT EXISTS web_monitor_state (
+                url TEXT PRIMARY KEY,
+                content_hash TEXT NOT NULL,
+                last_checked TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                change_detected_at TIMESTAMP WITH TIME ZONE
+            );
+
+            -- 2. Enhance refresh_suggestions with fingerprint info
+            ALTER TABLE refresh_suggestions ADD COLUMN IF NOT EXISTS last_fingerprint TEXT;
+            ALTER TABLE refresh_suggestions ADD COLUMN IF NOT EXISTS reason TEXT;
+        """
     }
 ]
 

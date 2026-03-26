@@ -19,7 +19,7 @@ class ChunkConfig:
     min_chunk_size: int = 200
     target_chunk_size: int = 800
     max_chunk_size: int = 1200
-    overlap_percentage: float = 0.2  # 20% overlap
+    overlap_percentage: float = 0.25  # 25% overlap for robust RAG
     preserve_code_blocks: bool = True
     preserve_tables: bool = True
     extract_metadata: bool = True

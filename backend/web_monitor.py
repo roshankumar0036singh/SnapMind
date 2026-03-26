@@ -69,25 +69,55 @@ async def check_for_updates():
 
                 for (url,) in urls:
                     try:
-                        # We use a 'dry run' of ingest logic or a simple fetch to compare
-                        # For simplicity, we'll fetch the current title/content summary
-                        # In a real app, we might use Firecrawl/Playwright here.
+                        print(f"[WEB-MONITOR] Fetching {url} for change detection...")
+                        from api_clients import get_firecrawl_key
+                        from browser_agents import FirecrawlScraper
                         
-                        # Simplified: Just mark as 'suggested' if it's older than 7 days
-                        # and let the user trigger the actual re-scrape.
+                        scraper = FirecrawlScraper(get_firecrawl_key(self.api_keys if hasattr(self, 'api_keys') else {}))
+                        content = scraper.extract(url)
                         
-                        from datetime import timezone
-                        cur.execute("SELECT MAX(created_at) FROM documents WHERE source_url = %s", (url,))
-                        last_indexed = cur.fetchone()[0]
+                        if not content or "Error" in content or "Exception" in content:
+                            print(f"[WEB-MONITOR] Scraping failed for {url}: {content[:50]}...")
+                            continue
+                            
+                        new_hash = get_content_hash(content)
                         
-                        if last_indexed and last_indexed < datetime.now(timezone.utc) - timedelta(days=7):
-                            print(f"[WEB-MONITOR] Suggesting refresh for {url}")
+                        # Check existing hash
+                        cur.execute("SELECT content_hash FROM web_monitor_state WHERE url = %s", (url,))
+                        row = cur.fetchone()
+                        
+                        if not row:
+                            # First time seeing this, just store it
+                            print(f"[WEB-MONITOR] Storing initial hash for {url}")
                             cur.execute("""
-                                INSERT INTO refresh_suggestions (url, last_indexed_at, reason)
-                                VALUES (%s, %s, %s)
-                                ON CONFLICT (url) DO UPDATE SET status = 'pending', created_at = CURRENT_TIMESTAMP
-                            """, (url, last_indexed, "Content is older than 7 days."))
-                            conn.commit()
+                                INSERT INTO web_monitor_state (url, content_hash) 
+                                VALUES (%s, %s)
+                            """, (url, new_hash))
+                        elif row[0] != new_hash:
+                            # Content has changed!
+                            print(f"[WEB-MONITOR] 🚨 Change detected for {url}! Suggesting refresh.")
+                            cur.execute("""
+                                INSERT INTO refresh_suggestions (url, last_fingerprint, reason, status)
+                                VALUES (%s, %s, %s, 'pending')
+                                ON CONFLICT (url) DO UPDATE SET 
+                                    status = 'pending', 
+                                    last_fingerprint = %s,
+                                    reason = %s,
+                                    last_visited = CURRENT_TIMESTAMP
+                            """, (url, row[0], "Content changed (Hash mismatch)", row[0], "Content changed"))
+                            
+                            # Update the state
+                            cur.execute("""
+                                UPDATE web_monitor_state 
+                                SET content_hash = %s, change_detected_at = CURRENT_TIMESTAMP, last_checked = CURRENT_TIMESTAMP
+                                WHERE url = %s
+                            """, (new_hash, url))
+                        else:
+                            # No change
+                            print(f"[WEB-MONITOR] No change for {url}.")
+                            cur.execute("UPDATE web_monitor_state SET last_checked = CURRENT_TIMESTAMP WHERE url = %s", (url,))
+                        
+                        conn.commit()
 
                     except Exception as e:
                         print(f"[WEB-MONITOR] Error checking {url}: {e}")

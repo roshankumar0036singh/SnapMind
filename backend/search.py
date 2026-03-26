@@ -694,23 +694,59 @@ Question: {query}
         
         final_messages.append({"role": "user", "content": query})
 
-        if LLMProviderConfig.PROVIDER in ["local", "hybrid"]:
-            print(f"[CHAT] Using Local LLM (Ollama): {LLMProviderConfig.OLLAMA_GENERATION_MODEL}")
+        active_provider = (api_keys or {}).get("llm_provider", LLMProviderConfig.PROVIDER).lower()
+        active_model = (api_keys or {}).get("llm_model", "")
+
+        if active_provider in ["local", "hybrid", "ollama"]:
+            model_target = active_model or LLMProviderConfig.OLLAMA_GENERATION_MODEL
+            model_used = f"Ollama ({model_target})"
+            print(f"[CHAT] Using Local LLM (Ollama): {model_target}")
             final_answer = ollama_client.generate(
                 prompt=query,
                 system_prompt=system_content,
-                model=LLMProviderConfig.OLLAMA_GENERATION_MODEL
+                model=model_target
             )
-            model_used = LLMProviderConfig.OLLAMA_GENERATION_MODEL
-        else:
-            print(f"Generating with Mistral model: mistral-small-latest")
-            client = get_mistral_client(api_keys)
-            chat_response = client.chat.complete(
-                model="mistral-small-latest",
+        elif active_provider == "openai":
+            model_target = active_model or "gpt-4o-mini"
+            model_used = f"OpenAI ({model_target})"
+            print(f"[CHAT] Using OpenAI model: {model_target}")
+            client = get_openai_client(api_keys)
+            chat_response = client.chat.completions.create(
+                model=model_target,
                 messages=final_messages,
             )
             final_answer = chat_response.choices[0].message.content
-            model_used = "mistral-small-latest"
+        elif active_provider == "gemini":
+            model_target = active_model or "gemini-2.0-flash"
+            model_used = f"Gemini ({model_target})"
+            print(f"[CHAT] Using Gemini model: {model_target}")
+            client = get_gemini_client(api_keys)
+            
+            gemini_system_instruction = final_messages[0]["content"] if final_messages and final_messages[0]["role"] == "system" else ""
+            gemini_contents = []
+            for m in final_messages:
+                if m["role"] != "system":
+                    parts = [{"text": m["content"]}]
+                    r = "user" if m["role"] == "user" else "model"
+                    gemini_contents.append({"role": r, "parts": parts})
+                    
+            from google.genai import types
+            chat_response = client.models.generate_content(
+                model=model_target,
+                contents=gemini_contents,
+                config=types.GenerateContentConfig(system_instruction=gemini_system_instruction)
+            )
+            final_answer = chat_response.text
+        else:
+            model_target = active_model or "mistral-small-latest"
+            model_used = f"Mistral ({model_target})"
+            print(f"[CHAT] Generating with Mistral model: {model_target}")
+            client = get_mistral_client(api_keys)
+            chat_response = client.chat.complete(
+                model=model_target,
+                messages=final_messages,
+            )
+            final_answer = chat_response.choices[0].message.content
         
         # [NEW] Post-process to strip any leaked numeric footnotes [19], [1]
         import re
