@@ -88,18 +88,34 @@ export async function startScholar(options = {}) {
         continue;
       }
 
+      if (query.toLowerCase() === '/cite') {
+        const citeSpinner = ora('Generating BibTeX citations...').start();
+        const sources = [...new Set(docs.map(d => path.basename(d.metadata.source)))];
+        const bibtex = sources.map(s => `@article{${s.replace(/\s+/g, '_')},\n  title={${s}},\n  author={SnapMind Scholar},\n  year={${new Date().getFullYear()}}\n}`).join('\n\n');
+        
+        const bibFile = path.join(path.dirname(targetPath), 'citations.bib');
+        await fs.writeFile(bibFile, bibtex);
+        citeSpinner.succeed(`Citations saved to ${chalk.bold('citations.bib')}`);
+        continue;
+      }
+
       const chatSpinner = ora('Researching...').start();
       try {
-        const results = await vectorStore.similaritySearch(query, 3);
-        const context = results.map(r => r.pageContent).join('\n\n');
+        const results = await vectorStore.similaritySearch(query, 5);
+        const context = results.map(r => `Source: ${path.basename(r.metadata.source)}\nContent: ${r.pageContent}`).join('\n\n');
         
+        const systemPrompt = query.startsWith('/research') 
+          ? 'You are SnapMind Scholar. This is a DEEP RESEARCH task. Synthesize all sources into a cohesive academic summary. Compare perspectives if they differ.'
+          : 'You are SnapMind Scholar. Answer based ONLY on context. Cite page numbers.';
+
         const response = await llm.invoke([
-          ['system', 'You are SnapMind Scholar. Answer based ONLY on context. Cite page numbers.'],
-          ['user', `Context:\n${context}\n\nQuestion: ${query}`]
+          ['system', systemPrompt],
+          ['user', `Context:\n${context}\n\nQuestion: ${query.replace('/research', '').trim()}`]
         ]);
 
         chatSpinner.stop();
         console.log(chalk.cyan('\n' + response.content + '\n'));
+
         
         history.push({ role: 'user', content: query });
         history.push({ role: 'assistant', content: response.content });

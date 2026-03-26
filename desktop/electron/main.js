@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, dialog } = require('electron');
 const path = require('node:path');
-const fileWatcher = require('./services/file_watcher');
+const { startFileWatcher } = require('./services/file_watcher'); // Modified import
+const { startClipboardMonitor } = require('./services/clipboard_monitor'); // New import
 
 let mainWindow;
 let tray = null;
@@ -18,8 +19,15 @@ function createWindow() {
     title: 'SnapMind',
     icon: path.join(__dirname, '..', 'src', 'assets', 'icon.png'),
     // Hide initially to prevent flickering
-    show: false
+    show: false,
+    frame: false, // Added
+    transparent: true, // Added
+    alwaysOnTop: true, // Added
   });
+
+  // Start Background Monitors
+  startFileWatcher(mainWindow); // Modified call
+  startClipboardMonitor(mainWindow); // Added call
 
   // In dev mode load from Vite dev server, otherwise load built files
   const isDev = !app.isPackaged;
@@ -101,12 +109,21 @@ app.on('will-quit', () => {
 ipcMain.handle('get-version', () => app.getVersion());
 
 // File Watcher IPC
+ipcMain.handle('select-file', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'SnapMind Backup', extensions: ['json'] }]
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
 ipcMain.handle('select-folder', async () => {
-    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openDirectory']
-    });
-    if (canceled) { return null; }
-    return filePaths[0]; // Return selected path
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  });
+  if (result.canceled) return null;
+  return result.filePaths[0];
 });
 
 ipcMain.handle('add-watch-folder', async (event, folderPath) => {

@@ -1,6 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin, Folder } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -18,6 +18,8 @@ const Settings = lazy(() => import('./components/Settings'));
 const SessionList = lazy(() => import('./components/SessionList'));
 import MermaidChart from './components/MermaidChart';
 import WatchFoldersPanel from './components/WatchFoldersPanel';
+import RefreshSuggestions from './components/RefreshSuggestions';
+import AnalyticsView from './components/AnalyticsView';
 
 // Custom Markdown Components
 
@@ -2395,10 +2397,24 @@ function App() {
               </button>
               <button
                 onClick={() => setMemoryTab('folders')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'folders' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'folders' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-50'}`}
               >
                 <Folder className="w-3.5 h-3.5" />
                 Folders
+              </button>
+              <button
+                onClick={() => setMemoryTab('updates')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'updates' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-50'}`}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Updates
+              </button>
+              <button
+                onClick={() => setMemoryTab('stats')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'stats' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-50'}`}
+              >
+                <Activity className="w-3.5 h-3.5" />
+                Stats
               </button>
             </div>
 
@@ -2416,7 +2432,7 @@ function App() {
                 color: 'var(--text-primary)',
                 marginBottom: '4px'
               }}>
-                {memoryTab === 'sites' ? 'Indexed Sites' : memoryTab === 'graph' ? 'Knowledge Map' : 'Research Notebook'}
+                {memoryTab === 'sites' ? 'Indexed Sites' : memoryTab === 'graph' ? 'Knowledge Map' : memoryTab === 'updates' ? 'Library Maintenance' : memoryTab === 'stats' ? 'RAG Analytics' : 'Research Notebook'}
               </h2>
               <p style={{
                 fontSize: 'var(--text-sm)',
@@ -2428,7 +2444,11 @@ function App() {
                     ? "Semantic entities and relationships discovered across your knowledge base"
                     : memoryTab === 'bookmarks'
                       ? "Pinned citations and key snippets saved for your research"
-                      : "Local directories synced via real-time file system monitoring"}
+                      : memoryTab === 'updates'
+                        ? "Websites that may have changed since they were last indexed"
+                        : memoryTab === 'stats'
+                          ? "Insights into your local knowledge base growth and storage"
+                          : "Local directories synced via real-time file system monitoring"}
               </p>
             </div>
 
@@ -2501,8 +2521,12 @@ function App() {
                 loading={bookmarksLoading}
                 onDelete={handleDeleteBookmark}
               />
-            ) : (
+            ) : memoryTab === 'folders' ? (
               <WatchFoldersPanel />
+            ) : memoryTab === 'updates' ? (
+                <RefreshSuggestions backendUrl={backendUrl} />
+            ) : (
+                <AnalyticsView backendUrl={backendUrl} />
             )}
           </div>
         )

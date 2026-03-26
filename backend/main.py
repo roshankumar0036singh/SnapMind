@@ -41,17 +41,26 @@ async def background_sync_loop():
             print(f"[SYNC] Error in background sync: {e}")
             await asyncio.sleep(60)
 
+async def web_monitor_background_loop():
+    """
+    Periodically checks for stale URLs and generates refresh suggestions.
+    """
+    from web_monitor import web_monitor_loop
+    await web_monitor_loop()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Start Background Sync
+    # Startup: Start Background Tasks
     sync_task = asyncio.create_task(background_sync_loop())
+    monitor_task = asyncio.create_task(web_monitor_background_loop())
     
     yield
     
-    # Shutdown: Cancel Sync
+    # Shutdown: Cancel Tasks
     sync_task.cancel()
+    monitor_task.cancel()
     try:
-        await sync_task
+        await asyncio.gather(sync_task, monitor_task, return_exceptions=True)
     except asyncio.CancelledError:
         pass
 
@@ -60,6 +69,48 @@ async def lifespan(app: FastAPI):
     if pool:
         print("Shutting down database pool...")
         pool.close()
+
+@app.get("/admin/refresh-suggestions")
+async def get_refresh_suggestions():
+    """
+    Fetch pending URL refresh suggestions.
+    """
+    from database import get_db_pool
+    from psycopg.rows import dict_row # Ensure correct row factory
+    pool = get_db_pool()
+    if not pool: return []
+    try:
+        with pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT * FROM refresh_suggestions WHERE status = 'pending' ORDER BY created_at DESC")
+                return cur.fetchall()
+    except Exception as e:
+        print(f"[API] Error fetching suggestions: {e}")
+        return []
+
+@app.post("/admin/refresh-url")
+async def trigger_refresh(request: dict):
+    """
+    Manually trigger a re-index for a suggested URL.
+    """
+    url = request.get("url")
+    if not url: raise HTTPException(status_code=400, detail="URL is required")
+    
+    from rag_pipeline import ingest_website_logic
+    from database import get_db_pool
+    
+    # Re-ingest (this will overwrite/update documents for this URL)
+    result = await ingest_website_logic(url) 
+    
+    if result.get("success"):
+        pool = get_db_pool()
+        if pool:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE refresh_suggestions SET status = 'completed' WHERE url = %s", (url,))
+                    conn.commit()
+    return result
+
 
 app = FastAPI(title="Snapmind Backend", lifespan=lifespan)
 
@@ -118,6 +169,48 @@ class BookmarkRequest(BaseModel):
     content: str
     source_url: str | None = None
     metadata: dict | None = None
+
+@app.get("/admin/analytics")
+async def get_analytics():
+    """
+    Get library statistics and usage analytics.
+    """
+    from database import get_db_pool
+    pool = get_db_pool()
+    if not pool: return {"error": "No database connection"}
+    
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                # 1. Counts
+                cur.execute("SELECT COUNT(*) FROM documents")
+                doc_count = cur.fetchone()[0]
+                
+                cur.execute("SELECT COUNT(*) FROM bookmarks")
+                bookmark_count = cur.fetchone()[0]
+                
+                cur.execute("SELECT COUNT(*) FROM chat_sessions")
+                session_count = cur.fetchone()[0]
+                
+                # 2. Storage stats (approximate)
+                cur.execute("SELECT pg_size_pretty(pg_total_relation_size('documents'))")
+                storage_size = cur.fetchone()[0]
+                
+                # 3. Last indexed items
+                cur.execute("SELECT source_url, created_at FROM documents ORDER BY created_at DESC LIMIT 5")
+                recent = cur.fetchall()
+                
+                return {
+                    "docs": doc_count,
+                    "bookmarks": bookmark_count,
+                    "sessions": session_count,
+                    "storage": storage_size,
+                    "recent": [{"url": r[0], "date": r[1]} for r in recent],
+                    "health": "excellent"
+                }
+    except Exception as e:
+        print(f"[API] Analytics error: {e}")
+        return {"error": str(e)}
 
 @app.post("/admin/export")
 async def export_endpoint(request: dict):

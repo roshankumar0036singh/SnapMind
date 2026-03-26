@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Save, Key, ArrowLeft } from 'lucide-react';
+import { Save, Key, ArrowLeft, Database, Upload, Download, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Settings({ onBack }) {
     const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -24,21 +24,52 @@ export default function Settings({ onBack }) {
         }
     }, []);
 
-    const handleSave = () => {
-        if (chrome.storage && chrome.storage.local) {
-            chrome.storage.local.set({
-                geminiApiKey: geminiApiKey.trim(),
-                mistralApiKey: mistralApiKey.trim(),
-                lingodevApiKey: lingodevApiKey.trim(),
-                firecrawlApiKey: firecrawlApiKey.trim(),
-                groqApiKey: groqApiKey.trim(),
-                backendUrl: backendUrl.trim()
-            }, () => {
-                setSaved(true);
-                setTimeout(() => setSaved(false), 2000);
+    const handleBackup = async () => {
+        const path = await window.electronAPI.selectFolder();
+        if (!path) return;
+
+        const targetPath = `${path}\\snapmind_backup_${new Date().toISOString().split('T')[0]}.json`;
+        const toastId = toast.loading("Creating backup...");
+
+        try {
+            const response = await fetch(`${backendUrl || 'http://localhost:8000'}/admin/export`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: targetPath })
             });
-        } else {
-            console.warn("Chrome storage not available (dev mode?)");
+            const result = await response.json();
+            if (result.success) {
+                toast.success(`Backup created: ${result.counts.documents} chunks exported`, { id: toastId });
+            } else {
+                toast.error(`Backup failed: ${result.error}`, { id: toastId });
+            }
+        } catch (e) {
+            toast.error(`Error: ${e.message}`, { id: toastId });
+        }
+    };
+
+    const handleRestore = async () => {
+        const path = await window.electronAPI.selectFile();
+        if (!path) return;
+
+        if (!confirm("This will merge the backup data into your current library. Continue?")) return;
+
+        const toastId = toast.loading("Restoring library...");
+
+        try {
+            const response = await fetch(`${backendUrl || 'http://localhost:8000'}/admin/import`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: path })
+            });
+            const result = await response.json();
+            if (result.success) {
+                toast.success("Library restored successfully!", { id: toastId });
+            } else {
+                toast.error(`Restore failed: ${result.error}`, { id: toastId });
+            }
+        } catch (e) {
+            toast.error(`Error: ${e.message}`, { id: toastId });
         }
     };
 
@@ -165,16 +196,42 @@ export default function Settings({ onBack }) {
                 </div>
 
 
-                <button
-                    onClick={handleSave}
-                    className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all ${saved
-                        ? 'bg-emerald-500 text-white shadow-emerald-200'
-                        : 'bg-gray-900 text-white hover:bg-gray-800 shadow-gray-200'
-                        } shadow-lg mt-4`}
-                >
-                    {saved ? 'Saved!' : 'Save Configuration'}
-                    {!saved && <Save className="w-4 h-4" />}
-                </button>
+                {/* DATA MANAGEMENT */}
+                <div className="pt-4 border-t border-gray-100 space-y-4">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                        <Database className="w-3.5 h-3.5" />
+                        Data Portability
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                        <button
+                            onClick={handleBackup}
+                            className="flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-indigo-200 transition-all shadow-sm"
+                        >
+                            <Download className="w-4 h-4 text-indigo-500" />
+                            Backup
+                        </button>
+                        <button
+                            onClick={handleRestore}
+                            className="flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-indigo-200 transition-all shadow-sm"
+                        >
+                            <Upload className="w-4 h-4 text-indigo-500" />
+                            Restore
+                        </button>
+                    </div>
+                </div>
+
+                <div className="pt-4">
+                    <button
+                        onClick={handleSave}
+                        className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all ${saved
+                            ? 'bg-emerald-500 text-white shadow-emerald-200'
+                            : 'bg-gray-900 text-white hover:bg-gray-800 shadow-gray-200'
+                            } shadow-lg`}
+                    >
+                        {saved ? 'Saved!' : 'Save Configuration'}
+                        {!saved && <Save className="w-4 h-4" />}
+                    </button>
+                </div>
             </div>
         </div>
     );
