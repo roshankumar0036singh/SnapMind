@@ -7,8 +7,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from api_clients import get_groq_key, get_hf_token, get_gemini_client, get_openai_client
 
-def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str = "qa", api_keys: dict = None, target_lang: str = "auto") -> dict:
-
 # --- Vision Cache Configuration ---
 CACHE_DIR = Path("data/vision_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)

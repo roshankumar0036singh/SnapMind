@@ -382,6 +382,18 @@ MIGRATIONS = [
             END;
             $$;
         """
+    },
+    {
+        "version": 8,
+        "name": "personas_table",
+        "sql": """
+            CREATE TABLE IF NOT EXISTS personas (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name TEXT NOT NULL,
+                system_prompt_addon TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """
     }
 ]
 

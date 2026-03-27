@@ -176,6 +176,8 @@ class ChatRequest(BaseModel):
     history: list[dict] | None = None # [NEW] Conversational History
     session_id: str | None = None # [NEW] Phase 5: Semantic Chat Memory
     query_notebook: bool = False # [NEW] Phase 20: Research Notebook Correlation
+    persona_id: str | None = None # [NEW] Feature 21: Custom Agent Personas
+
 class SuggestRequest(BaseModel):
     page_content: str | None = None
     url: str | None = None
@@ -294,6 +296,28 @@ GUIDELINES:
 @app.get("/")
 def read_root():
     return {"status": "ok", "service": "snapmind-rag"}
+
+@app.get("/mcp/manifest")
+def mcp_manifest():
+    """Returns a manifest of available tools and resources for MCP integration."""
+    return {
+        "status": "ok",
+        "mcp_version": "1.0.0",
+        "tools": [
+            {"name": "search", "description": "Semantic RAG search"},
+            {"name": "chat", "description": "Conversational Q&A"},
+            {"name": "ingest_url", "description": "Index websites"},
+            {"name": "ingest_file", "description": "Index local files"},
+            {"name": "ingest_repo", "description": "Index GitHub repos"},
+            {"name": "web_research", "description": "Multi-agent research"},
+            {"name": "list_personas", "description": "Discover custom personas"},
+            {"name": "get_analytics", "description": "Library statistics"}
+        ],
+        "resources": [
+            "snapmind://kb/stats",
+            "snapmind://kb/tags"
+        ]
+    }
 
 @app.get("/bridge/status")
 def bridge_status():
@@ -642,6 +666,58 @@ def translate_endpoint(request: TranslateRequest, req: Request):
         "isTranslated": is_translated
     }
 
+# --- Custom Agent Personas ---
+
+class PersonaRequest(BaseModel):
+    name: str
+    system_prompt_addon: str
+
+@app.get("/personas")
+def get_personas_endpoint():
+    try:
+        from database import get_db_pool
+        from psycopg.rows import dict_row
+        pool = get_db_pool()
+        if not pool: return {"success": False, "personas": []}
+        with pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT id, name, system_prompt_addon FROM personas ORDER BY created_at ASC")
+                rows = cur.fetchall()
+                for r in rows: r['id'] = str(r['id'])
+        return {"success": True, "personas": rows}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/personas")
+def create_persona_endpoint(request: PersonaRequest):
+    try:
+        from database import get_db_pool
+        pool = get_db_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO personas (name, system_prompt_addon) VALUES (%s, %s) RETURNING id",
+                    (request.name, request.system_prompt_addon)
+                )
+                pid = cur.fetchone()[0]
+                conn.commit()
+        return {"success": True, "id": str(pid)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.delete("/personas/{persona_id}")
+def delete_persona_endpoint(persona_id: str):
+    try:
+        from database import get_db_pool
+        pool = get_db_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM personas WHERE id = %s", (persona_id,))
+                conn.commit()
+        return {"success": True}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.post("/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest, req: Request):
     """
@@ -669,7 +745,8 @@ async def chat_stream_endpoint(request: ChatRequest, req: Request):
             search_query=request.search_query,
             query_lang=request.query_lang,
             output_lang=request.output_lang,
-            query_notebook=request.query_notebook
+            query_notebook=request.query_notebook,
+            persona_id=request.persona_id
         ),
         media_type="application/x-ndjson"
     )
@@ -688,6 +765,28 @@ async def chat_suggest_endpoint(request: SuggestRequest, req: Request):
     
     res = get_chat_suggestions(request.page_content, request.url, request.site_id, api_keys)
     return res
+class GlobalSearchRequest(BaseModel):
+    query: str
+    limit: int = 20
+
+@app.post("/search/global")
+def global_search_endpoint(request: GlobalSearchRequest, req: Request):
+    """
+    Performs a semantic search across all knowledge domains (documents, bookmarks, sessions).
+    """
+    from search import search_global
+    try:
+        api_keys = {
+            "gemini": req.headers.get("x-gemini-key"),
+            "mistral": req.headers.get("x-mistral-key"),
+            "lingodev": req.headers.get("x-lingodev-key"),
+        }
+        results = search_global(request.query, limit=request.limit, api_keys=api_keys)
+        return {"success": True, "results": results}
+    except Exception as e:
+        print(f"Error in global search: {e}")
+        return {"success": False, "results": [], "error": str(e)}
+
 @app.get("/tags")
 def get_tags_endpoint():
     """

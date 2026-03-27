@@ -236,6 +236,89 @@ def get_relevant_context(query: str, match_threshold: float = None, site_id: str
         traceback.print_exc()
         return "", []
 
+def search_global(query: str, limit: int = 20, api_keys: dict = None) -> list[dict]:
+    """
+    Performs a global semantic search across documents, bookmarks, and chat_messages.
+    Returns a unified, sorted list of results.
+    """
+    if not db_pool: return []
+    try:
+        from rag_pipeline import embed_single_chunk
+        _, embedding = embed_single_chunk(query, api_keys=api_keys)
+        
+        results = []
+        with db_pool.connection() as conn:
+            from psycopg.rows import dict_row
+            with conn.cursor(row_factory=dict_row) as cur:
+                # 1. Search Documents
+                cur.execute(
+                    "SELECT id, content, source_url, metadata, 1 - (embedding <=> %s::halfvec) AS similarity "
+                    "FROM documents "
+                    "WHERE embedding <=> %s::halfvec < 0.6 "
+                    "ORDER BY similarity DESC LIMIT %s",
+                    (embedding, embedding, limit)
+                )
+                doc_rows = cur.fetchall()
+                for r in doc_rows:
+                    results.append({
+                        "id": r["id"],
+                        "type": "document",
+                        "content": r["content"],
+                        "url": r["source_url"],
+                        "metadata": r.get("metadata", {}),
+                        "score": r["similarity"]
+                    })
+                
+                # 2. Search Bookmarks
+                cur.execute(
+                    "SELECT id, content, source_url, metadata, 1 - (embedding <=> %s::halfvec) AS similarity "
+                    "FROM bookmarks "
+                    "WHERE embedding <=> %s::halfvec < 0.6 "
+                    "ORDER BY similarity DESC LIMIT %s",
+                    (embedding, embedding, limit)
+                )
+                bm_rows = cur.fetchall()
+                for r in bm_rows:
+                    results.append({
+                        "id": str(r["id"]),
+                        "type": "bookmark",
+                        "content": r["content"],
+                        "url": r["source_url"],
+                        "metadata": r.get("metadata", {}),
+                        "score": r["similarity"]
+                    })
+                
+                # 3. Search Chat Messages (Sessions)
+                # Group by session_id to avoid repeating the same session too much
+                cur.execute(
+                    "SELECT id, session_id, role, content, 1 - (embedding <=> %s::halfvec) AS similarity "
+                    "FROM chat_messages "
+                    "WHERE embedding <=> %s::halfvec < 0.6 "
+                    "ORDER BY similarity DESC LIMIT %s",
+                    (embedding, embedding, limit)
+                )
+                chat_rows = cur.fetchall()
+                # Deduplicate by session_id preferring highest score
+                seen_sessions = set()
+                for r in chat_rows:
+                    if r["session_id"] not in seen_sessions:
+                        seen_sessions.add(r["session_id"])
+                        results.append({
+                            "id": str(r["id"]),
+                            "type": "session",
+                            "content": f"{r['role'].upper()}: {r['content']}",
+                            "url": f"/session/{r['session_id']}",
+                            "metadata": {"session_id": r["session_id"]},
+                            "score": r["similarity"]
+                        })
+                        
+        # Sort combined results by highest similarity score
+        results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:limit]
+    except Exception as e:
+        print(f"[GLOBAL SEARCH] Error: {e}")
+        return []
+
 def save_chat_message(session_id: str, role: str, content: str, api_keys: dict = None):
     """
     Saves a chat message to the persistent Postgres memory.
@@ -810,7 +893,7 @@ Question: {query}
 
     return {"error": f"All models failed. Last error: {str(last_error)}"}
 
-def chat_logic_stream(query: str, page_content: str | None = None, content_blocks: list[dict] | None = None, site_id: str | None = None, history: list[dict] | None = None, session_id: str | None = None, api_keys: dict = None, search_query: str | None = None, query_lang: str | None = None, output_lang: str = "auto", query_notebook: bool = False):
+def chat_logic_stream(query: str, page_content: str | None = None, content_blocks: list[dict] | None = None, site_id: str | None = None, history: list[dict] | None = None, session_id: str | None = None, api_keys: dict = None, search_query: str | None = None, query_lang: str | None = None, output_lang: str = "auto", query_notebook: bool = False, persona_id: str | None = None):
     """
     Streaming version of chat logic. Yields NDJSON chunks.
     """
@@ -876,6 +959,20 @@ Your GOAL is to answer the user's question directly and intelligently using ONLY
 SPECIAL INSTRUCTION: If the user asks about correlations or connections between bookmarks/references, look for legal, causal, or prerequisite links. Give a deep reasoning based on the content."""
 
     print(f"[CHAT-STREAM] System Instruction Language Rule: {lang_instruction.strip() or 'None'}")
+
+    if persona_id:
+        try:
+            from database import get_db_pool
+            pool = get_db_pool()
+            if pool:
+                with pool.connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT system_prompt_addon FROM personas WHERE id = %s", (persona_id,))
+                        res = cur.fetchone()
+                        if res:
+                            system_instruction = f"=== CUSTOM PERSONA ===\n{res[0]}\n=====================\n\n" + system_instruction
+        except Exception as e:
+            print(f"Error loading persona {persona_id}: {e}")
 
     citation_instruction = ""
     context = ""
