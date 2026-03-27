@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { ForceGraph3D } from 'react-force-graph-3d';
+import ForceGraph2D from 'react-force-graph-2d';
 import { Loader2, ZoomIn, ZoomOut, Maximize2, Database, ShieldCheck, Zap, Activity, MousePointer2 } from 'lucide-react';
-import * as THREE from 'three';
 
 const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
     const fgRef = useRef();
     const [hoverNode, setHoverNode] = useState(null);
 
-    // Filter and sanitize data for ForceGraph3D
+    // Filter and sanitize data for ForceGraph2D
     const graphData = useMemo(() => {
         const nodes = (data.nodes || []).map(n => {
             const nodeData = n.data || n;
@@ -32,22 +31,15 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
     }, [data]);
 
     const handleNodeClick = useCallback(node => {
-        // Aim at node from outside it
-        const distance = 40;
-        const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
-
         if (fgRef.current) {
-            fgRef.current.cameraPosition(
-                { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new pos
-                node, // lookAt property
-                3000  // transitions duration (ms)
-            );
+            fgRef.current.centerAt(node.x, node.y, 1000);
+            fgRef.current.zoom(2, 1000);
         }
     }, [fgRef]);
 
     if (isLoading) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center bg-[#09090b]">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#09090b] z-50">
                 <div className="relative">
                     <div className="w-16 h-16 rounded-full border-2 border-[#6366f1]/20 border-t-[#6366f1] animate-spin" />
                     <Database className="w-6 h-6 text-[#6366f1] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
@@ -58,9 +50,9 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
     }
 
     return (
-        <div className="flex-1 relative bg-[#07070a] overflow-hidden group">
-            {/* 3D GRAPH ENGINE */}
-            <ForceGraph3D
+        <div className="flex-1 relative bg-[#07070a] overflow-hidden group min-h-[500px]">
+            {/* 2D GRAPH ENGINE */}
+            <ForceGraph2D
                 ref={fgRef}
                 graphData={graphData}
                 backgroundColor="#07070a"
@@ -74,18 +66,7 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
                   </div>
                 `}
                 nodeRelSize={6}
-                nodeThreeObject={node => {
-                   const geometry = new THREE.SphereGeometry(Math.sqrt(node.val) * 2 + 2);
-                   const material = new THREE.MeshPhongMaterial({
-                     color: node.type === 'site' ? '#6366f1' : '#10b981',
-                     transparent: true,
-                     opacity: 0.85,
-                     emissive: node.type === 'site' ? '#4338ca' : '#047857',
-                     emissiveIntensity: 0.4,
-                     shininess: 100
-                   });
-                   return new THREE.Mesh(geometry, material);
-                }}
+                nodeColor={node => node.type === 'site' ? '#6366f1' : '#10b981'}
                 onNodeClick={handleNodeClick}
                 onNodeHover={setHoverNode}
 
@@ -95,11 +76,31 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
                 linkDirectionalArrowRelPos={1}
                 linkCurvature={0.2}
                 linkColor={() => '#1e1e26'}
-                linkWidth={0.6}
+                linkWidth={1}
                 
-                // Camera / Controls
-                enableNodeDrag={false}
-                controlType="orbit"
+                // Extra Polish
+                nodeCanvasObject={(node, ctx, globalScale) => {
+                  const label = node.name;
+                  const fontSize = 12 / globalScale;
+                  ctx.font = `${fontSize}px Inter, system-ui`;
+                  const textWidth = ctx.measureText(label).width;
+
+                  // Draw Node circle
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, 5, 0, 2 * Math.PI, false);
+                  ctx.fillStyle = node.type === 'site' ? '#6366f1' : '#10b981';
+                  ctx.fill();
+                  ctx.strokeStyle = '#fafafa20';
+                  ctx.stroke();
+
+                  // Draw Label only if zoomed in
+                  if (globalScale > 1.5) {
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#fafafa';
+                    ctx.fillText(label, node.x, node.y + 10);
+                  }
+                }}
             />
 
             {/* FLOATING HUD */}
@@ -131,15 +132,15 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
                                     <div className="p-2 bg-[#1a1a1d] rounded-xl border border-[#27272a] shadow-inner"><MousePointer2 className="w-3.5 h-3.5 text-[#6366f1]" /></div>
                                     <div className="flex flex-col">
                                         <span className="text-[10px] text-[#fafafa] font-bold">Left Click</span>
-                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">Target & Fly</span>
+                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">Target & Focus</span>
                                     </div>
                                 </div>
                                 <div className="w-px h-5 bg-[#1e1e26]" />
                                 <div className="flex items-center gap-2.5">
                                     <div className="p-2 bg-[#1a1a1d] rounded-xl border border-[#27272a] shadow-inner"><Maximize2 className="w-3.5 h-3.5 text-[#71717a]" /></div>
                                     <div className="flex flex-col">
-                                        <span className="text-[10px] text-[#fafafa] font-bold">Orbital Drag</span>
-                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">360° Inspection</span>
+                                        <span className="text-[10px] text-[#fafafa] font-bold">Fluid Drag</span>
+                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">2D Inspection</span>
                                     </div>
                                 </div>
                             </div>
@@ -149,7 +150,7 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
 
                 <div className="flex items-center gap-3 pointer-events-auto">
                     <button 
-                      onClick={() => fgRef.current.zoomToFit(1200, 100)}
+                      onClick={() => fgRef.current?.zoomToFit(1200, 100)}
                       className="p-5 px-8 bg-[#6366f1]/10 hover:bg-[#6366f1]/20 border border-[#6366f1]/30 text-[#6366f1] rounded-[24px] transition-all hover:scale-105 active:scale-95 font-black text-[10px] uppercase tracking-[0.25em] shadow-[0_10px_30px_rgba(99,102,241,0.1)] active:shadow-none"
                     >
                       Recenter Atlas

@@ -1,6 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, GitBranch, Bookmark, Globe, Video, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity, Copy, Download } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, GitBranch, Bookmark, Globe, Video, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity, Copy, Download, Camera, X } from 'lucide-react';
 import BotLogo from './components/BotLogo';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -316,29 +316,114 @@ function App() {
   const inputRef = useRef(null); // For Ctrl+K focus
   const fileInputRef = useRef(null); // Used by manual generic file clicks
 
-  // --- Phase 10: Bootstrap Health Check ---
-  useEffect(() => {
-    const checkSystemHealth = async () => {
-      try {
-        const response = await fetch(`${apiClient.baseUrl}/admin/settings`);
-        if (response.ok) {
-          console.log("[HEALTH] Local SnapMind Engine Reachable");
-          toast.success("Semantic Engine Sync Active", { icon: "🧠", duration: 2000 });
-        } else {
-          setIsOffline(true);
+  // [NEW] Phase 22: Ingestion Tracking & Visual Search
+  const [ingestions, setIngestions] = useState([]); // Array of { id, filename, status: 'processing'|'completed'|'error' }
+  const [isCapturing, setIsCapturing] = useState(false);
+
+  const handleVisualSearch = async () => {
+    if (!window.electronAPI) return;
+    setIsCapturing(true);
+    const toastId = toast.loading("Capturing high-fidelity system screenshot...", { duration: Infinity });
+    
+    try {
+      const { success, data, error } = await window.electronAPI.captureScreen();
+      if (!success) throw new Error(error || "Screenshot failed");
+      
+      // POST to SnapMind cache
+      const baseUrl = await apiClient.getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/vision/cache`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: data })
+      });
+      
+      if (!response.ok) throw new Error("Backend cache sync failed");
+      
+      const resData = await response.json();
+      setCropPreview(data);
+      setMode('visual');
+      toast.success("Visual Context Ingested", { id: toastId });
+      
+      // Auto-trigger a visual analysis
+      setInput("Describe and analyze this visual state for current research.");
+    } catch (err) {
+      console.error(err);
+      toast.error(`Visual Capture Failed: ${err.message}`, { id: toastId });
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  const handleDocumentDrop = async (files) => {
+    const newIngestions = files.map(f => ({ 
+      id: Math.random().toString(36).substr(2, 9), 
+      filename: f.name, 
+      status: 'processing',
+      message: 'Initial Sync...',
+      progress: 0
+    }));
+    setIngestions(prev => [...prev, ...newIngestions]);
+
+    newIngestions.forEach(async (ing) => {
+      // Setup Polling
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await apiClient.getIngestStatus(currentSessionId);
+          if (statusRes && statusRes.status === 'processing') {
+            setIngestions(prev => prev.map(i => i.id === ing.id ? { 
+              ...i, 
+              message: statusRes.message, 
+              progress: statusRes.progress 
+            } : i));
+          }
+        } catch (e) {
+          // Silent polling error
         }
-      } catch (e) {
-        console.warn("[HEALTH] Engine Offline:", e.message);
-        setIsOffline(true);
-        toast.error("SnapMind Engine Offline. Ensure backend is running.", { duration: 5000 });
+      }, 2000);
+
+      try {
+        const file = files.find(f => f.name === ing.filename);
+        const res = await apiClient.ingestFile(file, currentSessionId);
+        
+        clearInterval(pollInterval);
+
+        if (res.success) {
+          setIngestions(prev => prev.map(i => i.id === ing.id ? { ...i, status: 'completed', message: 'Neural Sync Ready', progress: 100 } : i));
+          setTimeout(() => {
+             setIngestions(prev => prev.filter(i => i.id !== ing.id));
+          }, 5000);
+        } else {
+          setIngestions(prev => prev.map(i => i.id === ing.id ? { ...i, status: 'error', message: res.error || 'Sync Fault' } : i));
+          setTimeout(() => {
+             setIngestions(prev => prev.filter(i => i.id !== ing.id));
+          }, 5000);
+        }
+      } catch (err) {
+        clearInterval(pollInterval);
+        setIngestions(prev => prev.map(i => i.id === ing.id ? { ...i, status: 'error', message: 'Connection Error' } : i));
+        setTimeout(() => {
+           setIngestions(prev => prev.filter(i => i.id !== ing.id));
+        }, 5000);
       }
-    };
-    checkSystemHealth();
-  }, []);
+    });
+  };
 
   // --- Phase 15-20: Deep Link Listener ---
   const [isCodeSynthesisOpen, setIsCodeSynthesisOpen] = useState(false);
   const [generatedCode, setGeneratedCode] = useState('');
+
+  // [NEW] Ingestion Sweeper: Ensure no status message stays longer than 30s regardless of results
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIngestions(prev => prev.filter(ing => {
+        // If it's been processing for > 60s or error/completed for > 15s, clear it
+        // Since we don't have a timestamp, we'll just clear error/completed items that might have missed their timeout
+        if (ing.status !== 'processing') return false; 
+        return true; 
+      }));
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (window.electronAPI && window.electronAPI.onDeepLink) {
@@ -350,17 +435,20 @@ function App() {
           if (!cacheId) return;
 
           if (url.includes('snapmind://vision')) {
-            const res = await fetch(`http://127.0.0.1:50650/api/vision/cache/${cacheId}`);
+            const baseUrl = await apiClient.getBaseUrl();
+            const res = await fetch(`${baseUrl}/api/vision/cache/${cacheId}`);
             if (res.ok) {
               const data = await res.json();
               if (data.image) {
                 setCropPreview(data.image);
                 setMode('visual');
+                setInput("Describe and analyze this visual context in detail.");
                 toast.success("Visual Search Request Received", { icon: "👁️" });
               }
             }
           } else if (url.includes('snapmind://code')) {
-            const res = await fetch(`http://127.0.0.1:50650/api/vision/cache/${cacheId}`);
+            const baseUrl = await apiClient.getBaseUrl();
+            const res = await fetch(`${baseUrl}/api/vision/cache/${cacheId}`);
             if (res.ok) {
               const data = await res.json();
               if (data.text_data) {
@@ -400,14 +488,7 @@ function App() {
       
       const files = Array.from(e.dataTransfer.files);
       if (files.length > 0) {
-        toast.promise(Promise.all(files.map(async (file) => {
-          const text = await file.text();
-          return apiClient.ingestText(file.name, text, currentSessionId);
-        })), {
-          loading: `Ingesting ${files.length} file(s) into Neural Core...`,
-          success: 'Files successfully vectorized!',
-          error: 'Failed to ingest files.'
-        });
+        handleDocumentDrop(files);
       }
     };
     
@@ -2357,22 +2438,6 @@ function App() {
 
                 {/* CHAT INPUT AREA */}
                 <footer className="px-8 pb-8 pt-4">
-                  {/* [NEW] Vision Protocol Preview */}
-                  {cropPreview && (
-                    <motion.div 
-                        initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        className="mb-4 relative group w-fit"
-                    >
-                        <img src={cropPreview} className="h-24 w-auto rounded-xl border-2 border-[#6366f1]/40 shadow-xl object-contain bg-[#111115]" />
-                        <button 
-                            onClick={() => setCropPreview(null)}
-                            className="absolute -top-2 -right-2 w-6 h-6 bg-[#ef4444] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
-                        >
-                            <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                        </button>
-                    </motion.div>
-                  )}
 
                   {/* [NEW] Pinned Tabs Manager */}
                   {pinnedTabs.length > 0 && (
@@ -2396,21 +2461,41 @@ function App() {
                     <div className="absolute inset-0 bg-[#6366f1]/5 rounded-2xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <form 
                       onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                      className="relative bg-[#0f0f14] border border-[#1e1e26] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl"
+                      className="relative bg-[#0f0f14] border border-[#1e1e26] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl overflow-hidden flex flex-col"
                     >
-                      <input 
-                        className="w-full bg-transparent border-none pl-8 pr-20 py-6 focus:outline-none text-[15px] text-[#fafafa] placeholder:text-[#52525b] font-medium tracking-tight"
-                        placeholder="Neural prompt or local command..."
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                      />
-                      <button 
-                        type="submit"
-                        disabled={!input.trim() || isLoading}
-                        className="absolute right-4 top-4 bottom-4 px-6 bg-[#6366f1] text-white rounded-xl font-bold text-[11px] uppercase tracking-[0.2em] hover:bg-[#4f46e5] hover:scale-[1.02] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center gap-2"
-                      >
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>SEND</span> <Send className="w-3.5 h-3.5" /></>}
-                      </button>
+                      {/* [NEW] Vision Protocol Preview IN-BAR */}
+                      {cropPreview && (
+                        <div className="px-6 pt-4 flex gap-3 overflow-x-auto bg-[#111116]/50 border-b border-[#1e1e26]/30">
+                           <motion.div 
+                               initial={{ opacity: 0, scale: 0.9 }}
+                               animate={{ opacity: 1, scale: 1 }}
+                               className="mb-4 relative group shrink-0"
+                           >
+                               <img src={cropPreview} className="h-16 w-auto rounded-lg border border-[#6366f1]/40 shadow-xl object-contain bg-[#111115]" />
+                               <button 
+                                   onClick={() => setCropPreview(null)}
+                                   className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-[#ef4444] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform text-[10px] font-bold"
+                               >
+                                   <X className="w-3 h-3" />
+                               </button>
+                           </motion.div>
+                        </div>
+                      )}
+                      <div className="relative flex items-center">
+                        <input 
+                          className="w-full bg-transparent border-none pl-8 pr-24 py-6 focus:outline-none text-[15px] text-[#fafafa] placeholder:text-[#52525b] font-medium tracking-tight"
+                          placeholder="Neural prompt or local command..."
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                        />
+                        <button 
+                          type="submit"
+                          disabled={!input.trim() || isLoading}
+                          className="absolute right-4 top-3 bottom-3 px-6 bg-[#6366f1] text-white rounded-xl font-bold text-[11px] uppercase tracking-[0.2em] hover:bg-[#4f46e5] hover:scale-[1.02] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center gap-2"
+                        >
+                          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>SEND</span> <Send className="w-3.5 h-3.5" /></>}
+                        </button>
+                      </div>
                     </form>
                   </div>
                   
@@ -2493,7 +2578,10 @@ function App() {
                     {/* Snippet Block */}
                     <div>
                       <span className="text-[9px] font-black text-[#3f3f46] uppercase tracking-[0.2em] mb-3 block">High-Fidelity Context</span>
-                      <div className="p-5 rounded-2xl bg-[#0f0f14] border border-[#1e1e26] text-[#d4d4d8] text-[12.5px] leading-relaxed italic relative">
+                      <div 
+                        key={selectedCitation.blockId}
+                        className="p-5 rounded-2xl bg-[#6366f1]/5 border border-[#6366f1]/30 text-[#fafafa] text-[12.5px] leading-relaxed italic relative shadow-[0_0_20px_rgba(99,102,241,0.1)] animate-in fade-in zoom-in-95 duration-500"
+                      >
                          <span className="absolute -left-2 top-4 text-4xl text-[#6366f1]/20 font-serif">"</span>
                          {selectedCitation.snippet || selectedCitation.block?.text}
                       </div>
@@ -2670,6 +2758,47 @@ function App() {
               </motion.div>
             )}
           </AnimatePresence>
+          {/* INGESTION HUD (REAL-TIME STATUS) */}
+          <div className="fixed bottom-32 right-8 flex flex-col gap-3 z-[150] pointer-events-none">
+            <AnimatePresence>
+              {ingestions.map((ing) => (
+                <motion.div
+                  key={ing.id}
+                  initial={{ opacity: 0, x: 50, scale: 0.9 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className={`
+                    flex items-center gap-3 px-5 py-3 rounded-2xl border backdrop-blur-xl pointer-events-auto
+                    ${ing.status === 'processing' ? 'bg-[#111116]/80 border-[#6366f1]/30 shadow-[0_0_20px_rgba(99,102,241,0.15)]' : 
+                      ing.status === 'completed' ? 'bg-[#064e3b]/80 border-[#10b981]/40 text-[#10b981]' : 
+                      'bg-[#450a0a]/80 border-[#ef4444]/40 text-[#ef4444]'}
+                  `}
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${ing.status === 'processing' ? 'bg-[#6366f1]/10' : 'bg-transparent'}`}>
+                    {ing.status === 'processing' ? (
+                      <Loader2 className="w-4 h-4 text-[#6366f1] animate-spin" />
+                    ) : ing.status === 'completed' ? (
+                      <ShieldCheck className="w-4 h-4" />
+                    ) : (
+                      <Activity className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest truncate max-w-[150px]">{ing.filename}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-bold uppercase tracking-widest opacity-60">
+                        {ing.message || (ing.status === 'processing' ? 'Vectorizing...' : ing.status === 'completed' ? 'Neural Sync Ready' : 'Sync Fault Detected')}
+                      </span>
+                      {ing.status === 'processing' && ing.progress > 0 && (
+                        <span className="text-[9px] font-black text-[#6366f1]">{ing.progress}%</span>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+
           {/* CODE SYNTHESIS OVERLAY (AI-TO-CODE) */}
           <AnimatePresence>
             {isCodeSynthesisOpen && (

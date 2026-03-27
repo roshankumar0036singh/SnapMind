@@ -12,6 +12,7 @@ import time
 from api_clients import get_gemini_client, get_mistral_client, get_firecrawl_key, get_lingo_key, genai, check_connectivity
 from database import get_db_pool, db_retry
 from psycopg import errors
+import uuid
 
 # 1. Load Environment Variables
 load_dotenv()
@@ -810,14 +811,14 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
                     for i in range(0, len(args), BATCH_SIZE):
                         batch = args[i : i + BATCH_SIZE]
                         cur.executemany(
-                            "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                            "INSERT INTO documents (id, content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s, %s)",
                             batch,
                             returning=False
                         )
                 conn.commit()
 
         args_list = [
-            (d["content"], d["source_url"], d["embedding"], json.dumps(d["metadata"]))
+            (str(uuid.uuid4()), d["content"], d["source_url"], d["embedding"], json.dumps(d["metadata"]))
             for d in data_list
         ]
         
@@ -960,14 +961,14 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
                     for i in range(0, len(args), BATCH_SIZE):
                         batch = args[i : i + BATCH_SIZE]
                         cur.executemany(
-                            "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                            "INSERT INTO documents (id, content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s, %s)",
                             batch,
                             returning=False
                         )
                 conn.commit()
 
         args_list = [
-            (d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
+            (str(uuid.uuid4()), d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {})))
             for d in data_list
         ]
         
@@ -998,18 +999,46 @@ def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content
     import io
     
     text_content = ""
-    print(f"[INGEST_FILE] Parsing {filename} ({content_type})")
-    
     try:
+        print(f"[INGEST_FILE] Parsing {filename} ({content_type}) - Byte length: {len(file_bytes)}")
+        if not file_bytes:
+             return {"success": False, "message": "Received empty file data."}
+
         if content_type == "application/pdf" or filename.endswith(".pdf"):
             import PyPDF2
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+            # Use a helper to get pages safely
+            def get_reader(b):
+                r = PyPDF2.PdfReader(io.BytesIO(b), strict=False)
+                # Force a read of the trailer to trigger EOF errors early
+                _ = len(r.pages)
+                return r
+
+            try:
+                pdf_reader = get_reader(file_bytes)
+            except Exception as e:
+                if "EOF marker" in str(e):
+                    print(f"[INGEST_FILE] PDF EOF missing, attempting repair for {filename}...")
+                    repaired_bytes = file_bytes
+                    if not (repaired_bytes.strip().endswith(b"%%EOF")):
+                        repaired_bytes = repaired_bytes.rstrip() + b"\n%%EOF"
+                    
+                    try:
+                        pdf_reader = get_reader(repaired_bytes)
+                    except Exception as e2:
+                        print(f"[INGEST_FILE] Repair failed: {e2}")
+                        raise e2
+                else:
+                    raise e
+
             for i, page in enumerate(pdf_reader.pages):
-                page_text = page.extract_text()
-                if page_text:
-                    # Inject a robust marker that survives translation/chunking
-                    text_content += f"\n\n--- SNAPMIND_PAGE_{i+1} ---\n\n"
-                    text_content += page_text + "\n"
+                try:
+                    page_text = page.extract_text()
+                    if page_text:
+                        # Inject a robust marker that survives translation/chunking
+                        text_content += f"\n\n--- SNAPMIND_PAGE_{i+1} ---\n\n"
+                        text_content += page_text + "\n"
+                except Exception as page_err:
+                    print(f"[INGEST_FILE] Warning: Could not extract text from page {i+1}: {page_err}")
                 
         elif content_type in ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"] or filename.endswith(".docx"):
             import docx
@@ -1159,7 +1188,7 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                 # Store in database
                 if embedded_chunks and db_pool:
                     args_list = [
-                        (c["content"], page_url, c["embedding"], json.dumps(c["metadata"]))
+                        (str(uuid.uuid4()), c["content"], page_url, c["embedding"], json.dumps(c["metadata"]))
                         for c in embedded_chunks
                     ]
                     
@@ -1171,7 +1200,7 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                                 for i in range(0, len(args), BATCH_SIZE):
                                     batch = args[i : i + BATCH_SIZE]
                                     cur.executemany(
-                                        "INSERT INTO documents (content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s)",
+                                        "INSERT INTO documents (id, content, source_url, embedding, metadata) VALUES (%s, %s, %s, %s, %s)",
                                         batch,
                                         returning=False
                                     )

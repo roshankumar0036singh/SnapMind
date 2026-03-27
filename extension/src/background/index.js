@@ -10,24 +10,38 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => console.error(error));
 
 // 1. Install & Context Menu Setup
+const setupContextMenus = () => {
+    chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({
+            id: "send-to-snapmind",
+            title: "Append to SnapMind Chat",
+            contexts: ["selection"]
+        });
+        chrome.contextMenus.create({
+            id: "snapmind-visual-search",
+            title: "Neural Visual Search",
+            contexts: ["page", "image"]
+        });
+        chrome.contextMenus.create({
+            id: "snapmind-ai-to-code",
+            title: "Neural UI to Code (Alpha)",
+            contexts: ["all"]
+        });
+    });
+};
+
 chrome.runtime.onInstalled.addListener(() => {
     console.log("SnapMind Installed/Updated");
-    chrome.contextMenus.create({
-        id: "send-to-snapmind",
-        title: "Send to SnapMind",
-        contexts: ["selection"]
-    });
-    chrome.contextMenus.create({
-        id: "snapmind-visual-search",
-        title: "Visual Search with SnapMind",
-        contexts: ["page", "image"]
-    });
-    chrome.contextMenus.create({
-        id: "snapmind-ai-to-code",
-        title: "Inspect UI to Code (React/Tailwind)",
-        contexts: ["all"]
-    });
+    setupContextMenus();
 });
+
+// Also run on startup to be safe
+chrome.runtime.onStartup.addListener(() => {
+    setupContextMenus();
+});
+
+// Initialize on first load
+setupContextMenus();
 
 // 2. Handle Context Menu Click
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -53,8 +67,27 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     } else if (info.menuItemId === "snapmind-visual-search") {
         console.log("Visual Search Triggered");
         try {
-            const dataUrl = await captureVisibleTab(tab.windowId);
-            const response = await fetch('http://127.0.0.1:50650/api/vision/cache', {
+            let dataUrl;
+            if (info.mediaType === 'image' && info.srcUrl) {
+                // If it's an image, try to fetch it and convert to base64
+                // Note: This might fail due to CORS, fallback to tab capture if so
+                try {
+                    const imgResp = await fetch(info.srcUrl);
+                    const blob = await imgResp.blob();
+                    dataUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (e) {
+                    console.warn("CORS/Fetch failed for image URL, falling back to tab capture", e);
+                    dataUrl = await captureVisibleTab(tab.windowId);
+                }
+            } else {
+                dataUrl = await captureVisibleTab(tab.windowId);
+            }
+
+            const response = await fetch('http://127.0.0.1:8000/api/vision/cache', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ image: dataUrl })
@@ -63,15 +96,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                 const data = await response.json();
                 if (data.cache_id) {
                     const snapmindUrl = `snapmind://vision?cache_id=${data.cache_id}`;
-                    
-                    // Creates an un-focused tab to trigger the deeply-linked protocol without destroying current context
                     chrome.tabs.create({ url: snapmindUrl, active: false }, (newTab) => {
-                        // Close the protocol invocation tab almost instantly to clean up UI
-                        setTimeout(() => chrome.tabs.remove(newTab.id), 3000);
+                        // Close protocol tab
+                        setTimeout(() => { if (newTab && newTab.id) chrome.tabs.remove(newTab.id).catch(() => {}); }, 2000);
                     });
                 }
-            } else {
-                console.error("Backend failed to cache image");
             }
         } catch (e) {
             console.error("Visual search error:", e);
@@ -86,7 +115,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                 const storage = await chrome.storage.local.get(['geminiApiKey']);
                 
                 // 3. Send to Developer Synthesis Endpoint
-                const response = await fetch('http://127.0.0.1:50650/developer/reverse_engineer', {
+                const response = await fetch('http://127.0.0.1:8000/developer/reverse_engineer', {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',

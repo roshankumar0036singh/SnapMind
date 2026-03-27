@@ -1046,7 +1046,7 @@ async def get_graph_sessions():
                 # Select distinct sessions and join with chat_sessions to get the first message as title
                 cur.execute("""
                     SELECT e.session_id, 
-                           (SELECT content FROM chat_sessions WHERE session_id = e.session_id AND role = 'user' ORDER BY created_at ASC LIMIT 1) as title,
+                           (SELECT content FROM chat_messages WHERE session_id = e.session_id AND role = 'user' ORDER BY created_at ASC LIMIT 1) as title,
                            COUNT(e.id) as edge_count,
                            (SELECT COUNT(DISTINCT nid) FROM (SELECT source_node_id as nid FROM edges WHERE session_id = e.session_id UNION SELECT target_node_id as nid FROM edges WHERE session_id = e.session_id) as n) as node_count
                     FROM edges e

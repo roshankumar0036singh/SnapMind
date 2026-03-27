@@ -91,6 +91,18 @@ export const apiClient = {
         }
     },
 
+    async getGraphSessions() {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const response = await fetch(`${baseUrl}/graph/sessions`);
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (e) {
+            console.error("Failed to fetch graph sessions:", e);
+            return [];
+        }
+    },
+
     async getTags() {
         const baseUrl = await this.getBaseUrl();
         try {
@@ -100,6 +112,47 @@ export const apiClient = {
         } catch (e) {
             return [];
         }
+    },
+
+    async getGraphData(sessionId = null) {
+        const baseUrl = await this.getBaseUrl();
+        const url = sessionId ? `${baseUrl}/graph/data?session_id=${sessionId}` : `${baseUrl}/graph/data`;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) return { success: false, nodes: [], edges: [] };
+            const data = await response.json();
+            return { success: true, ...data };
+        } catch (e) {
+            console.error("Failed to fetch graph data:", e);
+            return { success: false, nodes: [], edges: [] };
+        }
+    },
+
+    async ingestText(url, text, sessionId = null) {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        const response = await fetch(`${baseUrl}/ingest`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ url, text_content: text, session_id: sessionId })
+        });
+        return response.json();
+    },
+
+    async ingestFile(file, sessionId = null) {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        if (sessionId) formData.append('session_id', sessionId);
+
+        const response = await fetch(`${baseUrl}/ingest/file`, {
+            method: 'POST',
+            headers: { ...headers }, // Fetch automatically sets multipart/form-data boundary
+            body: formData
+        });
+        return response.json();
     },
 
     async deleteSession(sessionId) {

@@ -57,10 +57,11 @@ def get_db_pool():
                 kwargs_dict = {
                     "prepare_threshold": None,
                     "keepalives": 1,
-                    "keepalives_idle": 30,
-                    "keepalives_interval": 10,
-                    "keepalives_count": 5,
-                    "tcp_user_timeout": 60000 
+                    "keepalives_idle": 20,
+                    "keepalives_interval": 5,
+                    "keepalives_count": 3,
+                    "tcp_user_timeout": 30000,
+                    "connect_timeout": 10
                 }
                 
                 if not is_local:
@@ -72,7 +73,7 @@ def get_db_pool():
                     min_size=2 if is_local else 5,       
                     max_size=10 if is_local else 50,      
                     max_idle=5 if is_local else 10,
-                    max_lifetime=120, # Reduced to 2 mins to prevent EOF detected
+                    max_lifetime=300 if is_local else 60, 
                     check=ConnectionPool.check_connection, 
                     timeout=60.0,     
                     kwargs=kwargs_dict
