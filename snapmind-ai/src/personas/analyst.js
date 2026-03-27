@@ -1,11 +1,15 @@
 import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
 import { CSVLoader } from '@langchain/community/document_loaders/fs/csv';
-import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { getLLM, getEmbeddings } from '../utils/llm.js';
+import { streamToTerminal } from '../utils/streamer.js';
 import { NLP_CONFIG } from '../utils/constants.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
-import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
+import { generateNamespace, getVectorStore, globalSearch } from '../utils/vector_storage.js';
 import { exportSession } from '../utils/exporter.js';
+import { loadSession, saveSession } from '../utils/session.js';
+import { showStats } from '../utils/monitor.js';
+import { renderLineChart } from '../utils/charts.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -51,9 +55,22 @@ export async function startAnalyst(options = {}) {
   try {
     const namespace = generateNamespace(targetPath);
     const embeddings = await getEmbeddings(options);
-    let vectorStore = await loadVectorStore(namespace, embeddings);
-    
-    if (!vectorStore) {
+    const vectorStore = await getVectorStore(namespace, embeddings);
+    const llm = await getLLM(options);
+    let history = options.history || [];
+
+    const existingHistory = await loadSession(namespace);
+    if (existingHistory.length > 0) {
+      const { resume } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'resume',
+        message: `Found a previous session for this dataset. Resume?`,
+        default: true
+      }]);
+      if (resume) history = existingHistory;
+    }
+
+    if (!vectorStore.table) {
       const spinner = ora('Parsing data and building index...').start();
       try {
         const stats = await fs.stat(targetPath);
@@ -72,8 +89,7 @@ export async function startAnalyst(options = {}) {
         const docs = await loader.load();
         if (docs.length === 0) throw new SnapMindError('No CSV data found.', 'EMPTY_SOURCE');
         
-        vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
-        await saveVectorStore(vectorStore, namespace);
+        await vectorStore.addDocuments(docs);
         spinner.succeed(`Success! Indexed ${docs.length} rows of data.`);
       } catch (error) {
         spinner.fail('Data loading failed.');
@@ -82,12 +98,86 @@ export async function startAnalyst(options = {}) {
       }
     }
     
-    const llm = await getLLM(options);
-    const history = [];
-
     while (true) {
       const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.green('analyst>') }]);
       if (query.toLowerCase() === 'exit') break;
+
+      if (query.startsWith('/global')) {
+        const subQuery = query.replace('/global', '').trim();
+        const globalSpinner = ora('Relational RAG: Searching across all datasets...').start();
+        try {
+          const globalResults = await globalSearch(subQuery, embeddings, 5);
+          globalSpinner.stop();
+          const globalContext = globalResults.map(r => `[GLOBAL] Source: ${r.namespace}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
+          
+          const stream = await llm.stream([
+            ['system', 'You are SnapMind Analyst. Use GLOBAL data context to answer query.'],
+            ['user', `Global Context:\n${globalContext}\n\nTask: ${subQuery}`]
+          ]);
+          await streamToTerminal(stream, 'green');
+        } catch (e) {
+          globalSpinner.fail('Global search failed.');
+          handleError(e);
+        }
+        continue;
+      }
+
+      if (query.startsWith('/global')) {
+        const subQuery = query.replace('/global', '').trim();
+        const globalSpinner = ora('Relational RAG: Searching across all datasets...').start();
+        try {
+          const globalResults = await globalSearch(subQuery, embeddings, 5);
+          globalSpinner.stop();
+          const globalContext = globalResults.map(r => `[GLOBAL] Source: ${r.namespace}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
+          
+          const stream = await llm.stream([
+            ['system', `You are SnapMind Coder. Expert in cross-repo logic. Answer using GLOBAL context and codebase context.`],
+            ['user', `Global Context:\n${globalContext}\n\nTask: ${subQuery}`]
+          ]);
+          await streamToTerminal(stream, 'cyan');
+        } catch (e) {
+          globalSpinner.fail('Global search failed.');
+          handleError(e);
+        }
+        continue;
+      }
+
+      if (query.toLowerCase() === '/handoff') {
+        const { target } = await inquirer.prompt([{
+          type: 'list',
+          name: 'target',
+          message: 'Handoff to which Intelligence Architecture?',
+          choices: ['scholar', 'coder', 'writer']
+        }]);
+        return { target, history, mount: targetPath };
+      }
+
+      if (query.toLowerCase() === '/stats') {
+        await showStats();
+        continue;
+      }
+
+      if (query.toLowerCase() === '/chart') {
+        const chartSpinner = ora('Extracting trend data...').start();
+        try {
+          const results = await vectorStore.similaritySearch('numerical values, dates, counts, prices', 15);
+          const dataContext = results.map(r => r.pageContent).join('\n---\n');
+          
+          const response = await llm.invoke([
+            ['system', 'Extract a single numerical series from the data (e.g. price over time, counts by date). Output ONLY a raw JSON array of numbers. NO text.'],
+            ['user', `Data Snippets:\n${dataContext}`]
+          ]);
+
+          const data = JSON.parse(response.content.replace(/```json|```/g, '').trim());
+          chartSpinner.stop();
+          renderLineChart(data, { label: 'Trend Analysis (Last 15 Snippets)' });
+          continue;
+        } catch (e) {
+          chartSpinner.stop();
+          handleError(new SnapMindError('Failed to generate chart. Ensure data is numeric.', 'CHART_ERROR'));
+          continue;
+        }
+      }
 
       if (query.toLowerCase() === '/table') {
         const tableSpinner = ora('Formatting data table...').start();
@@ -95,13 +185,13 @@ export async function startAnalyst(options = {}) {
           const results = await vectorStore.similaritySearch('summary, overview, data points', 10);
           const tableContext = results.map(r => r.pageContent).join('\n---\n');
           
-          const response = await llm.invoke([
+          tableSpinner.stop();
+          const stream = await llm.stream([
             ['system', 'Extract the data points from the provided CSV snippets and format them as a clean Markdown table. Only output the table.'],
             ['user', `Data Snippets:\n${tableContext}`]
           ]);
 
-          tableSpinner.stop();
-          console.log(chalk.cyan('\n' + response.content + '\n'));
+          const response = await streamToTerminal(stream, 'cyan');
           continue;
         } catch (e) {
           tableSpinner.stop();
@@ -115,16 +205,17 @@ export async function startAnalyst(options = {}) {
         const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
         const context = results.map(r => r.pageContent).join('\n---\n');
         
-        const response = await llm.invoke([
+        chatSpinner.stop();
+        const stream = await llm.stream([
           ['system', 'You are SnapMind Analyst. Answer questions based on the provided CSV data snippets. \nBe precise with numbers and trends.'],
           ['user', `Data Snippets:\n${context}\n\nQuestion: ${query}`]
         ]);
 
-        chatSpinner.stop();
-        console.log(chalk.cyan('\n' + response.content + '\n'));
+        const fullResponse = await streamToTerminal(stream, 'green');
 
         history.push({ role: 'user', content: query });
-        history.push({ role: 'assistant', content: response.content });
+        history.push({ role: 'assistant', content: fullResponse });
+        await saveSession(namespace, history);
       } catch (e) {
         chatSpinner.stop();
         handleError(e);

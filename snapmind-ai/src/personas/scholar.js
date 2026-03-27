@@ -1,10 +1,13 @@
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
 import { handleError, SnapMindError } from '../utils/errors.js';
-import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
+import { generateNamespace, getVectorStore, globalSearch } from '../utils/vector_storage.js';
 import { getLLM, getEmbeddings } from '../utils/llm.js';
+import { streamToTerminal } from '../utils/streamer.js';
+import { loadSession, saveSession } from '../utils/session.js';
+import { showStats } from '../utils/monitor.js';
+import { getTheme } from '../utils/themes.js';
 import { NLP_CONFIG } from '../utils/constants.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
@@ -16,8 +19,9 @@ import config from '../utils/config.js';
 const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.SCHOLAR;
 
 export async function startScholar(options = {}) {
-  console.log(chalk.cyan('\n🎓 SnapMind Scholar Mode'));
-  console.log(chalk.gray('Tips: Use --mount <dir> for folders or pass a PDF path.\n'));
+  const theme = getTheme();
+  console.log(theme.scholar('\n🎓 SnapMind Scholar Mode'));
+  console.log(theme.secondary('Tips: Use --mount <dir> for folders or pass a PDF path.\n'));
 
   let targetPath = options.mount;
   if (!targetPath) {
@@ -53,9 +57,23 @@ export async function startScholar(options = {}) {
   try {
     const namespace = generateNamespace(targetPath);
     const embeddings = await getEmbeddings(options);
-    let vectorStore = await loadVectorStore(namespace, embeddings);
+    const vectorStore = await getVectorStore(namespace, embeddings);
+    const llm = await getLLM(options);
+    let history = options.history || [];
+    let currentResults = [];
+
+    const existingHistory = await loadSession(namespace);
+    if (existingHistory.length > 0) {
+      const { resume } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'resume',
+        message: `Found a previous session from this source. Resume?`,
+        default: true
+      }]);
+      if (resume) history = existingHistory;
+    }
     
-    if (!vectorStore) {
+    if (!vectorStore.table) {
       const spinner = ora('Loading and indexing knowledge...').start();
       try {
         const stats = await fs.stat(targetPath);
@@ -87,8 +105,7 @@ export async function startScholar(options = {}) {
         const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
         const docs = await splitter.splitDocuments(rawDocs);
         
-        vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
-        await saveVectorStore(vectorStore, namespace);
+        await vectorStore.addDocuments(docs);
         spinner.succeed(`Ready! Indexed ${docs.length} semantic chunks.`);
       } catch (error) {
         spinner.fail('Indexing failed.');
@@ -97,48 +114,113 @@ export async function startScholar(options = {}) {
       }
     }
     
-    const llm = await getLLM(options);
-    const history = [];
-    
     while (true) {
       const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.yellow('scholar>') }]);
       if (query.toLowerCase() === 'exit') break;
+
+      if (query.startsWith('/global')) {
+        const subQuery = query.replace('/global', '').trim();
+        const globalSpinner = ora('Relational RAG: Searching across all datasets...').start();
+        try {
+          const globalResults = await globalSearch(subQuery, embeddings, 5);
+          globalSpinner.stop();
+          const globalContext = globalResults.map(r => `[GLOBAL] Source: ${r.namespace}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
+          
+          const stream = await llm.stream([
+            ['system', 'You are SnapMind Scholar. You have access to the GLOBAL knowledge base. Answer the query using both local and global context.'],
+            ['user', `Global Context:\n${globalContext}\n\nTask: ${subQuery}`]
+          ]);
+          await streamToTerminal(stream, 'cyan');
+        } catch (e) {
+          globalSpinner.fail('Global search failed.');
+          handleError(e);
+        }
+        continue;
+      }
+
+      if (query.toLowerCase() === '/handoff') {
+        const { target } = await inquirer.prompt([{
+          type: 'list',
+          name: 'target',
+          message: 'Handoff to which Intelligence Architecture?',
+          choices: ['coder', 'analyst', 'writer']
+        }]);
+        return { target, history, mount: targetPath };
+      }
+
+      if (query.startsWith('/snapshot')) {
+        const name = query.split(' ')[1] || 'default';
+        await saveSession(namespace, history, name);
+        console.log(chalk.green(`\n📸 Snapshot saved as: ${chalk.bold(name)}`));
+        continue;
+      }
+
+      if (query.toLowerCase() === '/bibtex') {
+        const bibSpinner = ora('Generating academic bibliography...').start();
+        try {
+          // Query LanceDB for all unique sources in this namespace
+          const allDocs = await vectorStore.table.query().select(['metadata']).toArray();
+          const sources = [...new Set(allDocs.map(d => JSON.parse(d.metadata).source))];
+          
+          const bibEntries = sources.map(source => {
+            const name = path.basename(source, '.pdf');
+            const key = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            return `@article{${key},\n  title={${name}},\n  author={SnapMind Scholar},\n  journal={Indexed PDF},\n  year={${new Date().getFullYear()}}\n}`;
+          }).join('\n\n');
+
+          const bibPath = path.join(process.cwd(), `scholar_archive_${namespace.slice(0, 6)}.bib`);
+          await fs.writeFile(bibPath, bibEntries);
+          bibSpinner.succeed(`Bibliography exported to ${chalk.bold(bibPath)}`);
+        } catch (e) {
+          bibSpinner.fail('Failed to generate BibTeX.');
+          handleError(e);
+        }
+        continue;
+      }
+      if (query.startsWith('/cite')) {
+        const index = parseInt(query.split(' ')[1]) - 1;
+        if (currentResults[index]) {
+          const doc = currentResults[index];
+          console.log(chalk.cyan(`\n📖 Full Citation [Source ${index + 1}]:`));
+          console.log(chalk.gray(`Path: ${doc.metadata.source}`));
+          console.log(chalk.white(`\n${doc.pageContent}\n`));
+        } else {
+          console.log(chalk.red('Invalid citation index. Use /cite [index] from the previous response.'));
+        }
+        continue;
+      }
+
+      if (query.toLowerCase() === '/stats') {
+        await showStats();
+        continue;
+      }
 
       if (query.toLowerCase() === '/export') {
         await exportSession(history);
         continue;
       }
 
-      if (query.toLowerCase() === '/cite') {
-        const citeSpinner = ora('Generating BibTeX citations...').start();
-        const sources = [...new Set(vectorStore.memoryVectors.map(v => path.basename(v.metadata?.source || 'document')))];
-        const bibtex = sources.map(s => `@article{${s.replace(/\s+/g, '_')},\n  title={${s}},\n  author={SnapMind Scholar},\n  year={${new Date().getFullYear()}}\n}`).join('\n\n');
-        
-        const bibFile = path.join(path.dirname(targetPath), 'citations.bib');
-        await fs.writeFile(bibFile, bibtex);
-        citeSpinner.succeed(`Citations saved to ${chalk.bold('citations.bib')}`);
-        continue;
-      }
-
       const chatSpinner = ora('Researching...').start();
       try {
         const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
-        const context = results.map(r => `Source: ${path.basename(r.metadata?.source || 'Doc')}\nContent: ${r.pageContent}`).join('\n\n');
+        currentResults = results;
+        const context = results.map((r, i) => `[Source ${i+1}] Path: ${path.basename(r.metadata?.source || 'Doc')}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
         
         const systemPrompt = query.startsWith('/research') 
           ? 'You are SnapMind Scholar. This is a DEEP RESEARCH task. Synthesize all sources into a cohesive academic summary. Compare perspectives if they differ.'
-          : 'You are SnapMind Scholar. Answer based ONLY on context. Cite page numbers.';
+          : 'You are SnapMind Scholar. Answer based ONLY on context. Cite page numbers using [Source X] notation.';
 
-        const response = await llm.invoke([
+        chatSpinner.stop();
+        const stream = await llm.stream([
           ['system', systemPrompt],
           ['user', `Context:\n${context}\n\nQuestion: ${query.replace('/research', '').trim()}`]
         ]);
 
-        chatSpinner.stop();
-        console.log(chalk.cyan('\n' + response.content + '\n'));
+        const fullResponse = await streamToTerminal(stream, 'cyan');
         
         history.push({ role: 'user', content: query });
-        history.push({ role: 'assistant', content: response.content });
+        history.push({ role: 'assistant', content: fullResponse });
+        await saveSession(namespace, history);
 
         console.log(chalk.gray('Sources:'));
         results.forEach((r, i) => {

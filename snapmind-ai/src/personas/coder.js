@@ -1,19 +1,32 @@
 import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
 import { TextLoader } from '@langchain/classic/document_loaders/fs/text';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
 import { getLLM, getEmbeddings } from '../utils/llm.js';
+import { streamToTerminal } from '../utils/streamer.js';
 import { NLP_CONFIG } from '../utils/constants.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
-import { generateNamespace, loadVectorStore, saveVectorStore } from '../utils/vector_storage.js';
+import { generateNamespace, getVectorStore, globalSearch } from '../utils/vector_storage.js';
 import { exportSession } from '../utils/exporter.js';
+import { loadSession, saveSession } from '../utils/session.js';
+import { showStats } from '../utils/monitor.js';
+import { extractCodeBlocks } from '../utils/ast_parser.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
 import simpleGit from 'simple-git';
 import fs from 'fs-extra';
 import path from 'path';
+import { execSync } from 'child_process';
 import { setupWatcher } from '../utils/watcher.js';
+
+async function detectTechStack(dir) {
+  const stack = [];
+  if (await fs.pathExists(path.join(dir, 'package.json'))) stack.push('Node.js/NPM');
+  if (await fs.pathExists(path.join(dir, 'requirements.txt'))) stack.push('Python/Pip');
+  if (await fs.pathExists(path.join(dir, 'go.mod'))) stack.push('Go');
+  if (await fs.pathExists(path.join(dir, 'Cargo.toml'))) stack.push('Rust');
+  return stack.length > 0 ? stack.join(', ') : 'Generic Codebase';
+}
 
 const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.CODER;
 
@@ -58,9 +71,22 @@ export async function startCoder(options = {}) {
 
   try {
     const embeddings = await getEmbeddings(options);
-    let vectorStore = await loadVectorStore(namespace, embeddings);
+    const vectorStore = await getVectorStore(namespace, embeddings);
+    const llm = await getLLM(options);
+    let history = [];
 
-    if (!vectorStore) {
+    const existingHistory = await loadSession(namespace);
+    if (existingHistory.length > 0) {
+      const { resume } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'resume',
+        message: `Found a previous session for this codebase. Resume?`,
+        default: true
+      }]);
+      if (resume) history = existingHistory;
+    }
+
+    if (!vectorStore.table) {
       if (repoUrl) {
         const repoName = repoUrl.split('/').pop().replace('.git', '');
         targetPath = path.join(process.cwd(), 'snapmind_repos', repoName);
@@ -97,11 +123,29 @@ export async function startCoder(options = {}) {
         if (filteredDocs.length === 0) throw new SnapMindError('No supported code files found.', 'EMPTY_CODEBASE');
 
         const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
-        const splitDocs = await splitter.splitDocuments(filteredDocs);
+        const finalDocs = [];
+
+        for (const doc of filteredDocs) {
+          const isJS = doc.metadata.source.endsWith('.js') || doc.metadata.source.endsWith('.ts');
+          if (isJS) {
+            const blocks = extractCodeBlocks(doc.pageContent, doc.metadata.source);
+            if (blocks.length > 0) {
+              blocks.forEach(block => {
+                finalDocs.push({
+                  pageContent: block.content,
+                  metadata: { ...doc.metadata, blockName: block.name, blockType: block.type }
+                });
+              });
+              continue;
+            }
+          }
+          // Fallback to text splitting
+          const chunks = await splitter.splitDocuments([doc]);
+          finalDocs.push(...chunks);
+        }
         
-        vectorStore = await MemoryVectorStore.fromDocuments(splitDocs, embeddings);
-      await saveVectorStore(vectorStore, namespace);
-      indexSpinner.succeed(`Analyzed ${filteredDocs.length} files (${docs.length} snippets).`);
+        await vectorStore.addDocuments(finalDocs);
+        indexSpinner.succeed(`Analyzed ${filteredDocs.length} files (${finalDocs.length} snippets).`);
     }
 
     if (options.watch) {
@@ -127,12 +171,63 @@ export async function startCoder(options = {}) {
       });
     }
     
-    const llm = await getLLM(options);
-    const history = [];
-
     while (true) {
       const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.blue('coder>') }]);
       if (query.toLowerCase() === 'exit') break;
+
+      if (query.startsWith('/global')) {
+        const subQuery = query.replace('/global', '').trim();
+        const globalSpinner = ora('Relational RAG: Searching across all datasets...').start();
+        try {
+          const globalResults = await globalSearch(subQuery, embeddings, 5);
+          globalSpinner.stop();
+          const globalContext = globalResults.map(r => `[GLOBAL] Source: ${r.namespace}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
+          
+          const stream = await llm.stream([
+            ['system', `You are SnapMind Coder. Expert in cross-repo logic. Answer using GLOBAL context and codebase context.`],
+            ['user', `Global Context:\n${globalContext}\n\nTask: ${subQuery}`]
+          ]);
+          await streamToTerminal(stream, 'cyan');
+        } catch (e) {
+          globalSpinner.fail('Global search failed.');
+          handleError(e);
+        }
+        continue;
+      }
+
+      if (query.toLowerCase() === '/handoff') {
+        const { target } = await inquirer.prompt([{
+          type: 'list',
+          name: 'target',
+          message: 'Handoff to which Intelligence Architecture?',
+          choices: ['scholar', 'analyst', 'writer']
+        }]);
+        return { target, history, mount: targetPath };
+      }
+
+      if (query.startsWith('/skill')) {
+        const script = query.split(' ')[1];
+        if (!script) {
+          console.log(chalk.yellow('\nUsage: /skill <script_name> (e.g., /skill test, /skill lint)'));
+          continue;
+        }
+        
+        const skillSpinner = ora(`Executing skill: ${script}...`).start();
+        try {
+          const stdout = execSync(`npm run ${script}`, { cwd: targetPath, stdio: 'pipe' }).toString();
+          skillSpinner.succeed(`Skill completed: ${script}`);
+          console.log(chalk.gray(stdout.slice(0, 500) + '...'));
+        } catch (e) {
+          skillSpinner.fail(`Skill failed: ${script}`);
+          console.error(chalk.red(e.stdout ? e.stdout.toString() : e.message));
+        }
+        continue;
+      }
+
+      if (query.toLowerCase() === '/stats') {
+        await showStats();
+        continue;
+      }
 
       if (query.toLowerCase() === '/export') {
         await exportSession(history);
@@ -187,21 +282,24 @@ export async function startCoder(options = {}) {
         }
       }
 
-      const chatSpinner = ora('Scanning logic...').start();
+      const chatSpinner = ora('Analyzing logic...').start();
       try {
         const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
-        const context = results.map(r => `File: ${path.relative(targetPath, r.metadata.source)}\nContent:\n${r.pageContent}`).join('\n\n---\n\n');
+        // Deduplicate snippets by source
+        const context = [...new Set(results.map(r => `File: ${r.metadata.source}\nContent: ${r.pageContent}`))].join('\n---\n');
         
-        const response = await llm.invoke([
-          ['system', 'You are SnapMind Coder. Analyze the snippets and provide concise, technical answers.'],
-          ['user', `Context:\n${context}\n\nQuestion: ${query}`]
+        const stack = await detectTechStack(targetPath);
+        chatSpinner.stop();
+        const stream = await llm.stream([
+          ['system', `You are SnapMind Coder. Expert in ${stack}. Answer based on the codebase context provided. \nAnalyze logic, find bugs, and suggest improvements.`],
+          ['user', `Context:\n${context}\n\nQuestion/Task: ${query}`]
         ]);
 
-        chatSpinner.stop();
-        console.log(chalk.cyan('\n' + response.content + '\n'));
+        const fullResponse = await streamToTerminal(stream, 'cyan');
 
         history.push({ role: 'user', content: query });
-        history.push({ role: 'assistant', content: response.content });
+        history.push({ role: 'assistant', content: fullResponse });
+        await saveSession(namespace, history);
       } catch (e) {
         chatSpinner.stop();
         handleError(e);

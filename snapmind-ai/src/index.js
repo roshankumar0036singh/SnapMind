@@ -8,6 +8,8 @@ import boxen from 'boxen';
 import { startMenu } from './cli/menu.js';
 import config from './utils/config.js';
 import { setKey } from './utils/credentials.js';
+import { globalSearch } from './utils/vector_storage.js';
+import { getEmbeddings } from './utils/llm.js';
 
 
 
@@ -98,12 +100,106 @@ program
     }
   });
 
+program
+  .command('search')
+  .description('Search across all indexed datasets globally')
+  .argument('<query>', 'The search query')
+  .action(async (query) => {
+    const ora = (await import('ora')).default;
+    const path = (await import('path')).default;
+    const spinner = ora('Searching globally...').start();
+    try {
+      const embeddings = await getEmbeddings();
+      const results = await globalSearch(query, embeddings, 5);
+      spinner.stop();
+
+      if (results.length === 0) {
+        console.log(chalk.yellow('\n× No results found in any indexed dataset.'));
+        return;
+      }
+
+      console.log(chalk.bold.cyan(`\n🔍 Global Search Results for: "${query}"\n`));
+      results.forEach((r, i) => {
+        console.log(chalk.white(`[${i + 1}] `) + chalk.bold(path.basename(r.metadata.source || 'Unknown')));
+        console.log(chalk.gray(` Namespace: ${r.namespace}`));
+        console.log(chalk.gray(` Snippet: ${r.pageContent.slice(0, 150).replace(/\n/g, ' ')}...`));
+        console.log(chalk.gray('--------------------------------------------------'));
+      });
+    } catch (e) {
+      spinner.fail('Search failed.');
+      console.error(chalk.red(e.message));
+    }
+  });
+
+program
+  .command('maintenance')
+  .description('Perform system hygiene and clean up stale caches')
+  .action(async () => {
+    const ora = (await import('ora')).default;
+    const fs = (await import('fs-extra')).default;
+    const path = (await import('path')).default;
+    const spinner = ora('Performing system hygiene...').start();
+    
+    try {
+      const cacheDir = path.join(process.cwd(), '.snapmind_cache');
+      const sessionsDir = path.join(cacheDir, 'sessions');
+
+      let cleanedNamespaces = 0;
+      if (await fs.pathExists(sessionsDir)) {
+        const namespaces = await fs.readdir(sessionsDir);
+        for (const ns of namespaces) {
+          const nsPath = path.join(sessionsDir, ns);
+          if (await fs.pathExists(nsPath)) {
+            const files = await fs.readdir(nsPath);
+            if (files.length === 0) {
+              await fs.remove(nsPath);
+              cleanedNamespaces++;
+            }
+          }
+        }
+      }
+
+      spinner.succeed(`Hygiene complete. Removed ${cleanedNamespaces} orphan namespaces.`);
+    } catch (e) {
+      spinner.fail('Maintenance failed.');
+      console.error(chalk.red(e.message));
+    }
+  });
+
+program
+  .command('vault')
+  .description('Manage secure API credentials in OS Keychain')
+  .argument('[action]', 'Action (set, delete, list)', 'list')
+  .argument('[provider]', 'The AI provider (openai, anthropic, etc.)')
+  .action(async (action, provider) => {
+    const { setKey, deleteKey } = await import('./utils/credentials.js');
+    if (action === 'set' && provider) {
+      const inquirer = (await import('inquirer')).default;
+      const { key } = await inquirer.prompt([{ type: 'password', name: 'key', message: `Enter key for ${provider}:`, mask: '*' }]);
+      await setKey(provider, key);
+      console.log(chalk.green(`✅ Secured ${provider} key in OS Vault.`));
+    } else if (action === 'delete' && provider) {
+      await deleteKey(provider);
+    } else {
+      console.log(chalk.cyan('\n🔒 SnapMind Secure Vault'));
+      console.log(chalk.gray('  Usage: snapmind vault set <provider>'));
+      console.log(chalk.gray('  Usage: snapmind vault delete <provider>'));
+    }
+  });
 
 program
   .action(async (options) => {
     if (program.args.length > 0 && program.args[0] === 'config') return;
 
     const isDirect = options.repo || options.mount || options.persona || options.watch;
+    
+    // Auto-Routing (Feature 25)
+    if (!options.persona && program.args.length > 0) {
+      const { detectPersona } = await import('./utils/llm.js');
+      const detected = await detectPersona(program.args.join(' '), options);
+      console.log(chalk.gray(`\n⚡ Auto-routing to ${chalk.bold(detected)} intelligence...`));
+      options.persona = detected;
+    }
 
       // Large ASCII Art
       const asciiArt = figlet.textSync('SnapMind AI', { font: 'Slant', horizontalLayout: 'full' });

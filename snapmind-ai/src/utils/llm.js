@@ -7,6 +7,8 @@ import { getKey } from './credentials.js';
 import config from './config.js';
 import chalk from 'chalk';
 import { SnapMindError } from './errors.js';
+import { routeModel } from './router.js';
+import { recordUsage } from './monitor.js';
 
 export async function getEmbeddings(options = {}) {
   const provider = options.provider || config.get('provider');
@@ -51,7 +53,20 @@ export async function getLLM(options = {}) {
     case 'mistral':
       return new ChatMistralAI({ apiKey: await getKey('mistral'), model: 'mistral-large-latest', temperature });
     case 'openai':
-      return new ChatOpenAI({ apiKey: await getKey('openai'), model: model || 'gpt-4o', temperature });
+      const modelName = routeModel(options.prompt || '', options);
+      return new ChatOpenAI({ 
+        apiKey: await getKey('openai'), 
+        modelName, 
+        temperature,
+        callbacks: [
+          {
+            handleLLMEnd: async (output) => {
+              const { promptTokens, completionTokens } = output.llmOutput.tokenUsage;
+              await recordUsage(modelName, promptTokens, completionTokens);
+            }
+          }
+        ]
+      });
     case 'anthropic':
       return new ChatAnthropic({ apiKey: await getKey('anthropic'), model: model || 'claude-3-5-sonnet-20240620', temperature });
     case 'gemini':
@@ -60,5 +75,15 @@ export async function getLLM(options = {}) {
       // Final attempt at Ollama if provider is unknown
       return new ChatOllama({ baseUrl: 'http://localhost:11434', model: 'llama3', temperature });
   }
+}
+
+export async function detectPersona(prompt, options = {}) {
+  const llm = await getLLM(options);
+  const response = await llm.invoke([
+    ['system', 'Classify user intent into: scholar, coder, analyst, writer. Output ONLY the persona name.'],
+    ['user', prompt]
+  ]);
+  const persona = response.content.toLowerCase().trim();
+  return ['scholar', 'coder', 'analyst', 'writer'].includes(persona) ? persona : 'scholar';
 }
 

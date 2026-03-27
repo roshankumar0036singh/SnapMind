@@ -1,36 +1,56 @@
-import fs from 'fs-extra';
+import { LanceStore } from './lance_store.js';
+import * as lancedb from '@lancedb/lancedb';
 import path from 'path';
-import { MemoryVectorStore } from '@langchain/classic/vectorstores/memory';
-import ora from 'ora';
 
-const CACHE_DIR = path.join(process.cwd(), '.snapmind_cache');
+const DB_DIR = path.join(process.cwd(), '.snapmind_cache', 'lancedb');
 
-export async function saveVectorStore(vectorStore, namespace) {
-  await fs.ensureDir(CACHE_DIR);
-  const cachePath = path.join(CACHE_DIR, `${namespace}.json`);
-  const data = JSON.stringify(vectorStore.memoryVectors);
-  await fs.writeFile(cachePath, data);
+export async function getVectorStore(namespace, embeddings) {
+  const store = new LanceStore(namespace, embeddings);
+  await store.init();
+  return store;
 }
 
-export async function loadVectorStore(namespace, embeddings) {
-  const cachePath = path.join(CACHE_DIR, `${namespace}.json`);
-  if (!(await fs.pathExists(cachePath))) return null;
+export async function globalSearch(query, embeddings, k = 5) {
+  const db = await lancedb.connect(DB_DIR);
+  const tables = await db.tableNames();
+  let allResults = [];
 
-  const spinner = ora('Loading cached index...').start();
-  try {
-    const data = await fs.readFile(cachePath, 'utf8');
-    const vectors = JSON.parse(data);
-    const vectorStore = new MemoryVectorStore(embeddings);
-    vectorStore.memoryVectors = vectors;
-    spinner.succeed('Cached index loaded.');
-    return vectorStore;
-  } catch (e) {
-    spinner.fail('Failed to load cache.');
-    return null;
+  for (const name of tables) {
+    const store = new LanceStore(name, embeddings);
+    await store.init();
+    const results = await store.similaritySearch(query, k);
+    allResults.push(...results.map(r => ({ ...r, namespace: name })));
   }
+
+  return allResults
+    .sort((a, b) => b.score - a.score) // Sort if score is available (LanceDB returns distances usually)
+    .slice(0, k);
 }
 
+/**
+ * Custom indexing with Summaries (Feature 23)
+ */
+export async function addDocumentsWithSummary(vectorStore, docs, llm) {
+  const summarizedDocs = [];
+  for (const doc of docs) {
+    // Basic summary for the chunk
+    const response = await llm.invoke([
+        ['system', 'Summarize the following content in ONE concise sentence for indexing purposes.'],
+        ['user', doc.pageContent]
+    ]);
+    const summary = response.content.trim();
+    summarizedDocs.push({
+      ...doc,
+      metadata: { ...doc.metadata, isSummary: true, summary }
+    });
+    summarizedDocs.push(doc); // Original chunk
+  }
+  await vectorStore.addDocuments(summarizedDocs);
+}
+
+/**
+ * Generates a unique namespace based on the source path.
+ */
 export function generateNamespace(targetPath) {
-  // Simple hash or slug from path
   return Buffer.from(targetPath).toString('base64').replace(/[/+=]/g, '_').slice(-20);
 }
