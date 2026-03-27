@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Trash2, Globe, ExternalLink, Loader2 } from 'lucide-react';
 import * as ReactWindow from 'react-window';
-const List = ReactWindow.FixedSizeList;
+const List = ReactWindow.FixedSizeList || (ReactWindow.default && ReactWindow.default.FixedSizeList);
 import { apiClient, chrome } from '../background/api';
 import { toast } from 'sonner';
 

@@ -130,6 +130,26 @@ app.whenReady().then(() => {
     }
   });
 
+  // Universal Screen Intelligence (Feature 9)
+  globalShortcut.register('CommandOrControl+Alt+S', async () => {
+    if (mainWindow) {
+      try {
+        const sources = await desktopCapturer.getSources({ 
+          types: ['screen', 'window'], 
+          thumbnailSize: { width: 1920, height: 1080 } 
+        });
+        if (sources.length > 0) {
+          const image = sources[0].thumbnail.toDataURL();
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.webContents.send('vision-spotlight', { image });
+        }
+      } catch (e) {
+        console.error('[Vision Shortcut] Error:', e);
+      }
+    }
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

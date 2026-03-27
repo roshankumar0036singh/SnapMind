@@ -19,5 +19,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (event, url) => callback(url);
     ipcRenderer.on('deep-link', subscription);
     return () => ipcRenderer.removeListener('deep-link', subscription);
+  },
+  onVisionSpotlight: (callback) => {
+    const subscription = (event, data) => callback(data);
+    ipcRenderer.on('vision-spotlight', subscription);
+    return () => ipcRenderer.removeListener('vision-spotlight', subscription);
   }
 });

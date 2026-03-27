@@ -111,6 +111,10 @@ export default function Settings({ onBack }) {
     };
 
     const handleBackup = async () => {
+        if (!window.electronAPI?.selectFolder) {
+            toast.info('Export Library is only available in the desktop app');
+            return;
+        }
         const path = await window.electronAPI.selectFolder();
         if (!path) return;
 
@@ -135,6 +139,10 @@ export default function Settings({ onBack }) {
     };
 
     const handleRestore = async () => {
+        if (!window.electronAPI?.selectFile) {
+            toast.info('Import Library is only available in the desktop app');
+            return;
+        }
         const path = await window.electronAPI.selectFile();
         if (!path) return;
 

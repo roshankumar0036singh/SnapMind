@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bookmark, Trash2, ExternalLink, Loader2 } from 'lucide-react';
 import * as ReactWindow from 'react-window';
-const List = ReactWindow.FixedSizeList;
+const List = ReactWindow.FixedSizeList || (ReactWindow.default && ReactWindow.default.FixedSizeList);
 
 export default function BookmarkList({ bookmarks, loading, onDelete }) {
   

@@ -91,6 +91,24 @@ export const apiClient = {
         }
     },
 
+    async searchGlobal(query, limit = 20) {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const headers = await this.getApiKeysHeaders();
+            const response = await fetch(`${baseUrl}/search/global`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...headers },
+                body: JSON.stringify({ query, limit })
+            });
+            if (!response.ok) throw new Error("Search failed");
+            const data = await response.json();
+            return data.results || [];
+        } catch (e) {
+            console.error("Global search error:", e);
+            return [];
+        }
+    },
+
     async getGraphSessions() {
         const baseUrl = await this.getBaseUrl();
         try {
@@ -227,6 +245,35 @@ export const apiClient = {
         return response.json();
     },
 
+    async getPersonas() {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const response = await fetch(`${baseUrl}/personas`);
+            if (!response.ok) return [];
+            const data = await response.json();
+            return data.personas || [];
+        } catch (e) {
+            console.error("Failed to fetch personas:", e);
+            return [];
+        }
+    },
+
+    async createPersona(name, systemPromptAddon) {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/personas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, system_prompt_addon: systemPromptAddon })
+        });
+        return response.json();
+    },
+
+    async deletePersona(id) {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/personas/${id}`, { method: 'DELETE' });
+        return response.json();
+    },
+
     async getSuggestions(pageContent, url, siteId) {
         const baseUrl = await this.getBaseUrl();
         const headers = await this.getApiKeysHeaders();
@@ -254,7 +301,7 @@ export const apiClient = {
     /**
      * Streams RAG query response using NDJSON.
      */
-    async streamQueryRag(blocks, question, onChunk, onBlocks, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false) {
+    async streamQueryRag(blocks, question, onChunk, onBlocks, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false, personaId = null) {
         console.log('[API] Stream RAG request (Desktop)...', siteId ? `(Site: ${siteId})` : '');
         const baseUrl = await this.getBaseUrl();
         const headers = await this.getApiKeysHeaders();
@@ -272,7 +319,8 @@ export const apiClient = {
                     site_id: siteId,
                     session_id: sessionId,
                     output_lang: outputLang,
-                    query_notebook: queryNotebook
+                    query_notebook: queryNotebook,
+                    persona_id: personaId
                 })
             });
 

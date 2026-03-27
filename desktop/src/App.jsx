@@ -1,6 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, GitBranch, Bookmark, Globe, Video, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity, Copy, Download, Camera, X } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, GitBranch, Bookmark, Globe, Video, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity, Copy, Download, Camera, X, BookOpen } from 'lucide-react';
 import BotLogo from './components/BotLogo';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -12,8 +12,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import ShortcutsModal from './components/ShortcutsModal';
 import GraphMap from './components/GraphMap';
+import SpotlightModal from './components/SpotlightModal';
 import * as ReactWindow from 'react-window';
-const List = ReactWindow.FixedSizeList;
+const List = ReactWindow.FixedSizeList || (ReactWindow.default && ReactWindow.default.FixedSizeList);
 import { motion, AnimatePresence } from 'framer-motion';
 import './styles/design-tokens.css';
 
@@ -28,6 +29,9 @@ import Onboarding from './components/Onboarding';
 import SplashScreen from './components/SplashScreen';
 import SiteList from './components/SiteList';
 import BookmarkList from './components/BookmarkList';
+import PersonaSelector from './components/PersonaSelector';
+import NotebookPanel from './components/NotebookPanel';
+import LanguageSelector from './components/LanguageSelector';
 
 // Custom Markdown Components
 
@@ -241,8 +245,10 @@ function App() {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [outputLang, setOutputLang] = useState('auto'); // [NEW] Feature 5: Seamless Polyglot
+  const [selectedPersonaId, setSelectedPersonaId] = useState(null); // [NEW] Feature 21: Custom Agent Personas
   const [suggestions, setSuggestions] = useState([]); // Feature 4: Smart Suggestions
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [spotlightVisionData, setSpotlightVisionData] = useState(null); // [NEW] Feature 9: Screen Intel
   const [cropPreview, setCropPreview] = useState(null); // Data URL of crop
   const [contentBlocks, setContentBlocks] = useState([]); // Store blocks for hover lookups
 
@@ -287,6 +293,7 @@ function App() {
   const [reportQuery, setReportQuery] = useState('');
   const [selectedSources, setSelectedSources] = useState([]); // List of source URLs
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
 
   const handleProfessionalReport = async (query, sources) => {
     setIsGeneratingReport(true);
@@ -754,6 +761,12 @@ function App() {
         if (!isLoading) handleIngest();
       }
 
+      // Ctrl+Shift+Space: Global Spotlight
+      if (e.ctrlKey && e.shiftKey && e.code === 'Space') {
+        e.preventDefault();
+        setIsSpotlightOpen(prev => !prev);
+      }
+
       // Ctrl+Shift+V: Visual scan
       if (e.ctrlKey && e.shiftKey && e.key === 'V') {
         e.preventDefault();
@@ -982,7 +995,17 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isLoading, currentUrl]);
 
-  // Save messages to storage whenever they change
+  // [NEW] Feature 9: Universal Screen Intelligence Listener
+  useEffect(() => {
+    if (window.electronAPI?.onVisionSpotlight) {
+      const unsubscribe = window.electronAPI.onVisionSpotlight((data) => {
+        setSpotlightVisionData(data.image); // data.image is the base64 screenshot
+        setIsSpotlightOpen(true);
+      });
+      return unsubscribe;
+    }
+  }, []);
+
   // [NEW] Update Greeting on Mode Switch if session is fresh
   useEffect(() => {
     if (messages.length === 1 && messages[0].role === 'assistant' && !messages[0].userContext) {
@@ -1936,7 +1959,7 @@ function App() {
               console.log("[Stream] Updated message with contextBlocks");
             }
           },
-          targetSiteId, currentSessionId, search_query, query_lang, outputLang, queryNotebook);
+          targetSiteId, currentSessionId, search_query, query_lang, outputLang, queryNotebook, selectedPersonaId);
 
         // 3.5 Handle empty or failed stream
         if (!streamResult.success || isFirstToken) {
@@ -2090,6 +2113,15 @@ function App() {
                <SettingsIcon className={`w-4 h-4 ${view === 'settings' ? 'text-[#6366f1]' : ''}`} />
                Controller
              </button>
+             <button
+               onClick={() => setView('notebook')}
+               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all group ${
+                 view === 'notebook' ? 'bg-[#0f0f14] text-[#f4f4f5] border border-[#2a2a35]' : 'text-[#71717a] hover:text-[#f4f4f5]'
+               }`}
+             >
+               <BookOpen className={`w-4 h-4 ${view === 'notebook' ? 'text-[#6366f1]' : ''}`} />
+               Notebook
+             </button>
           </div>
         </nav>
 
@@ -2145,7 +2177,7 @@ function App() {
         <header className="h-14 border-b border-[#1a1a1d] flex items-center justify-between px-8 bg-[#09090b]/40 backdrop-blur-md sticky top-0 z-40">
           <div className="flex items-center gap-4">
              <h2 className="text-sm font-bold tracking-tight text-[#fafafa] lowercase">
-                ~/ {view === 'chat' ? (mode === 'rag' ? 'neural-chat' : mode === 'browser' ? 'shadow-agent' : 'vision-protocol') : view === 'memory' ? 'vector-memory' : view === 'settings' ? 'controller-config' : 'system-logs'}
+                ~/ {view === 'chat' ? (mode === 'rag' ? 'neural-chat' : mode === 'browser' ? 'shadow-agent' : 'vision-protocol') : view === 'memory' ? 'vector-memory' : view === 'settings' ? 'controller-config' : view === 'notebook' ? 'research-notebook' : 'system-logs'}
              </h2>
              
              {currentUrl && (
@@ -2218,6 +2250,8 @@ function App() {
                   </Suspense>
                </div>
             </div>
+          ) : view === 'notebook' ? (
+             <NotebookPanel sessionId={currentSessionId} />
           ) : view === 'memory' ? (
              <div className="flex-1 flex flex-col bg-[#0a0a0f] overflow-hidden">
                {/* Memory View Content will be here */}
@@ -2461,7 +2495,7 @@ function App() {
                     <div className="absolute inset-0 bg-[#6366f1]/5 rounded-2xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <form 
                       onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-                      className="relative bg-[#0f0f14] border border-[#1e1e26] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl overflow-hidden flex flex-col"
+                      className="relative bg-[#0f0f14] border border-[#1e1e26] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl flex flex-col"
                     >
                       {/* [NEW] Vision Protocol Preview IN-BAR */}
                       {cropPreview && (
@@ -2491,10 +2525,35 @@ function App() {
                         <button 
                           type="submit"
                           disabled={!input.trim() || isLoading}
-                          className="absolute right-4 top-3 bottom-3 px-6 bg-[#6366f1] text-white rounded-xl font-bold text-[11px] uppercase tracking-[0.2em] hover:bg-[#4f46e5] hover:scale-[1.02] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center gap-2"
+                          className="absolute right-4 top-3 bottom-0.5 px-6 bg-[#6366f1] text-white rounded-xl font-bold text-[11px] uppercase tracking-[0.2em] hover:bg-[#4f46e5] hover:scale-[1.02] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center gap-2 h-10 mt-1"
                         >
                           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>SEND</span> <Send className="w-3.5 h-3.5" /></>}
                         </button>
+                      </div>
+
+                      {/* --- Agent Controls --- */}
+                      <div className="px-6 py-3 bg-[#111116]/50 border-t border-[#1e1e26]/30 flex items-center justify-between">
+                         <div className="flex items-center gap-4">
+                            <PersonaSelector 
+                               selectedPersonaId={selectedPersonaId} 
+                               onSelectPersona={setSelectedPersonaId} 
+                            />
+                            
+                            <LanguageSelector 
+                                value={outputLang} 
+                                onChange={setOutputLang} 
+                             />
+                         </div>
+                         
+                         <div className="flex items-center gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                              <div className={`w-3.5 h-3.5 rounded-sm border transition-all flex items-center justify-center ${queryNotebook ? 'bg-[#6366f1] border-[#6366f1]' : 'border-[#3f3f46] group-hover:border-[#6366f1]'}`}>
+                                {queryNotebook && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4 7L8 3" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                              </div>
+                              <input type="checkbox" className="hidden" checked={queryNotebook} onChange={() => setQueryNotebook(!queryNotebook)} />
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-[#71717a] group-hover:text-[#fafafa] transition-colors">Global Knowledge</span>
+                            </label>
+                         </div>
                       </div>
                     </form>
                   </div>
@@ -2877,6 +2936,11 @@ function App() {
               </motion.div>
             )}
           </AnimatePresence>
+          <SpotlightModal 
+            isOpen={isSpotlightOpen} 
+            onClose={() => { setIsSpotlightOpen(false); setSpotlightVisionData(null); }}
+            visionData={spotlightVisionData}
+          />
         </div>
       </main>
     </div>
