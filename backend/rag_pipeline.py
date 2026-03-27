@@ -493,27 +493,13 @@ def simple_scrape_fallback(url: str) -> str:
 
 def embed_single_chunk(chunk: str, api_keys: dict = None, client=None) -> Tuple[str, List[float]]:
     try:
-        model_name = EmbeddingConfig.EMBEDDING_MODEL
+        model_name = "gemini-embedding-001" # [FORCED] Use Gemini as requested
         
-        # 1. Mistral Embedding Flow
-        if "mistral" in model_name.lower():
-            # [FIX] Use provided client if available to prevent redundant pool creation
-            mistral_client = client or get_mistral_client(api_keys)
-            if mistral_client:
-                result = mistral_client.embeddings.create(
-                    model=model_name,
-                    inputs=[chunk]
-                )
-                embedding = result.data[0].embedding
-                if not embedding or len(embedding) == 0:
-                    raise ValueError("Empty embedding returned from Mistral")
-                return (chunk, embedding)
-        
-        # 2. Gemini Embedding Flow (Fallback or Default)
+        # 1. Gemini Embedding Flow (Default)
         gemini_client = client or get_gemini_client(api_keys)
         # Gemini usually requires its own client type, so we use it here
         result = gemini_client.models.embed_content(
-            model="gemini-embedding-001" if "gemini" not in model_name.lower() else model_name,
+            model=model_name,
             contents=chunk,
         )
         
@@ -521,6 +507,12 @@ def embed_single_chunk(chunk: str, api_keys: dict = None, client=None) -> Tuple[
         
         if not embedding or len(embedding) == 0:
             raise ValueError("Empty embedding returned from Gemini")
+            
+        # [PADDING FIX] Force dimension to match database (3072)
+        if len(embedding) < 3072:
+            embedding = list(embedding) + [0.0] * (3072 - len(embedding))
+        elif len(embedding) > 3072:
+            embedding = embedding[:3072]
         
         return (chunk, embedding)
     except Exception as e:
@@ -529,6 +521,8 @@ def embed_single_chunk(chunk: str, api_keys: dict = None, client=None) -> Tuple[
             print(f"[EMBED] CRITICAL: Google API Key reported as leaked or invalid! Returning neutral embedding.")
             # Return a zero-vector so indexing can proceed without vector features
             return (chunk, [0.0] * 3072) # [FIX] Updated to 3072 for consistent dimensions
+        print(f"Embedding error for chunk: {e}")
+        raise
         print(f"Embedding error for chunk: {e}")
         raise
 

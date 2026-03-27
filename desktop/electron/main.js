@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, globalShortcut, dialog, desktopCapturer } = require('electron');
 const path = require('node:path');
 const fileWatcher = require('./services/file_watcher');
 const clipboardMonitor = require('./services/clipboard_monitor');
@@ -70,6 +70,49 @@ function createTray() {
     console.warn("Tray icon missing, tray disabled.");
   }
 }
+
+// ==========================================
+// [PROTOCOL] Deep Linking Setup (snapmind://)
+// ==========================================
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('snapmind', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('snapmind');
+}
+
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Windows/Linux handler
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+    }
+    const url = commandLine.pop();
+    if (url && url.startsWith('snapmind://') && mainWindow) {
+        mainWindow.webContents.send('deep-link', url);
+    }
+  });
+}
+
+app.on('open-url', (event, url) => {
+  // macOS handler
+  event.preventDefault();
+  app.whenReady().then(() => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('deep-link', url);
+    }
+  });
+});
+// ==========================================
 
 app.whenReady().then(() => {
   createWindow();
@@ -146,4 +189,70 @@ ipcMain.handle('remove-watch-folder', async (event, folderPath) => {
     } catch (e) {
         return { success: false, error: e.message };
     }
+});
+
+ipcMain.on('update-watcher-config', (event, config) => {
+    if (config.apiKeys) fileWatcher.setApiKeys(config.apiKeys);
+    if (config.backendUrl) fileWatcher.backendUrl = config.backendUrl;
+});
+
+// Vision Protocol: Screen Capture
+ipcMain.handle('capture-screen', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
+    if (sources.length > 0) {
+      return { success: true, data: sources[0].thumbnail.toDataURL() };
+    }
+    return { success: false, error: 'No screen sources found' };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// --- Phase 9: Native Infrastructure & Security (safeStorage) ---
+const { safeStorage } = require('electron');
+const fs = require('fs');
+
+const SECRETS_PATH = path.join(app.getPath('userData'), 'secrets.enc');
+
+ipcMain.handle('save-secret', async (event, { key, value }) => {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption is not available on this platform.');
+    }
+
+    let secrets = {};
+    if (fs.existsSync(SECRETS_PATH)) {
+      const encryptedData = fs.readFileSync(SECRETS_PATH);
+      const decryptedData = safeStorage.decryptString(encryptedData);
+      secrets = JSON.parse(decryptedData);
+    }
+
+    secrets[key] = value;
+    const encrypted = safeStorage.encryptString(JSON.stringify(secrets));
+    fs.writeFileSync(SECRETS_PATH, encrypted);
+    
+    return { success: true };
+  } catch (e) {
+    console.error('[SafeStorage] Save Error:', e);
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('get-secret', async (event, key) => {
+  try {
+    if (!fs.existsSync(SECRETS_PATH)) return { success: true, value: null };
+    if (!safeStorage.isEncryptionAvailable()) {
+         return { success: false, error: 'Encryption unavailable' };
+    }
+
+    const encryptedData = fs.readFileSync(SECRETS_PATH);
+    const decryptedData = safeStorage.decryptString(encryptedData);
+    const secrets = JSON.parse(decryptedData);
+    
+    return { success: true, value: secrets[key] || null };
+  } catch (e) {
+    console.error('[SafeStorage] Get Error:', e);
+    return { success: false, error: e.message };
+  }
 });

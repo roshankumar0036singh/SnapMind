@@ -436,7 +436,7 @@ class TranslationTester:
             print(f"📈 Pass Rate: {pass_rate:.1f}%")
         
         if self.failed == 0:
-            print("\n🎉 ALL TESTS PASSED!")
+            print("\n ALL TESTS PASSED!")
         else:
             print(f"\n⚠️  {self.failed} test(s) failed. Check details above.")
 

@@ -8,6 +8,12 @@ const extractor = new DomExtractor();
 const highlighter = new Highlighter();
 const selectionOverlay = new SelectionOverlay();
 
+let lastRightClickedElement = null;
+
+document.addEventListener('contextmenu', (e) => {
+    lastRightClickedElement = e.target;
+}, true);
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'EXTRACT_CONTENT') {
         console.log('[Content] Extracting content...');
@@ -27,6 +33,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: true, rect });
         });
         return true; // Keep channel open for async response
+    }
+    else if (request.type === 'CAPTURE_ELEMENT') {
+        const target = lastRightClickedElement || document.activeElement;
+        if (!target) {
+            sendResponse({ success: false, error: 'No element targeted' });
+            return;
+        }
+
+        const rect = target.getBoundingClientRect();
+        
+        // Deep clone and prune HTML for the clean code pipeline
+        const clone = target.cloneNode(true);
+        // Remove scripts/styles if present in the fragment
+        clone.querySelectorAll('script, style, iframe').forEach(el => el.remove());
+        
+        const html = clone.outerHTML;
+        const styles = window.getComputedStyle(target);
+        
+        // Pick only relevant styles to avoid bloat
+        const relevantStyles = {};
+        ['color', 'backgroundColor', 'fontSize', 'fontWeight', 'padding', 'margin', 'display', 'position', 'flex', 'grid', 'borderColor', 'borderRadius', 'width', 'height', 'gap', 'alignItems', 'justifyContent']
+            .forEach(prop => { relevantStyles[prop] = styles[prop]; });
+
+        sendResponse({ 
+            success: true, 
+            html, 
+            styles: relevantStyles,
+            rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+        });
     }
     else if (request.type === 'SEEK_YOUTUBE') {
         console.log('[Content] Seeking YouTube video to:', request.seconds);

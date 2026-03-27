@@ -7,23 +7,44 @@ export default function WatchFoldersPanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load saved folders from localStorage
-    const saved = localStorage.getItem('snapmind_watch_folders');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setFolders(parsed);
-        // Automatically restart watching on mount
-        parsed.forEach(f => window.electronAPI?.addWatchFolder(f.path));
-      } catch(e) { console.error('Error parsing folders', e); }
+    // Load saved folders and SYNC CONFIG to Electron
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['geminiApiKey', 'openaiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl', 'snapmind_watch_folders'], (result) => {
+        // 1. Sync API Keys to Watcher
+        if (window.electronAPI?.updateWatcherConfig) {
+          window.electronAPI.updateWatcherConfig({
+            apiKeys: {
+              geminiApiKey: result.geminiApiKey,
+              openaiApiKey: result.openaiApiKey,
+              mistralApiKey: result.mistralApiKey,
+              lingodevApiKey: result.lingodevApiKey,
+              firecrawlApiKey: result.firecrawlApiKey,
+              groqApiKey: result.groqApiKey
+            },
+            backendUrl: result.backendUrl || 'http://localhost:8000'
+          });
+        }
+
+        // 2. Load and Restart Watchers
+        if (result.snapmind_watch_folders) {
+          try {
+            const parsed = JSON.parse(result.snapmind_watch_folders);
+            setFolders(parsed);
+            parsed.forEach(f => window.electronAPI?.addWatchFolder(f.path));
+          } catch(e) { console.error('Error parsing folders', e); }
+        }
+      });
     }
     setLoading(false);
   }, []);
 
   const saveFolders = (newFolders) => {
-    localStorage.setItem('snapmind_watch_folders', JSON.stringify(newFolders));
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ snapmind_watch_folders: JSON.stringify(newFolders) });
+    }
     setFolders(newFolders);
   };
+
 
   const handleAddFolder = async () => {
     if (!window.electronAPI) {

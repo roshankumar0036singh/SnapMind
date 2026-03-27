@@ -166,6 +166,222 @@ MIGRATIONS = [
             ALTER TABLE refresh_suggestions ADD COLUMN IF NOT EXISTS last_fingerprint TEXT;
             ALTER TABLE refresh_suggestions ADD COLUMN IF NOT EXISTS reason TEXT;
         """
+    },
+    {
+        "version": 4,
+        "name": "schema_repair_and_consistency",
+        "sql": """
+            -- 1. Standardize documents table (rename url to source_url if needed)
+            DO $$ 
+            BEGIN 
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='documents' AND column_name='url') THEN
+                    ALTER TABLE documents RENAME COLUMN url TO source_url;
+                END IF;
+            END $$;
+
+            -- 2. Fix bookmarks table (add missing metadata column)
+            ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+            ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS embedding vector(768);
+
+            -- 3. Ensure indexing is consistent
+            CREATE INDEX IF NOT EXISTS documents_source_url_idx ON documents (source_url);
+        """
+    },
+    {
+        "version": 5,
+        "name": "file_sync_infrastructure",
+        "sql": """
+            -- 1. Create table to track local files indexed by the desktop app
+            CREATE TABLE IF NOT EXISTS indexed_files (
+                path TEXT PRIMARY KEY,
+                last_hash TEXT,
+                last_indexed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'indexed',
+                metadata JSONB DEFAULT '{}'::jsonb
+            );
+
+            -- 2. Create table to track watched directories
+            CREATE TABLE IF NOT EXISTS watched_dirs (
+                path TEXT PRIMARY KEY,
+                recursive BOOLEAN DEFAULT true,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS indexed_files_hash_idx ON indexed_files (last_hash);
+        """
+    },
+    {
+        "version": 6,
+        "name": "chat_memory_and_hybrid_fix",
+        "sql": """
+            -- 1. Create table for individual chat messages (semantic memory)
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id SERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                embedding vector(768),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS chat_messages_session_idx ON chat_messages (session_id);
+
+            -- 2. Advanced Hybrid Search Function (Vector + Keyword) Fix
+            -- Update to use source_url instead of url
+            DROP FUNCTION IF EXISTS hybrid_search_documents(vector, text, float, integer, text, float, float);
+            
+            CREATE OR REPLACE FUNCTION hybrid_search_documents(
+                query_embedding vector(768),
+                query_text TEXT,
+                match_threshold FLOAT,
+                match_count INTEGER,
+                filter_source_url TEXT,
+                vector_weight FLOAT DEFAULT 0.5,
+                keyword_weight FLOAT DEFAULT 0.5
+            ) RETURNS TABLE (
+                id TEXT,
+                url TEXT,
+                content TEXT,
+                metadata JSONB,
+                similarity FLOAT,
+                bm25_score FLOAT,
+                combined_score FLOAT
+            ) LANGUAGE plpgsql AS $$
+            BEGIN
+                RETURN QUERY
+                WITH vector_matches AS (
+                    SELECT 
+                        d.id,
+                        1 - (d.embedding <=> query_embedding) AS sim
+                    FROM documents d
+                    WHERE (filter_source_url IS NULL OR d.source_url LIKE filter_source_url)
+                      AND 1 - (d.embedding <=> query_embedding) > match_threshold
+                    ORDER BY d.embedding <=> query_embedding
+                    LIMIT match_count * 2
+                ),
+                keyword_matches AS (
+                    SELECT 
+                        d.id,
+                        ts_rank(to_tsvector('english', d.content), websearch_to_tsquery('english', query_text)) AS rank
+                    FROM documents d
+                    WHERE (filter_source_url IS NULL OR d.source_url LIKE filter_source_url)
+                      AND to_tsvector('english', d.content) @@ websearch_to_tsquery('english', query_text)
+                    ORDER BY rank DESC
+                    LIMIT match_count * 2
+                )
+                SELECT 
+                    d.id,
+                    d.source_url AS url,
+                    d.content,
+                    d.metadata,
+                    COALESCE(v.sim, 0)::FLOAT AS similarity,
+                    COALESCE(k.rank, 0)::FLOAT AS bm25_score,
+                    (COALESCE(v.sim, 0) * vector_weight + COALESCE(k.rank, 0) * keyword_weight)::FLOAT AS combined_score
+                FROM documents d
+                LEFT JOIN vector_matches v ON d.id = v.id
+                LEFT JOIN keyword_matches k ON d.id = k.id
+                WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+                ORDER BY combined_score DESC
+                LIMIT match_count;
+            END;
+            $$;
+        """
+    },
+    {
+        "version": 7,
+        "name": "upgrade_dimensions_to_3072",
+        "sql": """
+            -- Upgrade documents table
+            UPDATE documents 
+            SET embedding = (
+                substring(embedding::text from 1 for length(embedding::text)-1) || 
+                ',' || 
+                array_to_string(array_fill(0, ARRAY[3072 - vector_dims(embedding)]), ',') || 
+                ']'
+            )::vector 
+            WHERE embedding IS NOT NULL AND vector_dims(embedding) < 3072;
+            ALTER TABLE documents ALTER COLUMN embedding TYPE vector(3072);
+
+            -- Upgrade chat_messages table
+            UPDATE chat_messages 
+            SET embedding = (
+                substring(embedding::text from 1 for length(embedding::text)-1) || 
+                ',' || 
+                array_to_string(array_fill(0, ARRAY[3072 - vector_dims(embedding)]), ',') || 
+                ']'
+            )::vector 
+            WHERE embedding IS NOT NULL AND vector_dims(embedding) < 3072;
+            ALTER TABLE chat_messages ALTER COLUMN embedding TYPE vector(3072);
+
+            -- Upgrade bookmarks table
+            UPDATE bookmarks 
+            SET embedding = (
+                substring(embedding::text from 1 for length(embedding::text)-1) || 
+                ',' || 
+                array_to_string(array_fill(0, ARRAY[3072 - vector_dims(embedding)]), ',') || 
+                ']'
+            )::vector 
+            WHERE embedding IS NOT NULL AND vector_dims(embedding) < 3072;
+            ALTER TABLE bookmarks ALTER COLUMN embedding TYPE vector(3072);
+
+            -- Drop and recreate hybrid_search_documents to use 3072 dimensions
+            DROP FUNCTION IF EXISTS hybrid_search_documents(vector, text, float, integer, text, float, float);
+            
+            CREATE OR REPLACE FUNCTION hybrid_search_documents(
+                query_embedding vector(3072),
+                query_text TEXT,
+                match_threshold FLOAT,
+                match_count INTEGER,
+                filter_source_url TEXT,
+                vector_weight FLOAT DEFAULT 0.5,
+                keyword_weight FLOAT DEFAULT 0.5
+            ) RETURNS TABLE (
+                id TEXT,
+                url TEXT,
+                content TEXT,
+                metadata JSONB,
+                similarity FLOAT,
+                bm25_score FLOAT,
+                combined_score FLOAT
+            ) LANGUAGE plpgsql AS $$
+            BEGIN
+                RETURN QUERY
+                WITH vector_matches AS (
+                    SELECT 
+                        d.id,
+                        1 - (d.embedding <=> query_embedding) AS sim
+                    FROM documents d
+                    WHERE (filter_source_url IS NULL OR d.source_url LIKE filter_source_url)
+                      AND 1 - (d.embedding <=> query_embedding) > match_threshold
+                    ORDER BY d.embedding <=> query_embedding
+                    LIMIT match_count * 2
+                ),
+                keyword_matches AS (
+                    SELECT 
+                        d.id,
+                        ts_rank(to_tsvector('english', d.content), websearch_to_tsquery('english', query_text)) AS rank
+                    FROM documents d
+                    WHERE (filter_source_url IS NULL OR d.source_url LIKE filter_source_url)
+                      AND to_tsvector('english', d.content) @@ websearch_to_tsquery('english', query_text)
+                    ORDER BY rank DESC
+                    LIMIT match_count * 2
+                )
+                SELECT 
+                    d.id,
+                    d.source_url AS url,
+                    d.content,
+                    d.metadata,
+                    COALESCE(v.sim, 0)::FLOAT AS similarity,
+                    COALESCE(k.rank, 0)::FLOAT AS bm25_score,
+                    (COALESCE(v.sim, 0) * vector_weight + COALESCE(k.rank, 0) * keyword_weight)::FLOAT AS combined_score
+                FROM documents d
+                LEFT JOIN vector_matches v ON d.id = v.id
+                LEFT JOIN keyword_matches k ON d.id = k.id
+                WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+                ORDER BY combined_score DESC
+                LIMIT match_count;
+            END;
+            $$;
+        """
     }
 ]
 

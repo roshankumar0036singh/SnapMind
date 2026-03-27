@@ -10,36 +10,51 @@ class ReportGenerator:
         self.api_keys = api_keys
         self.client = get_mistral_client(api_keys)
 
-    def generate(self, session_id, query):
+    def generate(self, session_id, query, source_urls=None):
         """
         Synthesize a full research report for a given session.
-        Fetches ALL relevant blocks without character capping.
+        Supports optional selective source filtering.
         """
-        print(f"[ReportGenerator] Generating report for session {session_id} - Query: {query}")
+        print(f"[ReportGenerator] Generating report for session {session_id} - Selective Sources: {len(source_urls) if source_urls else 'ALL'}")
         
-        # 1. Fetch all blocks for this session from the DB
+        # 1. Fetch blocks for this session from the DB
         pool = get_db_pool()
         blocks = []
+        bookmarks = []
         try:
             with pool.connection() as conn:
                 with conn.cursor(row_factory=dict_row) as cur:
-                    cur.execute(
-                        "SELECT source_url, content FROM documents WHERE metadata->>'session_id' = %s",
-                        (session_id,)
-                    )
+                    if source_urls:
+                        # Selective Synthesis
+                        cur.execute(
+                            "SELECT source_url, content FROM documents WHERE metadata->>'session_id' = %s AND source_url = ANY(%s)",
+                            (session_id, source_urls)
+                        )
+                    else:
+                        # Global Session Synthesis
+                        cur.execute(
+                            "SELECT source_url, content FROM documents WHERE metadata->>'session_id' = %s",
+                            (session_id,)
+                        )
                     blocks = cur.fetchall()
                     
                     # Also fetch bookmarks for this session
-                    cur.execute(
-                        "SELECT source_url, content FROM bookmarks WHERE metadata->>'session_id' = %s",
-                        (session_id,)
-                    )
+                    if source_urls:
+                        cur.execute(
+                            "SELECT source_url, content FROM bookmarks WHERE metadata->>'session_id' = %s AND source_url = ANY(%s)",
+                            (session_id, source_urls)
+                        )
+                    else:
+                        cur.execute(
+                            "SELECT source_url, content FROM bookmarks WHERE metadata->>'session_id' = %s",
+                            (session_id,)
+                        )
                     bookmarks = cur.fetchall()
         except Exception as e:
             print(f"[ReportGenerator] Error fetching session data: {e}")
 
         if not blocks and not bookmarks:
-            print("[ReportGenerator] No data found in DB for this session.")
+            print("[ReportGenerator] No data found for specified filters.")
             return "INGESTION_PENDING"
 
         # 2. Prepare Context (Unlimited)

@@ -70,8 +70,8 @@ def clean_scraped_markdown(text: str) -> str:
         if re.match(r'^[-_*]{3,}$', stripped):
             continue
         
-        # Filter single short words (nav items like "Search", "Menu")
-        if len(stripped.split()) == 1 and len(stripped) < 20:
+        # Filter common navigational noise "Next", "Previous", "Home", etc.
+        if stripped.lower() in ["next", "previous", "home", "search", "menu", "contact", "about"]:
             continue
             
         link_count = len(re.findall(r'\[.*?\]\(.*?\)', line))
@@ -89,10 +89,6 @@ def clean_scraped_markdown(text: str) -> str:
         
         # Filter lines that look like image filenames
         if re.search(r'\.(png|jpg|jpeg|gif|svg|webp)$', stripped, re.I):
-            continue
-        
-        # Filter lines starting with > that contain URLs (quoted URLs from forums)
-        if stripped.startswith('>') and 'http' in stripped and len(stripped.split()) < 5:
             continue
             
         final_lines.append(line)
@@ -276,7 +272,15 @@ class BrowserOrchestrator:
             # 3. Search Web
             raw_results = []
             for q in search_queries:
-                raw_results.extend(self.searcher.search(q))
+                firecrawl_res = self.searcher.search(q)
+                if firecrawl_res:
+                    raw_results.extend(firecrawl_res)
+                else:
+                    # [NEW] DuckDuckGo Fallback
+                    print(f"[BrowserOrchestrator] Firecrawl failed for \"{q}\". Falling back to DDG...")
+                    from browser_agents import DDGSearchAgent
+                    ddg_agent = DDGSearchAgent()
+                    raw_results.extend(ddg_agent.search(q))
  
             print(f"[BrowserOrchestrator] Found {len(raw_results)} total raw results")
             
@@ -625,35 +629,65 @@ class FirecrawlScraper:
         self.api_key = api_key
 
     def extract(self, url: str) -> str:
-        if not self.api_key:
-            print("[FirecrawlScraper] Warning: No Firecrawl API Key provided.")
-            return "No text available due to missing Firecrawl API Key."
-            
-        endpoint = "https://api.firecrawl.dev/v1/scrape"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "url": url,
-            "formats": ["markdown"],
-            "onlyMainContent": True
-        }
-        
-        try:
-            resp = requests.post(endpoint, json=payload, headers=headers, timeout=30)
-            if resp.status_code == 200:
-                data = resp.json()
-                if data.get("success"):
-                    return data.get("data", {}).get("markdown", "")
-            
-            # [NEW] Specific handling for 502 Bad Gateway or 504 Gateway Timeout
-            if resp.status_code in [502, 504]:
-                print(f"[FirecrawlScraper] UPSTREAM ERROR {resp.status_code}: Service is temporarily overloaded.")
-                return f"Error: The scraping service (Firecrawl) is temporarily unavailable (Status {resp.status_code}). Please try again in 1-2 minutes."
+        # Priority 1: Firecrawl
+        if self.api_key:
+            endpoint = "https://api.firecrawl.dev/v1/scrape"
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "url": url,
+                "formats": ["markdown"],
+                "onlyMainContent": True
+            }
+            try:
+                resp = requests.post(endpoint, json=payload, headers=headers, timeout=30)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("success"):
+                        return data.get("data", {}).get("markdown", "")
+                print(f"[FirecrawlScraper] API fallback triggered (Status {resp.status_code})")
+            except Exception as e:
+                print(f"[FirecrawlScraper] API failed: {e}")
 
-            print(f"[FirecrawlScraper] Error {resp.status_code} for {url}: {resp.text}")
-            return f"Error: Received {resp.status_code} from scraper."
+        # Priority 2: Direct HTTP Fallback (Requests + Markdownify-like logic)
+        print(f"[FirecrawlScraper] Attempting direct HTTP fallback for {url}...")
+        try:
+            # We use a user agent to avoid basic blocks
+            headers_fallback = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+            resp = requests.get(url, headers=headers_fallback, timeout=15)
+            if resp.status_code == 200:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                
+                # Strip scripts and styles
+                for script in soup(["script", "style", "nav", "footer"]):
+                    script.extract()
+                    
+                text = soup.get_text(separator=' ')
+                # Basic cleaning
+                lines = (line.strip() for line in text.splitlines())
+                chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+                return "\n".join(chunk for chunk in chunks if chunk)
+            return f"Error: Scraper status {resp.status_code}"
         except Exception as e:
-            print(f"[FirecrawlScraper] Exception extracting {url}: {e}")
-            return f"Exception: {str(e)}"
+            return f"Error: Direct fetch failed: {str(e)}"
+
+class DDGSearchAgent:
+    """Fallback search agent using DuckDuckGo."""
+    def search(self, query: str) -> list[dict]:
+        try:
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                results = []
+                for r in ddgs.text(query, max_results=5):
+                    results.append({
+                        "title": r.get('title', 'Unknown'),
+                        "url": r.get('href', ''),
+                        "snippet": r.get('body', '')
+                    })
+                return results
+        except Exception as e:
+            print(f"[DDGSearchAgent] Error: {e}")
+            return []

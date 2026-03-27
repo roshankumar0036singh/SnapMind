@@ -252,7 +252,7 @@ def save_chat_message(session_id: str, role: str, content: str, api_keys: dict =
         with db_pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO chat_sessions (session_id, role, content, embedding) VALUES (%s, %s, %s, %s::halfvec)",
+                    "INSERT INTO chat_messages (session_id, role, content, embedding) VALUES (%s, %s, %s, %s::halfvec)",
                     (session_id, role, content, embedding)
                 )
             conn.commit()
@@ -274,7 +274,7 @@ def load_chat_history(session_id: str, query: str = None, limit: int = 15) -> li
             with conn.cursor(row_factory=dict_row) as cur:
                 # Basic chronological history (last N messages)
                 cur.execute(
-                    "SELECT role, content FROM chat_sessions WHERE session_id = %s ORDER BY created_at ASC LIMIT %s",
+                    "SELECT role, content FROM chat_messages WHERE session_id = %s ORDER BY created_at ASC LIMIT %s",
                     (session_id, limit)
                 )
                 rows = cur.fetchall()

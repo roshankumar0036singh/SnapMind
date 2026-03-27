@@ -146,7 +146,7 @@ async def main():
     
     if any(results.values()):
         winners = [k for k, v in results.items() if v]
-        print(f"\n🎉 Working transport(s): {', '.join(winners)}")
+        print(f"\n Working transport(s): {', '.join(winners)}")
     else:
         print(f"\n⚠️  All transports failed. Issue is ISP/regional. Need proxy or VPN.")
 

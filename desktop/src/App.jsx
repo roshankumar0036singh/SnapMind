@@ -1,6 +1,7 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, GitBranch, Bookmark, Globe, Video, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, GitBranch, Bookmark, Globe, Video, MessageSquare, Pin, Folder, RefreshCw, Clock, ExternalLink, ShieldCheck, Activity, Copy, Download } from 'lucide-react';
+import BotLogo from './components/BotLogo';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -11,6 +12,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import ShortcutsModal from './components/ShortcutsModal';
 import GraphMap from './components/GraphMap';
+import * as ReactWindow from 'react-window';
+const List = ReactWindow.FixedSizeList;
+import { motion, AnimatePresence } from 'framer-motion';
 import './styles/design-tokens.css';
 
 // Lazy load heavy components for better initial load
@@ -22,6 +26,8 @@ import RefreshSuggestions from './components/RefreshSuggestions';
 import AnalyticsView from './components/AnalyticsView';
 import Onboarding from './components/Onboarding';
 import SplashScreen from './components/SplashScreen';
+import SiteList from './components/SiteList';
+import BookmarkList from './components/BookmarkList';
 
 // Custom Markdown Components
 
@@ -100,7 +106,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
               console.log(`[Citation] Highlighting ${citation.blockId} with snippet: "${snippet.substring(0, 50)}..."`);
 
               const pageNum = block?.metadata?.page || block?.page;
-              onHighlight(citation.blockId, highlightUrl, snippet, pageNum);
+              onHighlight(citation.blockId, highlightUrl, snippet, pageNum, block);
             } else {
               // Local/Active tab fallback (same page)
               chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -131,15 +137,17 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                       toast.error("Highlight failed: Please refresh the target page and try again.", { duration: 3000 });
                     }
                   });
+                  // Still open panel for local fallback
+                  onHighlight(citation.blockId, null, snippet, null, block);
                 }
               });
             }
           }}
-          className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition-all cursor-pointer ${isYouTube
-              ? 'bg-rose-50/90 text-rose-700 border-rose-200 hover:bg-rose-100 shadow-sm'
+          className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition-all cursor-pointer shadow-sm ${isYouTube
+              ? 'bg-[#18181b]/50 text-rose-400 border-rose-500/20 hover:bg-[#18181b] hover:border-rose-500/40'
               : isBookmarked
-                ? 'bg-amber-100/80 text-amber-800 border-amber-300 shadow-sm'
-                : 'bg-amber-50/50 text-amber-700 hover:bg-amber-100 border-amber-200/60'
+                ? 'bg-[#18181b]/80 text-amber-500 border-amber-500/30'
+                : 'bg-[#0f0f14] text-[#a1a1aa] hover:text-[#d4d4d8] hover:bg-[#18181b] border-[#27272a] hover:border-[#6366f1]/50'
             }`}
         >
           {isYouTube ? (
@@ -155,13 +163,13 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
       </HoverCard.Trigger>
       <HoverCard.Portal>
         <HoverCard.Content
-          className="z-50 w-80 bg-white p-4 rounded-xl shadow-xl ring-1 ring-slate-200 animate-in fade-in zoom-in-95 duration-200"
+          className="z-50 w-80 bg-[#0f0f14] p-4 rounded-xl shadow-2xl ring-1 ring-[#27272a] animate-in fade-in zoom-in-95 duration-200"
           sideOffset={5}
           side="top"
           align="start"
         >
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <div className="flex items-center justify-between text-xs font-semibold text-[#71717a] uppercase tracking-wider">
               <div className="flex items-center gap-2">
                 <FileText className="w-3 h-3" />
                 Source Context
@@ -178,7 +186,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                     });
                   }
                 }}
-                className={`p-1 rounded-md transition-colors ${isBookmarked ? 'text-amber-600 bg-amber-50 cursor-default' : 'text-slate-400 hover:bg-amber-50 hover:text-amber-600'
+                className={`p-1 rounded-md transition-colors ${isBookmarked ? 'text-amber-500 bg-amber-500/10 cursor-default' : 'text-[#71717a] hover:bg-[#18181b] hover:text-amber-500'
                   }`}
                 title={isBookmarked ? "Already Saved" : "Save to Bookmarks"}
                 disabled={isBookmarked}
@@ -186,10 +194,10 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                 <Bookmark className={`w-3.5 h-3.5 ${isBookmarked ? 'fill-current' : ''}`} />
               </button>
             </div>
-            <p className="text-xs leading-relaxed text-slate-700 font-medium">
+            <p className="text-[11px] leading-relaxed text-[#d4d4d8] font-medium mt-3">
               "{preview}"
             </p>
-            <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-100 flex justify-between items-center">
+            <div className="text-[10px] text-[#71717a] pt-2 border-t border-[#1e1e26] flex justify-between items-center mt-3">
               <span>ID: {citation.blockId}</span>
               {isBookmarked && <span className="text-amber-600 font-bold flex items-center gap-1"><Sparkles className="w-2.5 h-2.5" /> IN NOTEBOOK</span>}
             </div>
@@ -219,210 +227,6 @@ const getSourceHandle = (title) => {
   return handle || 'PIN';
 };
 
-const SiteList = ({ onContextSelect }) => {
-  const [sites, setSites] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadSites();
-  }, []);
-
-  const loadSites = async () => {
-    setLoading(true);
-    const data = await apiClient.getSites();
-    setSites(data);
-    setLoading(false);
-  };
-
-  const handleDelete = async (id, e) => {
-    e.stopPropagation();
-    await apiClient.deleteSite(id);
-    loadSites(); // Refresh
-    toast.success("Site memory deleted");
-  };
-
-  if (loading) return <LoadingSkeleton type="card" count={3} />;
-
-  if (sites.length === 0) {
-    return (
-      <div className="text-center p-8 text-slate-500">
-        <Database className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-        <h3 className="font-semibold text-slate-700">No Memories Yet</h3>
-        <p className="text-xs">Index pages to build your knowledge base.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {sites.map(site => (
-        <div
-          key={site.id}
-          onClick={async () => {
-            chrome.tabs.create({ url: site.url });
-            const newSessionId = `session-${Date.now()}`;
-            const newSession = {
-              id: newSessionId,
-              title: site.title || site.url,
-              messages: [{ id: '1', role: 'assistant', text: `Ready to answer questions about ${site.title || site.url}` }],
-              createdAt: Date.now(),
-              updatedAt: Date.now()
-            };
-            const result = await chrome.storage.local.get(['chatSessions']);
-            const updatedSessions = [...(result.chatSessions || []), newSession];
-            await chrome.storage.local.set({ chatSessions: updatedSessions, currentSessionId: newSessionId });
-            setCurrentSessionId(newSessionId);
-            setSessions(updatedSessions);
-            setMessages(newSession.messages);
-            setView('chat');
-            toast.success(`Opened ${site.title || site.url}`);
-          }}
-          style={{
-            background: 'var(--bg-primary)',
-            padding: '20px',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--border-light)',
-            transition: 'var(--transition-fast)',
-            position: 'relative',
-            cursor: 'pointer'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'var(--primary-300)';
-            e.currentTarget.style.boxShadow = 'var(--shadow-md)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'var(--border-light)';
-            e.currentTarget.style.boxShadow = 'none';
-          }}
-        >
-          {/* Title */}
-          <h3 style={{
-            fontSize: 'var(--text-base)',
-            fontWeight: 'var(--font-semibold)',
-            color: 'var(--text-primary)',
-            marginBottom: '6px',
-            paddingRight: '24px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            {site.title || new URL(site.url).hostname}
-          </h3>
-
-          {/* Domain and Language */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--text-tertiary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            <span>{new URL(site.url).hostname}</span>
-            {site.original_lang && site.original_lang !== 'unknown' && site.original_lang !== 'en' && (
-              <span className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-medium rounded-md border border-indigo-100">
-                {getFlagEmoji(site.original_lang)} {site.original_lang.toUpperCase()}
-                {site.translated && " (Translated)"}
-              </span>
-            )}
-          </div>
-
-
-
-          {/* Delete Button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDelete(site.id, e);
-            }}
-            style={{
-              position: 'absolute',
-              top: '16px',
-              right: '16px',
-              width: '24px',
-              height: '24px',
-              padding: 0,
-              background: 'transparent',
-              border: 'none',
-              borderRadius: '50%',
-              cursor: 'pointer',
-              color: 'var(--text-tertiary)',
-              transition: 'var(--transition-fast)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '14px'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--error)';
-              e.currentTarget.style.color = 'white';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = 'var(--text-tertiary)';
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const BookmarkList = ({ bookmarks, loading, onDelete }) => {
-  if (loading) return <LoadingSkeleton type="card" count={3} />;
-
-  if (bookmarks.length === 0) {
-    return (
-      <div className="text-center p-8 text-slate-500">
-        <Bookmark className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-        <h3 className="font-semibold text-slate-700">No Bookmarks Saved</h3>
-        <p className="text-xs text-slate-400">Click the bookmark icon on any citation to save it here.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      {bookmarks.map(b => (
-        <div key={b.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all group relative">
-          <div className="flex flex-col gap-2">
-            <p className="text-xs leading-relaxed text-slate-700 font-medium italic">
-              "{b.content}"
-            </p>
-            {b.source_url && (
-              <a
-                href={b.source_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[10px] text-indigo-500 hover:underline flex items-center gap-1"
-              >
-                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                {new URL(b.source_url).hostname}
-              </a>
-            )}
-            <div className="flex items-center justify-between mt-1 text-[9px] text-slate-400 font-medium">
-              <span>Saved on {new Date(b.created_at).toLocaleDateString()}</span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(b.id);
-                }}
-                className="text-slate-300 hover:text-red-500 transition-colors uppercase font-bold tracking-tighter"
-                title="Delete Bookmark"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 function App() {
   const [showSplash, setShowSplash] = useState(true); // Always show splash on mount
@@ -471,12 +275,160 @@ function App() {
   const [githubIngesting, setGithubIngesting] = useState(false); // [NEW] Phase 23: GitHub ingestion status
   const [githubJobId, setGithubJobId] = useState(null); // [NEW] Phase 23: Job polling
   const [visibleBrowser, setVisibleBrowser] = useState(false); // [NEW] Feature 17: Local Browser Agent Visibility
+  
+  // [NEW] Phase 16: Citation Side Panel
+  const [selectedCitation, setSelectedCitation] = useState(null);
+  const [isCitationPanelOpen, setIsCitationPanelOpen] = useState(false);
+  const [citationSummary, setCitationSummary] = useState('');
+  const [isSummarizingCitation, setIsSummarizingCitation] = useState(false);
+
+  // [NEW] Synthesize Mode / Report states
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportQuery, setReportQuery] = useState('');
+  const [selectedSources, setSelectedSources] = useState([]); // List of source URLs
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+  const handleProfessionalReport = async (query, sources) => {
+    setIsGeneratingReport(true);
+    const toastId = toast.loading(`📑 Synthesizing Professional Report for: ${query}...`, { duration: Infinity });
+    
+    try {
+      const blob = await apiClient.generateReport(currentSessionId, query, sources.length > 0 ? sources : null);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SnapMind_Research_Report_${Date.now()}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success("✅ Professional Report Generated!", { id: toastId });
+      setIsReportModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error(`❌ Synthesis Failed: ${err.message}`, { id: toastId });
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // For Ctrl+K focus
   const fileInputRef = useRef(null); // Used by manual generic file clicks
 
-  const handleCitationHighlight = (blockId, url, snippet = "", pageNum = null) => {
+  // --- Phase 10: Bootstrap Health Check ---
+  useEffect(() => {
+    const checkSystemHealth = async () => {
+      try {
+        const response = await fetch(`${apiClient.baseUrl}/admin/settings`);
+        if (response.ok) {
+          console.log("[HEALTH] Local SnapMind Engine Reachable");
+          toast.success("Semantic Engine Sync Active", { icon: "🧠", duration: 2000 });
+        } else {
+          setIsOffline(true);
+        }
+      } catch (e) {
+        console.warn("[HEALTH] Engine Offline:", e.message);
+        setIsOffline(true);
+        toast.error("SnapMind Engine Offline. Ensure backend is running.", { duration: 5000 });
+      }
+    };
+    checkSystemHealth();
+  }, []);
+
+  // --- Phase 15-20: Deep Link Listener ---
+  const [isCodeSynthesisOpen, setIsCodeSynthesisOpen] = useState(false);
+  const [generatedCode, setGeneratedCode] = useState('');
+
+  useEffect(() => {
+    if (window.electronAPI && window.electronAPI.onDeepLink) {
+      const unsubscribe = window.electronAPI.onDeepLink(async (url) => {
+        console.log("Received Deep Link:", url);
+        try {
+          const urlObj = new URL(url);
+          const cacheId = urlObj.searchParams.get('cache_id');
+          if (!cacheId) return;
+
+          if (url.includes('snapmind://vision')) {
+            const res = await fetch(`http://127.0.0.1:50650/api/vision/cache/${cacheId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.image) {
+                setCropPreview(data.image);
+                setMode('visual');
+                toast.success("Visual Search Request Received", { icon: "👁️" });
+              }
+            }
+          } else if (url.includes('snapmind://code')) {
+            const res = await fetch(`http://127.0.0.1:50650/api/vision/cache/${cacheId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.text_data) {
+                setGeneratedCode(data.text_data);
+                setIsCodeSynthesisOpen(true);
+                toast.success("UI Component Reverse-Engineered", { icon: "⚡" });
+              }
+            }
+          }
+        } catch(e) {
+          console.error("Failed handling deep link:", e);
+        }
+      });
+      return unsubscribe;
+    }
+  }, []);
+
+  // --- Phase 15: Global Drag and Drop ---
+  useEffect(() => {
+    const handleDragOver = (e) => {
+      e.preventDefault();
+      // Only set dragging true if a file is dragged
+      if (e.dataTransfer.types.includes('Files')) {
+        setIsDragging(true);
+      }
+    };
+    const handleDragLeave = (e) => {
+      e.preventDefault();
+      // Set false only if dragged outside viewport
+      if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        setIsDragging(false);
+      }
+    };
+    const handleDrop = async (e) => {
+      e.preventDefault();
+      setIsDragging(false);
+      
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        toast.promise(Promise.all(files.map(async (file) => {
+          const text = await file.text();
+          return apiClient.ingestText(file.name, text, currentSessionId);
+        })), {
+          loading: `Ingesting ${files.length} file(s) into Neural Core...`,
+          success: 'Files successfully vectorized!',
+          error: 'Failed to ingest files.'
+        });
+      }
+    };
+    
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+    
+    return () => {
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, [currentSessionId]);
+
+
+  const handleCitationHighlight = (blockId, url, snippet = "", pageNum = null, block = null) => {
+    // [NEW] Phase 16: Open Side Panel instead of just highlighting/redirecting
+    setSelectedCitation({ blockId, url, snippet, pageNum, block });
+    setIsCitationPanelOpen(true);
+    setCitationSummary(''); // Clear previous summary
+    
     if (!url) {
       console.warn("handleCitationHighlight: No URL for block", blockId);
       return;
@@ -950,6 +902,18 @@ function App() {
   }, [isLoading, currentUrl]);
 
   // Save messages to storage whenever they change
+  // [NEW] Update Greeting on Mode Switch if session is fresh
+  useEffect(() => {
+    if (messages.length === 1 && messages[0].role === 'assistant' && !messages[0].userContext) {
+      let newGreeting = 'Hello! Choose a mode to start analyzing this page.';
+      if (mode === 'browser') newGreeting = 'Shadow Agent Online. Ready to execute browser automation and multi-agent research.';
+      else if (mode === 'visual') newGreeting = 'Vision Protocol Active. Select a region on the page to analyze with multimodal intelligence.';
+      else if (mode === 'rag') newGreeting = 'Neural Chat Synchronized. I have access to your pinned context and the current page memory.';
+      
+      setMessages([{ ...messages[0], text: newGreeting }]);
+    }
+  }, [mode]);
+
   useEffect(() => {
     if (currentSessionId && messages.length > 0) {
       const saveMessages = async () => {
@@ -971,10 +935,19 @@ function App() {
 
   const createNewSession = async () => {
     const newSessionId = `session-${Date.now()}`;
+    let initialMessage = 'Hello! Choose a mode to start analyzing this page.';
+    if (mode === 'browser') {
+      initialMessage = 'Shadow Agent Online. Ready to execute browser automation and multi-agent research.';
+    } else if (mode === 'visual') {
+      initialMessage = 'Vision Protocol Active. Select a region on the page to analyze with multimodal intelligence.';
+    } else if (mode === 'rag') {
+      initialMessage = 'Neural Chat Synchronized. I have access to your pinned context and the current page memory.';
+    }
+
     const newSession = {
       id: newSessionId,
-      title: 'New Conversation',
-      messages: [{ id: '1', role: 'assistant', text: 'Hello! Choose a mode to start analyzing this page.' }],
+      title: 'New Session',
+      messages: [{ id: '1', role: 'assistant', text: initialMessage }],
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -1671,6 +1644,23 @@ function App() {
     }
   };
 
+  const handleSummarizeCitation = async () => {
+    if (!selectedCitation || !selectedCitation.block) return;
+    setIsSummarizingCitation(true);
+    try {
+      const response = await apiClient.queryRag([{
+        id: selectedCitation.blockId,
+        text: selectedCitation.block.text,
+        source_url: selectedCitation.url
+      }], "Provide a concise, professional summary of this specific document snippet. Focus on key data points and conclusions.");
+      setCitationSummary(response.answer);
+    } catch (e) {
+      toast.error("Summarization failed");
+    } finally {
+      setIsSummarizingCitation(false);
+    }
+  };
+
   const handleSend = async (overrideText = null, overrideMode = null) => {
     const textToSend = overrideText || input;
     const modeToUse = overrideMode || mode;
@@ -1961,15 +1951,15 @@ function App() {
   return (
     <div className="flex h-screen w-full bg-[#07070a] text-[#a1a1aa] font-sans overflow-hidden selection:bg-[#6366f1]/30 selection:text-white">
       {/* SIDEBAR NAVIGATION (280px) */}
-      <aside className="w-[280px] bg-[#0a0a0e] border-r border-[#1e1e26] flex flex-col z-50 pt-12">
-        <div className="px-6 mb-8 group cursor-default">
-          <div className="flex items-center gap-3 py-3 px-4 bg-[#0f0f14] border border-[#2a2a35] rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
-             <div className="w-8 h-8 rounded-lg bg-[#07070a] border border-[#1e1e26] flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-[#6366f1]" />
+      <aside className="w-[300px] bg-[#09090b] border-r border-[#1e1e26]/60 flex flex-col z-50 pt-12 shadow-[10px_0_30px_rgba(0,0,0,0.3)]">
+        <div className="px-7 mb-10 group cursor-default">
+          <div className="flex items-center gap-4 py-4 px-5 bg-[#111115] border border-[#27272a] rounded-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.4)] transition-all hover:border-[#6366f1]/30">
+             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1e1e26] to-[#07070a] border border-[#2a2a35] flex items-center justify-center shadow-inner">
+                <BotLogo className="w-5 h-5" color="#6366f1" />
              </div>
              <div className="min-w-0">
-                <p className="text-[11px] font-black text-[#f4f4f5] tracking-wider uppercase font-display">Mainframe</p>
-                <p className="text-[9px] font-bold text-[#6366f1] uppercase tracking-[0.2em] mt-0.5">Local Instance</p>
+                <p className="text-[12px] font-black text-[#fafafa] tracking-[0.1em] uppercase font-display italic">SnapMind</p>
+                <p className="text-[9px] font-bold text-[#6366f1] uppercase tracking-[0.25em] mt-0.5 opacity-80">v3.0.0-PRO</p>
              </div>
           </div>
         </div>
@@ -2042,6 +2032,18 @@ function App() {
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col relative">
+        
+        {/* DRAG AND DROP OVERLAY */}
+        {isDragging && (
+          <div className="absolute inset-0 z-[9999] bg-[#09090b]/90 backdrop-blur-md flex flex-col items-center justify-center border-2 border-dashed border-[#6366f1] m-4 rounded-[32px] animate-in fade-in duration-200 pointer-events-none">
+             <div className="w-24 h-24 rounded-3xl bg-[#6366f1]/10 flex items-center justify-center mb-6 shadow-[0_0_50px_rgba(99,102,241,0.2)] animate-pulse">
+               <FileText className="w-12 h-12 text-[#6366f1]" />
+             </div>
+             <h2 className="text-3xl font-black text-[#fafafa] tracking-widest uppercase font-display">Drop Files to Neural Core</h2>
+             <p className="text-[#a1a1aa] mt-3 tracking-widest uppercase text-xs font-bold bg-[#111113] px-4 py-2 rounded-full border border-[#27272a]">Files will be vectorized instantly</p>
+          </div>
+        )}
+
         {/* DESKTOP TITLE BAR (Draggable) */}
         <div className="h-10 border-b border-[#1e1e26] bg-[#07070a]/80 backdrop-blur-xl flex items-center justify-between px-6 z-50 shrink-0" style={{ WebkitAppRegion: 'drag' }}>
           <div className="flex items-center gap-3">
@@ -2086,7 +2088,19 @@ function App() {
                 </div>
              )}
              
-             <button className="p-2 text-[#71717a] hover:text-[#fafafa] transition-colors rounded-lg hover:bg-[#111113]">
+             {isCitationPanelOpen && (
+                <button 
+                  onClick={() => setIsCitationPanelOpen(false)}
+                  className="px-3 py-1 bg-[#6366f1]/10 text-[#6366f1] border border-[#6366f1]/20 rounded-md text-[10px] font-black uppercase tracking-widest hover:bg-[#6366f1]/20 transition-all mr-2"
+                >
+                  Close Panel
+                </button>
+             )}
+
+             <button 
+                onClick={() => { setView('memory'); setMemoryTab('stats'); }}
+                className="p-2 text-[#71717a] hover:text-[#fafafa] transition-colors rounded-lg hover:bg-[#111113]"
+             >
                 <Activity className="w-4 h-4" />
              </button>
           </div>
@@ -2094,8 +2108,17 @@ function App() {
 
 
         {/* VIEW CONDITIONAL RENDERING */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {view === 'settings' ? (
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={view + (view === 'chat' ? mode : '')}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="absolute inset-0 flex flex-col overflow-hidden"
+            >
+              {view === 'settings' ? (
             <Suspense fallback={<div className="flex-1 flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-[#6366f1]" /></div>}>
                <Settings onBack={() => setView('chat')} />
             </Suspense>
@@ -2152,7 +2175,49 @@ function App() {
                      </p>
                   </div>
 
-                  {/* Rest of Memory Content... will be handled after fixing bottom tags */}
+                  <div className="flex-1 min-h-0">
+                    {memoryTab === 'sites' && (
+                        <SiteList 
+                            onContextSelect={setSelectedSiteId} 
+                            onSessionSwitch={(id) => { switchSession(id); setView('chat'); }} 
+                            setView={setView}
+                        />
+                    )}
+                    {memoryTab === 'graph' && (
+                      <div className="h-[600px] border border-[#1a1a1d] rounded-2xl overflow-hidden bg-[#07070a]">
+                        <GraphMap data={graphData} isLoading={isLoading} />
+                      </div>
+                    )}
+                    {memoryTab === 'bookmarks' && (
+                      <BookmarkList 
+                        bookmarks={bookmarks} 
+                        loading={bookmarksLoading} 
+                        onDelete={(id) => {
+                          apiClient.deleteBookmark(id).then(() => loadBookmarks());
+                          toast.success("Bookmark removed");
+                        }} 
+                      />
+                    )}
+                    {memoryTab === 'folders' && <WatchFoldersPanel />}
+                    {memoryTab === 'stats' && <AnalyticsView />}
+                    {memoryTab === 'updates' && (
+                      <div className="p-8 text-center border border-[#1a1a1d] rounded-2xl bg-[#111113]/50">
+                        <RefreshCw className="w-10 h-10 mx-auto mb-4 text-[#3f3f46]" />
+                        <h3 className="text-sm font-bold text-[#fafafa] uppercase tracking-widest">Maintenance Protocol</h3>
+                        <p className="text-[10px] text-[#71717a] mt-2 mb-6">Manually trigger re-indexing or clear orphaned nodes from the vector database.</p>
+                        <button 
+                          onClick={() => toast.promise(apiClient.maintainDb(), {
+                            loading: 'Optimizing database...',
+                            success: 'Database clean and optimized',
+                            error: 'Optimization failed'
+                          })}
+                          className="px-6 py-2 bg-[#1a1a1d] hover:bg-[#27272a] text-[#f4f4f5] text-[10px] font-black uppercase tracking-widest rounded-lg transition-all border border-[#27272a]"
+                        >
+                          Run Optimization
+                        </button>
+                      </div>
+                    )}
+                  </div>
                </div>
              </div>
           ) : (
@@ -2179,16 +2244,16 @@ function App() {
                       >
                         {msg.role === 'assistant' && (
                           <div className="w-8 h-8 rounded-lg bg-[#111113] border border-[#1a1a1d] flex items-center justify-center shrink-0 mt-1">
-                            <Sparkles className="w-4 h-4 text-[#6366f1]" />
+                            <BotLogo className="w-4 h-4" color="#6366f1" />
                           </div>
                         )}
                         
-                        <div className={`max-w-[85%] group relative ${msg.role === 'user' ? 'order-1' : 'order-2'}`}>
+                        <div className={`max-w-[82%] group relative ${msg.role === 'user' ? 'order-1' : 'order-2'}`}>
                           <div className={`
-                            px-5 py-4 rounded-xl border transition-all duration-300
+                            px-7 py-6 rounded-[22px] border transition-all duration-400
                             ${msg.role === 'user' 
-                              ? 'bg-[#0f0f14] border-[#6366f1]/20 text-[#f4f4f5] shadow-[0_0_20px_rgba(99,102,241,0.05)]' 
-                              : 'bg-[#0f0f14] border-[#1e1e26] text-[#a1a1aa] shadow-sm'}
+                              ? 'bg-gradient-to-br from-[#111116] to-[#0f0f14] border-[#27272a] text-[#fafafa]' 
+                              : 'bg-[#0f0f14] border-[#1e1e26]/80 text-[#d4d4d8] shadow-md'}
                           `}>
                             {/* Message Header (Internal Metadata) */}
                             <div className="flex items-center justify-between mb-2 opacity-30 group-hover:opacity-100 transition-opacity">
@@ -2213,14 +2278,14 @@ function App() {
                                             <span className="text-[10px] font-black text-[#71717a] uppercase tracking-widest">{className?.replace('language-', '') || 'Code'}</span>
                                             <button className="text-[#3f3f46] hover:text-[#6366f1] transition-colors"><Copy className="w-3.5 h-3.5" /></button>
                                           </div>
-                                          <pre className="p-4 overflow-x-auto text-xs font-mono leading-relaxed text-[#a1a1aa]"><code>{children}</code></pre>
+                                          <pre className="p-6 overflow-x-auto text-[12px] font-mono leading-relaxed text-[#d4d4d8] selection:bg-[#6366f1]/50"><code>{children}</code></pre>
                                         </div>
                                       )
                                     },
                                     a: ({href, children}) => <a href={href} target="_blank" className="text-[#6366f1] underline decoration-[#6366f1]/30 underline-offset-4 hover:decoration-[#6366f1] transition-all">{children}</a>
                                   }}
                                 >
-                                  {msg.text}
+                                  {msg.text ? msg.text.replace(/\[(?:br|bi|nb|db)-block-[a-zA-Z0-9-]+\]/gi, '').trim() : ''}
                                 </ReactMarkdown>
                               )}
                             </div>
@@ -2238,6 +2303,31 @@ function App() {
                                 ))}
                               </div>
                             )}
+
+                            {/* Assistant Actions */}
+                            {msg.role === 'assistant' && !msg.isLoading && (
+                              <div className="mt-4 pt-3 flex items-center gap-3 border-t border-[#1a1a1d] opacity-50 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => {
+                                    const cleanText = msg.text ? msg.text.replace(/\[(?:br|bi|nb|db)-block-[a-zA-Z0-9-]+\]/gi, '').trim() : '';
+                                    navigator.clipboard.writeText(cleanText);
+                                    toast.success("Response copied to clipboard", { duration: 2000 });
+                                  }}
+                                  className="flex items-center gap-1.5 text-[10px] uppercase font-bold text-[#71717a] hover:text-[#6366f1] transition-colors"
+                                >
+                                  <Copy className="w-3 h-3" /> Copy
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setReportQuery(msg.text?.substring(0, 100).replace(/\[(?:br|bi|nb|db)-block-[a-zA-Z0-9-]+\]/gi, '').trim() + "...");
+                                    setIsReportModalOpen(true);
+                                  }}
+                                  className="flex items-center gap-1.5 text-[10px] uppercase font-bold text-[#71717a] hover:text-[#10b981] transition-colors"
+                                >
+                                  <Download className="w-3 h-3" /> Professional Synthesis
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -2250,13 +2340,15 @@ function App() {
                     ))
                   )}
                   {isLoading && (
-                    <div className="flex gap-4 animate-pulse">
+                    <div className="flex gap-4">
                        <div className="w-8 h-8 rounded-lg bg-[#0f0f14] border border-[#1e1e26] flex items-center justify-center">
                           <Loader2 className="w-4 h-4 text-[#6366f1] animate-spin" />
                        </div>
-                       <div className="px-5 py-3 rounded-xl bg-[#0f0f14] border border-[#1e1e26] flex items-center gap-3">
-                          <div className="w-1.5 h-1.5 rounded-full bg-[#6366f1]" />
-                          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#3f3f46]">Processing Neural Request...</span>
+                       <div className="px-7 py-5 rounded-xl bg-[#0f0f14] border border-[#1e1e26] flex items-center gap-4">
+                          <div className="w-2 h-2 rounded-full bg-[#6366f1] animate-pulse glow-effect" />
+                          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[#fafafa] flex items-center gap-2">
+                            Neural Pulse <span className="text-[#6366f1] animate-pulse">Synchronizing...</span>
+                          </span>
                        </div>
                     </div>
                   )}
@@ -2265,6 +2357,41 @@ function App() {
 
                 {/* CHAT INPUT AREA */}
                 <footer className="px-8 pb-8 pt-4">
+                  {/* [NEW] Vision Protocol Preview */}
+                  {cropPreview && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        className="mb-4 relative group w-fit"
+                    >
+                        <img src={cropPreview} className="h-24 w-auto rounded-xl border-2 border-[#6366f1]/40 shadow-xl object-contain bg-[#111115]" />
+                        <button 
+                            onClick={() => setCropPreview(null)}
+                            className="absolute -top-2 -right-2 w-6 h-6 bg-[#ef4444] text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                        >
+                            <svg width="12" height="12" viewBox="0 0 10 10" fill="none"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                        </button>
+                    </motion.div>
+                  )}
+
+                  {/* [NEW] Pinned Tabs Manager */}
+                  {pinnedTabs.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4 animate-in slide-in-from-left-2 transition-all">
+                        {pinnedTabs.map((tab, idx) => (
+                            <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-[#111113] border border-[#27272a] rounded-full group">
+                                <Pin className="w-3 h-3 text-[#6366f1]" />
+                                <span className="text-[10px] font-bold text-[#f4f4f5] max-w-[100px] truncate">{tab.title}</span>
+                                <button 
+                                    onClick={() => setPinnedTabs(prev => prev.filter((_, i) => i !== idx))}
+                                    className="p-0.5 hover:text-[#ef4444] transition-colors"
+                                >
+                                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1 1L9 9M9 1L1 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                  )}
+
                   <div className="relative group">
                     <div className="absolute inset-0 bg-[#6366f1]/5 rounded-2xl blur-2xl opacity-0 group-focus-within:opacity-100 transition-opacity" />
                     <form 
@@ -2272,17 +2399,17 @@ function App() {
                       className="relative bg-[#0f0f14] border border-[#1e1e26] rounded-2xl focus-within:border-[#6366f1]/40 transition-all shadow-xl"
                     >
                       <input 
-                        className="w-full bg-transparent border-none pl-6 pr-16 py-5 focus:outline-none text-[14px] text-[#f4f4f5] placeholder:text-[#3f3f46] font-medium"
-                        placeholder="Invoke query or command..."
+                        className="w-full bg-transparent border-none pl-8 pr-20 py-6 focus:outline-none text-[15px] text-[#fafafa] placeholder:text-[#52525b] font-medium tracking-tight"
+                        placeholder="Neural prompt or local command..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                       />
                       <button 
                         type="submit"
                         disabled={!input.trim() || isLoading}
-                        className="absolute right-3 top-3 bottom-3 px-5 bg-[#6366f1] text-black rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-[#16a34a] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-lg shadow-[#6366f1]/10"
+                        className="absolute right-4 top-4 bottom-4 px-6 bg-[#6366f1] text-white rounded-xl font-bold text-[11px] uppercase tracking-[0.2em] hover:bg-[#4f46e5] hover:scale-[1.02] transition-all disabled:opacity-20 disabled:grayscale active:scale-95 shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center gap-2"
                       >
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><span>SEND</span> <Send className="w-3.5 h-3.5" /></>}
                       </button>
                     </form>
                   </div>
@@ -2330,6 +2457,297 @@ function App() {
                 </footer>
              </div>
           )}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* CITATION SIDE PANEL */}
+          <AnimatePresence>
+            {isCitationPanelOpen && selectedCitation && (
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="absolute top-0 right-0 bottom-0 w-[400px] bg-[#09090b]/95 backdrop-blur-2xl border-l border-[#1e1e26] z-[60] shadow-[-20px_0_50px_rgba(0,0,0,0.5)] flex flex-col"
+              >
+                <div className="p-6 border-b border-[#1e1e26] flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-[#6366f1]/10 flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-[#6366f1]" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-black text-[#fafafa] uppercase tracking-widest">Source Intelligence</h3>
+                      <p className="text-[10px] text-[#71717a] font-medium tracking-wide truncate w-48">{selectedCitation.url || 'Local Cache'}</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setIsCitationPanelOpen(false)}
+                    className="p-2 hover:bg-[#1a1a1d] rounded-lg text-[#71717a] transition-colors"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                  <div className="space-y-8">
+                    {/* Snippet Block */}
+                    <div>
+                      <span className="text-[9px] font-black text-[#3f3f46] uppercase tracking-[0.2em] mb-3 block">High-Fidelity Context</span>
+                      <div className="p-5 rounded-2xl bg-[#0f0f14] border border-[#1e1e26] text-[#d4d4d8] text-[12.5px] leading-relaxed italic relative">
+                         <span className="absolute -left-2 top-4 text-4xl text-[#6366f1]/20 font-serif">"</span>
+                         {selectedCitation.snippet || selectedCitation.block?.text}
+                      </div>
+                    </div>
+
+                    {/* AI Insights / Summary */}
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-[9px] font-black text-[#3f3f46] uppercase tracking-[0.2em]">Neural Synthesis</span>
+                        {!citationSummary && (
+                          <button 
+                            onClick={handleSummarizeCitation}
+                            disabled={isSummarizingCitation}
+                            className="text-[9px] font-black uppercase text-[#6366f1] hover:text-[#818cf8] transition-colors disabled:opacity-50"
+                          >
+                            {isSummarizingCitation ? 'Synthesizing...' : 'Summarize Block'}
+                          </button>
+                        )}
+                      </div>
+                      
+                      {citationSummary ? (
+                        <div className="p-5 rounded-2xl bg-[#6366f1]/5 border border-[#6366f1]/10 text-[#fafafa] text-[12px] leading-relaxed animate-in fade-in slide-in-from-top-2 duration-500">
+                          {citationSummary}
+                        </div>
+                      ) : (
+                        <div className="h-24 rounded-2xl border border-dashed border-[#1e1e26] flex items-center justify-center group cursor-pointer hover:border-[#6366f1]/30 transition-all" onClick={handleSummarizeCitation}>
+                           <div className="flex flex-col items-center gap-2 opacity-30 group-hover:opacity-100">
+                             <Sparkles className="w-4 h-4 text-[#6366f1]" />
+                             <span className="text-[10px] font-bold text-[#71717a] uppercase tracking-widest">Click to Generate insights</span>
+                           </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-xl bg-[#111113] border border-[#1a1a1d]">
+                        <span className="text-[8px] font-black text-[#3f3f46] uppercase tracking-widest block mb-1">Index ID</span>
+                        <code className="text-[10px] text-[#a1a1aa] font-mono">{selectedCitation.blockId}</code>
+                      </div>
+                      <div className="p-4 rounded-xl bg-[#111113] border border-[#1a1a1d]">
+                        <span className="text-[8px] font-black text-[#3f3f46] uppercase tracking-widest block mb-1">Target Page</span>
+                        <span className="text-[10px] text-[#a1a1aa] font-bold">{selectedCitation.pageNum ? `Page ${selectedCitation.pageNum}` : 'Dynamic Content'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 bg-[#07070a] border-t border-[#1e1e26] flex gap-3">
+                  <button 
+                    onClick={() => {
+                      if (selectedCitation.url) window.open(selectedCitation.url, '_blank');
+                      else toast.error("Live source not available for local snippets");
+                    }}
+                    className="flex-1 py-3 bg-[#6366f1] hover:bg-[#818cf8] text-black text-[11px] font-black uppercase tracking-widest rounded-xl transition-all shadow-[0_0_20px_rgba(99,102,241,0.3)] flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" /> Navigate to Source
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* PROFESSIONAL REPORT / SOURCE SELECTION MODAL */}
+          <AnimatePresence>
+            {isReportModalOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-[#09090b]/80 backdrop-blur-md z-[100] flex items-center justify-center p-6"
+              >
+                <motion.div
+                  initial={{ scale: 0.95, y: 20 }}
+                  animate={{ scale: 1, y: 0 }}
+                  exit={{ scale: 0.95, y: 20 }}
+                  className="w-full max-w-2xl bg-[#0f0f14] border border-[#1e1e26] rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+                >
+                  <div className="p-8 border-b border-[#1e1e26] bg-[#111116] flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-[#10b981]/10 flex items-center justify-center border border-[#10b981]/20">
+                        <Sparkles className="w-6 h-6 text-[#10b981]" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-[#fafafa] uppercase tracking-widest">Professional Synthesis</h3>
+                        <p className="text-xs text-[#71717a] font-bold uppercase tracking-wider">Select 5-10 sources for your high-fidelity whitepaper</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setIsReportModalOpen(false)} className="p-2 hover:bg-[#1a1a1d] rounded-xl text-[#71717a] transition-all">
+                      <svg width="14" height="14" viewBox="0 0 14 14"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                    <div className="mb-8">
+                       <label className="text-[10px] font-black text-[#3f3f46] uppercase tracking-[0.3em] mb-3 block">Research Objective / Title</label>
+                       <input 
+                         className="w-full bg-[#07070a] border border-[#1e1e26] rounded-xl px-5 py-4 text-[#fafafa] text-sm font-bold focus:border-[#6366f1]/50 outline-none transition-all placeholder:text-[#3f3f46]"
+                         placeholder="e.g. The Impact of Agentic AI on Software Engineering Workflows"
+                         value={reportQuery}
+                         onChange={(e) => setReportQuery(e.target.value)}
+                       />
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black text-[#3f3f46] uppercase tracking-[0.3em]">Knowledge Sources ({selectedSources.length})</span>
+                        <button 
+                          onClick={() => setSelectedSources([])}
+                          className="text-[10px] font-black text-[#6366f1] hover:text-[#818cf8] uppercase tracking-widest transition-colors"
+                        >
+                          Clear Selection
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        {(graphData.nodes || []).filter(n => n.type === 'site').map(source => (
+                          <button
+                            key={source.id}
+                            onClick={() => {
+                              setSelectedSources(prev => 
+                                prev.includes(source.id) 
+                                ? prev.filter(id => id !== source.id) 
+                                : [...prev, source.id]
+                              );
+                            }}
+                            className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
+                              selectedSources.includes(source.id)
+                              ? 'bg-[#6366f1]/10 border-[#6366f1]/40 shadow-[0_0_20px_rgba(99,102,241,0.1)]'
+                              : 'bg-[#111116] border-[#1e1e26] hover:border-[#10b981]/30'
+                            }`}
+                          >
+                            <div className="flex items-center gap-4 text-left">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+                                selectedSources.includes(source.id) ? 'bg-[#6366f1] border-transparent' : 'bg-[#07070a] border-[#1e1e26]'
+                              }`}>
+                                <Globe className={`w-4 h-4 ${selectedSources.includes(source.id) ? 'text-black' : 'text-[#71717a]'}`} />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className={`text-sm font-bold truncate max-w-[300px] ${selectedSources.includes(source.id) ? 'text-[#fafafa]' : 'text-[#a1a1aa]'}`}>{source.name}</span>
+                                <span className="text-[10px] text-[#3f3f46] font-mono">{source.id.substring(0, 30)}...</span>
+                              </div>
+                            </div>
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                              selectedSources.includes(source.id) ? 'bg-[#10b981] border-transparent' : 'border-[#1e1e26]'
+                            }`}>
+                              {selectedSources.includes(source.id) && <ShieldCheck className="w-3 h-3 text-black" />}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-8 bg-[#07070a] border-t border-[#1e1e26] flex gap-4">
+                     <button 
+                       onClick={() => setIsReportModalOpen(false)}
+                       className="flex-1 py-4 bg-transparent border border-[#1e1e26] text-[#71717a] text-[11px] font-black uppercase tracking-widest rounded-2xl hover:bg-[#111116] transition-all"
+                     >
+                       Cancel
+                     </button>
+                     <button 
+                       onClick={() => handleProfessionalReport(reportQuery, selectedSources)}
+                       disabled={!reportQuery.trim() || isGeneratingReport}
+                       className="flex-[2] py-4 bg-[#6366f1] disabled:bg-[#3f3f46] text-black text-[11px] font-black uppercase tracking-widest rounded-2xl transition-all shadow-[0_10px_30px_rgba(99,102,241,0.2)] flex items-center justify-center gap-3 active:scale-95"
+                     >
+                       {isGeneratingReport ? (
+                         <><Loader2 className="w-4 h-4 animate-spin" /> SYNTHESIZING...</>
+                       ) : (
+                         <><Download className="w-3.5 h-3.5" /> GENERATE WHITE-PAPER</>
+                       )}
+                     </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* CODE SYNTHESIS OVERLAY (AI-TO-CODE) */}
+          <AnimatePresence>
+            {isCodeSynthesisOpen && (
+              <motion.div
+                initial={{ x: '100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                className="fixed top-0 right-0 bottom-0 w-[600px] bg-[#09090b]/98 backdrop-blur-3xl border-l border-[#1e1e26] z-[110] shadow-[-30px_0_60px_rgba(0,0,0,0.7)] flex flex-col"
+              >
+                <div className="p-8 border-b border-[#1e1e26] bg-[#111116] flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-[#6366f1]/10 flex items-center justify-center border border-[#6366f1]/20">
+                      <GitBranch className="w-6 h-6 text-[#6366f1]" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-[#fafafa] uppercase tracking-widest">Neural Reverse-Engineer</h3>
+                      <p className="text-xs text-[#71717a] font-bold uppercase tracking-wider">React + Tailwind Translation Layer</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setIsCodeSynthesisOpen(false)} className="p-2 hover:bg-[#1a1a1d] rounded-xl text-[#71717a] transition-all">
+                    <svg width="16" height="16" viewBox="0 0 14 14"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-0 custom-scrollbar bg-[#07070a]">
+                  <div className="p-8">
+                    <div className="flex items-center justify-between mb-6">
+                       <span className="text-[10px] font-black text-[#3f3f46] uppercase tracking-[0.3em]">Synthesized Source Code</span>
+                       <button 
+                         onClick={() => {
+                           navigator.clipboard.writeText(generatedCode);
+                           toast.success("Code copied to clipboard");
+                         }}
+                         className="flex items-center gap-2 px-4 py-2 bg-[#6366f1]/10 border border-[#6366f1]/20 rounded-xl text-[10px] font-black text-[#6366f1] uppercase tracking-widest hover:bg-[#6366f1]/20 transition-all"
+                       >
+                         <Copy className="w-3 h-3" /> Copy Component
+                       </button>
+                    </div>
+                    
+                    <div className="rounded-2xl border border-[#1e1e26] overflow-hidden bg-[#0f0f14] shadow-2xl">
+                       <div className="px-6 py-3 border-b border-[#1e1e26] bg-[#1a1a1d] flex items-center gap-2">
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
+                          <span className="text-[10px] font-mono text-[#71717a] ml-4">GeneratedComponent.jsx</span>
+                       </div>
+                       <pre className="p-8 text-[13px] font-mono leading-relaxed text-[#d4d4d8] overflow-x-auto selection:bg-[#6366f1]/40">
+                         <code className="language-javascript">
+                           {generatedCode}
+                         </code>
+                       </pre>
+                    </div>
+                    
+                    <div className="mt-10 p-6 bg-[#10b981]/5 border border-[#10b981]/10 rounded-2xl">
+                       <div className="flex items-center gap-3 mb-3">
+                          <ShieldCheck className="w-4 h-4 text-[#10b981]" />
+                          <span className="text-[10px] font-black text-[#10b981] uppercase tracking-widest">Heuristic Verification</span>
+                       </div>
+                       <p className="text-xs text-[#71717a] leading-relaxed">
+                         This component was reverse-engineered from computed browser styles and raw DOM architecture. 
+                         Visual fidelity was prioritized. Please review Tailwind class mappings before production deployment.
+                       </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-8 bg-[#07070a] border-t border-[#1e1e26]">
+                   <button 
+                     onClick={() => setIsCodeSynthesisOpen(false)}
+                     className="w-full py-5 bg-[#fafafa] text-black text-[12px] font-black uppercase tracking-[0.2em] rounded-2xl hover:bg-white transition-all shadow-[0_10px_40px_rgba(255,255,255,0.1)] active:scale-[0.98]"
+                   >
+                     Exit Inspector
+                   </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </main>
     </div>

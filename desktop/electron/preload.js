@@ -10,5 +10,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('clipboard-update', subscription);
   },
   addWatchFolder: (path) => ipcRenderer.invoke('add-watch-folder', path),
-  removeWatchFolder: (path) => ipcRenderer.invoke('remove-watch-folder', path)
+  removeWatchFolder: (path) => ipcRenderer.invoke('remove-watch-folder', path),
+  updateWatcherConfig: (config) => ipcRenderer.send('update-watcher-config', config),
+  captureScreen: () => ipcRenderer.invoke('capture-screen'),
+  saveSecret: (key, value) => ipcRenderer.invoke('save-secret', { key, value }),
+  getSecret: (key) => ipcRenderer.invoke('get-secret', key),
+  onDeepLink: (callback) => {
+    const subscription = (event, url) => callback(url);
+    ipcRenderer.on('deep-link', subscription);
+    return () => ipcRenderer.removeListener('deep-link', subscription);
+  }
 });

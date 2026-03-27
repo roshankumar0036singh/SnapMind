@@ -78,7 +78,7 @@ if __name__ == "__main__":
         time.sleep(2)
         test_background_ingest()
         test_semantic_memory()
-        print("\nAll Tests Passed! 🎉")
+        print("\nAll Tests Passed! ")
     except requests.exceptions.ConnectionError:
         print("❌ Connection Error: Backend is not running at http://127.0.0.1:8000")
         sys.exit(1)

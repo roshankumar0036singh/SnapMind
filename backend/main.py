@@ -90,6 +90,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    import time
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    # We could also log this to a DB for the analytics view's 'latency distribution' chart
+    return response
+
 @app.get("/admin/refresh-suggestions")
 async def get_refresh_suggestions():
     """
@@ -244,6 +254,43 @@ async def import_endpoint(request: dict):
         raise HTTPException(status_code=400, detail="Import file not found at specified path.")
     return import_data(target_path)
 
+class ReverseEngineerRequest(BaseModel):
+    html: str
+    styles: dict
+    prompt: str | None = "Reverse-engineer this UI element into a clean, modern, and responsive React component using Tailwind CSS."
+
+@app.post("/developer/reverse_engineer")
+async def reverse_engineer_endpoint(request: ReverseEngineerRequest, req: Request):
+    """
+    Reverse-engineers a captured UI element into React + Tailwind code.
+    """
+    gemini_key = req.headers.get("x-gemini-key")
+    if not gemini_key:
+        return {"success": False, "error": "Gemini API key required for AI-to-Code synthesis."}
+    
+    import google.generativeai as genai
+    genai.configure(api_key=gemini_key)
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    
+    system_prompt = """You are an elite Senior Frontend Engineer. Your task is to reverse-engineer a provided HTML snippet and its computed styles into a professional-grade React component.
+
+GUIDELINES:
+1. Use React (Functional Components, Hooks if needed).
+2. Use Tailwind CSS for all styling.
+3. Ensure the component is clean, semantic, and responsive.
+4. Extract logical sub-components if the element is complex.
+5. Use Lucide-React for icons if applicable.
+6. Provide ONLY the code block, no conversational filler.
+"""
+    
+    full_prompt = f"{system_prompt}\n\nTARGET HTML:\n{request.html}\n\nCOMPUTED STYLES:\n{str(request.styles)}\n\nUSER INSTRUCTION: {request.prompt}"
+    
+    try:
+        response = model.generate_content(full_prompt)
+        return {"success": True, "code": response.text}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.get("/")
 def read_root():
     return {"status": "ok", "service": "snapmind-rag"}
@@ -345,6 +392,7 @@ async def research_endpoint(request: ResearchRequest, req: Request):
 class ReportRequest(BaseModel):
     session_id: str
     query: str
+    source_urls: list[str] | None = None # [NEW] Support selective synthesis
 
 @app.post("/browser/generate_report")
 async def generate_report_endpoint(request: ReportRequest, req: Request):
@@ -358,7 +406,7 @@ async def generate_report_endpoint(request: ReportRequest, req: Request):
     from report_generator import ReportGenerator
     generator = ReportGenerator(api_keys)
     
-    file_path = generator.generate(request.session_id, request.query)
+    file_path = generator.generate(request.session_id, request.query, source_urls=request.source_urls)
     
     from fastapi import Response, status
     if file_path == "INGESTION_PENDING":
@@ -807,19 +855,63 @@ def list_sites():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.delete("/sites/{site_id}")
-def delete_site(site_id: str):
-    """Deletes all documents for a given source URL."""
-    try:
-        from database import get_db_pool
-        db_pool = get_db_pool()
-        # Delete all documents with this source_url
-        with db_pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM documents WHERE source_url = %s", (site_id,))
-            conn.commit()
-        return {"success": True, "deleted_url": site_id}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/files/ingest")
+async def ingest_local_file(request: Request):
+    """
+    Endpoint for the desktop app to push local file content for RAG indexing.
+    Includes MD5 hash check to avoid re-indexing unchanged files.
+    """
+    try:
+        data = await request.json()
+        path = data.get("path")
+        content = data.get("content")
+        file_hash = data.get("hash")
+        api_keys = data.get("api_keys", {})
+
+        if not path or not content:
+            raise HTTPException(status_code=400, detail="Missing path or content")
+
+        # 1. Check if file has changed
+        from database import get_db_pool
+        pool = get_db_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT last_hash FROM indexed_files WHERE path = %s", (path,))
+                row = cur.fetchone()
+                if row and row[0] == file_hash:
+                    return {"success": True, "status": "skipped", "message": "File unchanged"}
+
+        # 2. Ingest text logic (reuse the existing RAG pipeline)
+        from rag_pipeline import ingest_text_logic
+        res = ingest_text_logic(
+            url=f"file://{path}", 
+            text_content=content, 
+            api_keys=api_keys,
+            page_title=os.path.basename(path)
+        )
+
+        if res.get("success"):
+            # 3. Update indexed_files record
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO indexed_files (path, last_hash, status) 
+                        VALUES (%s, %s, 'indexed')
+                        ON CONFLICT (path) DO UPDATE SET 
+                            last_hash = EXCLUDED.last_hash,
+                            last_indexed = CURRENT_TIMESTAMP
+                    """, (path, file_hash))
+                conn.commit()
+
+        return res
+
+    except Exception as e:
+        print(f"[FILE-INGEST] Error: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/admin/settings")
@@ -859,6 +951,48 @@ async def update_setting(request: dict):
     except Exception as e:
         print(f"Error updating setting {key}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/admin/analytics")
+def get_system_analytics():
+    """Returns telemetry for the AnalyticsView."""
+    from database import get_db_pool
+    import os
+    try:
+        pool = get_db_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                # 1. Chunk Count
+                cur.execute("SELECT COUNT(*) FROM documents")
+                docs_count = cur.fetchone()[0]
+                
+                # 2. Session Count
+                cur.execute("SELECT COUNT(DISTINCT session_id) FROM chat_sessions")
+                sessions_count = cur.fetchone()[0]
+                
+                # 3. Bookmarks Count
+                cur.execute("SELECT COUNT(*) FROM bookmarks")
+                bookmarks_count = cur.fetchone()[0]
+                
+                # 4. Recent Ledger
+                cur.execute("SELECT source_url, created_at FROM sites ORDER BY created_at DESC LIMIT 10")
+                recent = [{"url": row[0], "date": row[1].isoformat()} for row in cur.fetchall()]
+                
+                # 5. Storage (Simplified)
+                # Roughly estimating based on PostgreSQL file size or just doc count
+                # Let's just say 2KB per chunk for a rough estimate
+                storage_bytes = docs_count * 2048 
+                storage_str = f"{storage_bytes / (1024*1024):.1f} MB" if storage_bytes > 1024*1024 else f"{storage_bytes/1024:.1f} KB"
+
+                return {
+                    "docs": docs_count,
+                    "sessions": sessions_count,
+                    "bookmarks": bookmarks_count,
+                    "storage": storage_str,
+                    "recent": recent
+                }
+    except Exception as e:
+        print(f"Error fetching analytics: {e}")
+        return {"error": str(e)}
 
 # --- Export Endpoints (Phase 4.1) ---
 
@@ -1022,6 +1156,29 @@ def debug_list_urls():
         return {"success": True, "urls": urls, "count": len(urls)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# API to temporarily hold screenshots for cross-platform visual search
+vision_cache = {}
+import uuid
+
+@app.post("/api/vision/cache")
+async def cache_vision_image(request: Request):
+    data = await request.json()
+    cache_id = str(uuid.uuid4())
+    vision_cache[cache_id] = data.get("image", "")
+    # Clean up old items to prevent memory leak
+    if len(vision_cache) > 50:
+        keys_to_delete = list(vision_cache.keys())[:-20]
+        for k in keys_to_delete:
+            del vision_cache[k]
+    return {"cache_id": cache_id}
+
+@app.get("/api/vision/cache/{cache_id}")
+async def get_vision_image(cache_id: str):
+    if cache_id in vision_cache:
+        img = vision_cache[cache_id]
+        return {"image": img}
+    return {"error": "Not found"}
 
 if __name__ == "__main__":
     # Local development uses port 8000

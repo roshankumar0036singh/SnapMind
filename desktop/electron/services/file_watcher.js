@@ -1,6 +1,7 @@
 const chokidar = require('chokidar');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 /**
  * FileWatcher Service
@@ -9,7 +10,14 @@ const fs = require('fs');
 class FileWatcherService {
     constructor() {
         this.watchers = new Map(); // path -> chokidar instance
-        this.backendUrl = 'http://localhost:8000';
+        this.backendUrl = 'http://127.0.0.1:50650';
+        this.apiKeys = {};
+        this.isProcessing = false;
+        this.queue = [];
+    }
+
+    setApiKeys(apiKeys) {
+        this.apiKeys = apiKeys;
     }
 
     /**
@@ -24,27 +32,32 @@ class FileWatcherService {
 
         console.log(`[FileWatcher] Starting watch on: ${dirPath}`);
         
-        // Add a slight delay for file stability (avoiding partial reads)
         const watcher = chokidar.watch(dirPath, {
-            ignored: /(^|[\/\\])\../, // ignore dotfiles
+            ignored: [
+                /(^|[\/\\])\../, // ignore dotfiles
+                '**/node_modules/**',
+                '**/dist/**',
+                '**/build/**',
+                '**/.git/**',
+                '**/*.log'
+            ],
             persistent: true,
+            ignoreInitial: false, 
             awaitWriteFinish: {
-                stabilityThreshold: 2000,
+                stabilityThreshold: 3000,
                 pollInterval: 100
             }
         });
 
         watcher
-            .on('add', (filePath) => this.handleNewFile(filePath))
+            .on('add', (filePath) => this.handleFileChange(filePath, 'add'))
+            .on('change', (filePath) => this.handleFileChange(filePath, 'change'))
+            .on('unlink', (filePath) => console.log(`[FileWatcher] Unlinked: ${filePath}`))
             .on('error', error => console.error(`[FileWatcher] Error on ${dirPath}:`, error));
 
         this.watchers.set(dirPath, watcher);
     }
 
-    /**
-     * Stop watching a specific directory.
-     * @param {string} dirPath 
-     */
     removeWatchFolder(dirPath) {
         const watcher = this.watchers.get(dirPath);
         if (watcher) {
@@ -55,63 +68,69 @@ class FileWatcherService {
         }
     }
 
-    /**
-     * Handles newly detected files.
-     * Submits them to the local backend for ingestion.
-     * @param {string} filePath 
-     */
-    async handleNewFile(filePath) {
-        console.log(`[FileWatcher] New file detected: ${filePath}`);
-        
+    async handleFileChange(filePath, type) {
         const ext = path.extname(filePath).toLowerCase();
-        const supportedExts = ['.txt', '.md', '.pdf', '.csv', '.json', '.docx', '.csv'];
+        const supportedExts = ['.txt', '.md', '.js', '.jsx', '.ts', '.tsx', '.py', '.html', '.css', '.json', '.pdf', '.docx', '.csv'];
         
-        if (!supportedExts.includes(ext)) {
-            console.log(`[FileWatcher] Ignoring unsupported file type: ${ext}`);
-            return;
-        }
+        if (!supportedExts.includes(ext)) return;
 
         try {
-            console.log(`[FileWatcher] Submitting ${path.basename(filePath)} to backend...`);
-            
-            // Note: Since we are in Node.js standard environment (not browser), 
-            // we use the Node native fetch api directly. 
-            // We construct a multipart/form-data request manually or via Blob standard.
-            
-            const fileStream = fs.createReadStream(filePath);
-            const fileName = path.basename(filePath);
-            
-            // To upload via Node.js native fetch, we use FormData if available (Node 18+)
-            const formData = new FormData();
-            
-            // Create a Blob from the file buffer to append
             const buffer = fs.readFileSync(filePath);
-            const blob = new Blob([buffer]);
-            
-            formData.append('file', blob, fileName);
-            formData.append('target_language', 'auto');
-            
-            const response = await fetch(`${this.backendUrl}/ingest/file`, {
-                method: 'POST',
-                body: formData
+            const hash = crypto.createHash('md5').update(buffer).digest('hex');
+
+            // Add to processing queue with raw buffer
+            this.queue.push({ 
+                path: filePath, 
+                buffer: buffer, 
+                filename: path.basename(filePath),
+                hash 
             });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Backend Error ${response.status}: ${errorText}`);
-            }
-
-            const data = await response.json();
-            console.log(`[FileWatcher] Successfully ingested: ${fileName}. Response:`, data);
-            
-        } catch (error) {
-            console.error(`[FileWatcher] Failed to ingest file ${filePath}:`, error);
+            this.processQueue();
+        } catch (e) {
+            console.error(`[FileWatcher] Error reading ${filePath}:`, e);
         }
     }
 
-    /**
-     * Stop all active watchers.
-     */
+    async processQueue() {
+        if (this.isProcessing || this.queue.length === 0) return;
+
+        this.isProcessing = true;
+        const item = this.queue.shift();
+
+        try {
+            // Using native Fetch and FormData (Node 18+)
+            const formData = new FormData();
+            
+            // Create a Blob from the Buffer for FormData
+            const blob = new Blob([item.buffer]);
+            formData.append('file', blob, item.filename);
+            formData.append('site_url', `file://${item.path}`);
+            
+            const response = await fetch(`${this.backendUrl}/ingest/file`, {
+                method: 'POST',
+                headers: {
+                    'x-gemini-key': this.apiKeys.gemini || '',
+                    'x-mistral-key': this.apiKeys.mistral || '',
+                    'x-lingodev-key': this.apiKeys.lingodev || ''
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`[FileWatcher] Indexed: ${item.filename} -> ${data.status || 'success'}`);
+            } else {
+                const errText = await response.text();
+                console.error(`[FileWatcher] Backend error indexing ${item.filename}: ${response.status} - ${errText}`);
+            }
+        } catch (e) {
+            console.error(`[FileWatcher] Ingestion failed for ${item.path}:`, e.message);
+        } finally {
+            this.isProcessing = false;
+            setTimeout(() => this.processQueue(), 500); // 500ms debounce between files
+        }
+    }
+
     stopAll() {
         for (const [dirPath, watcher] of this.watchers.entries()) {
             watcher.close();
@@ -121,6 +140,5 @@ class FileWatcherService {
     }
 }
 
-// Export singleton instance
 const fileWatcher = new FileWatcherService();
 module.exports = fileWatcher;

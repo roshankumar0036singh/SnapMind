@@ -81,8 +81,14 @@ export const apiClient = {
 
     async getSessions() {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/sessions`);
-        return response.json();
+        try {
+            const response = await fetch(`${baseUrl}/sessions`);
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (e) {
+            console.error("Failed to fetch sessions:", e);
+            return [];
+        }
     },
 
     async getTags() {
@@ -132,9 +138,15 @@ export const apiClient = {
 
     async getSites() {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/sites`);
-        const data = await response.json();
-        return data.sites || [];
+        try {
+            const response = await fetch(`${baseUrl}/sites`);
+            if (!response.ok) return [];
+            const data = await response.json();
+            return data.sites || [];
+        } catch (e) {
+            console.error("Failed to fetch sites:", e);
+            return [];
+        }
     },
 
     async deleteSite(id) {
@@ -145,9 +157,15 @@ export const apiClient = {
 
     async getBookmarks() {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/bookmarks`);
-        const data = await response.json();
-        return data.bookmarks || [];
+        try {
+            const response = await fetch(`${baseUrl}/bookmarks`);
+            if (!response.ok) return [];
+            const data = await response.json();
+            return data.bookmarks || [];
+        } catch (e) {
+            console.error("Failed to fetch bookmarks:", e);
+            return [];
+        }
     },
 
     async deleteBookmark(id) {
@@ -178,6 +196,122 @@ export const apiClient = {
         const baseUrl = await this.getBaseUrl();
         const response = await fetch(`${baseUrl}/browser/ingest_status/${sessionId}`);
         return response.json();
+    },
+
+    /**
+     * Streams RAG query response using NDJSON.
+     */
+    async streamQueryRag(blocks, question, onChunk, onBlocks, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false) {
+        console.log('[API] Stream RAG request (Desktop)...', siteId ? `(Site: ${siteId})` : '');
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+
+        try {
+            const response = await fetch(`${baseUrl}/chat/stream`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...headers },
+                body: JSON.stringify({
+                    query: question,
+                    search_query: search_query,
+                    query_lang: query_lang,
+                    content_blocks: blocks,
+                    page_content: blocks.map(b => b.text).join('\n\n'),
+                    site_id: siteId,
+                    session_id: sessionId,
+                    output_lang: outputLang,
+                    query_notebook: queryNotebook
+                })
+            });
+
+            if (!response.ok) throw new Error(`Stream Error: ${response.status}`);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const data = JSON.parse(line);
+                        if (data.type === 'token' && data.text) onChunk(data.text);
+                        if (data.type === 'blocks' && data.blocks) onBlocks(data.blocks);
+                    } catch (e) {
+                        console.error("[Stream] Parse Error:", e, line);
+                    }
+                }
+            }
+            return { success: true };
+        } catch (error) {
+            console.error("Stream Query Error:", error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    /**
+     * Queries the Multi-Agent Browser orchestrator.
+     */
+    async queryBrowserMode(question, sessionId = null, options = {}) {
+        console.log('[API] Sending Browser Query (Desktop)...', { question });
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+
+        try {
+            const response = await fetch(`${baseUrl}/browser/research`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...headers },
+                body: JSON.stringify({
+                    query: question,
+                    session_id: sessionId,
+                    output_lang: options.outputLang || 'auto',
+                    query_notebook: !!options.queryNotebook,
+                    visible: !!options.visible
+                })
+            });
+
+            if (!response.ok) throw new Error(`Server returned ${response.status}`);
+            const data = await response.json();
+            return {
+                success: true,
+                answer: data.answer || "No response.",
+                citations: data.citations || [],
+                blocks: data.blocks || []
+            };
+        } catch (error) {
+            console.error("Browser Query Error:", error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    async translateText(text, targetLang = 'en') {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        const response = await fetch(`${baseUrl}/translate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ text, target_lang: targetLang })
+        });
+        return response.json();
+    },
+    
+    async generateReport(sessionId, query, sourceUrls = null) {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        const response = await fetch(`${baseUrl}/browser/generate_report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ session_id: sessionId, query: query, source_urls: sourceUrls })
+        });
+        
+        if (!response.ok) throw new Error(`Report generation failed: ${response.status}`);
+        return response.blob(); // Backend returns a Docx file
     }
 };
 

@@ -5,26 +5,48 @@ import { chrome } from '../background/api';
 
 export default function Settings({ onBack }) {
     const [geminiApiKey, setGeminiApiKey] = useState('');
+    const [openaiApiKey, setOpenaiApiKey] = useState('');
     const [mistralApiKey, setMistralApiKey] = useState('');
     const [lingodevApiKey, setLingodevApiKey] = useState('');
     const [firecrawlApiKey, setFirecrawlApiKey] = useState('');
     const [groqApiKey, setGroqApiKey] = useState('');
     const [backendUrl, setBackendUrl] = useState('');
+    
+    // Multi-model config
+    const [llmProvider, setLlmProvider] = useState('cloud');
+    const [llmModel, setLlmModel] = useState('');
+
     const [webMonitorEnabled, setWebMonitorEnabled] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
+        const loadSecrets = async () => {
+            if (window.electronAPI?.getSecret) {
+                const keys = ['geminiApiKey', 'openaiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey'];
+                for (const k of keys) {
+                    const res = await window.electronAPI.getSecret(k);
+                    if (res.success && res.value) {
+                        if (k === 'geminiApiKey') setGeminiApiKey(res.value);
+                        if (k === 'openaiApiKey') setOpenaiApiKey(res.value);
+                        if (k === 'mistralApiKey') setMistralApiKey(res.value);
+                        if (k === 'lingodevApiKey') setLingodevApiKey(res.value);
+                        if (k === 'firecrawlApiKey') setFirecrawlApiKey(res.value);
+                        if (k === 'groqApiKey') setGroqApiKey(res.value);
+                    }
+                }
+            }
+        };
+
         if (chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl'], (result) => {
-                if (result.geminiApiKey) setGeminiApiKey(result.geminiApiKey);
-                if (result.mistralApiKey) setMistralApiKey(result.mistralApiKey);
-                if (result.lingodevApiKey) setLingodevApiKey(result.lingodevApiKey);
-                if (result.firecrawlApiKey) setFirecrawlApiKey(result.firecrawlApiKey);
-                if (result.groqApiKey) setGroqApiKey(result.groqApiKey);
+            chrome.storage.local.get(['backendUrl', 'llm_provider', 'llm_model'], (result) => {
                 if (result.backendUrl) setBackendUrl(result.backendUrl);
+                if (result.llm_provider) setLlmProvider(result.llm_provider);
+                if (result.llm_model) setLlmModel(result.llm_model);
             });
         }
+        
+        loadSecrets();
         
         // Fetch server-side settings
         const fetchSettings = async () => {
@@ -45,21 +67,35 @@ export default function Settings({ onBack }) {
     const handleSave = async () => {
         setIsSaving(true);
         
-        // Save local storage settings
+        const apiKeys = { geminiApiKey, openaiApiKey, mistralApiKey, lingodevApiKey, firecrawlApiKey, groqApiKey };
+
+        // Save Secrets via safeStorage (Desktop only)
+        if (window.electronAPI?.saveSecret) {
+            for (const [k, v] of Object.entries(apiKeys)) {
+                await window.electronAPI.saveSecret(k, v);
+            }
+        }
+
+        // Save non-sensitive settings
         chrome.storage.local.set({
-            geminiApiKey,
-            mistralApiKey,
-            lingodevApiKey,
-            firecrawlApiKey,
-            groqApiKey,
-            backendUrl
+            backendUrl,
+            llm_provider: llmProvider,
+            llm_model: llmModel
         }, async () => {
-            // Also ensure the server side toggle is in sync (though it usually updates instantly)
+            // Ensure server side toggle is in sync
             await chrome.updateSetting('web_monitor_enabled', webMonitorEnabled);
             
+            // Sync Electron File Watcher
+            if (window.electronAPI?.updateWatcherConfig) {
+                window.electronAPI.updateWatcherConfig({
+                    apiKeys,
+                    backendUrl: backendUrl || 'http://localhost:8000'
+                });
+            }
+
             setIsSaving(false);
             setSaved(true);
-            toast.success('Configuration updated');
+            toast.success('Secure Vault Updated');
             setTimeout(() => setSaved(false), 2000);
         });
     };
@@ -147,8 +183,45 @@ export default function Settings({ onBack }) {
             </header>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
-                {/* Section: API Keys */}
+                {/* Section: AI Infrastructure Routing */}
                 <section className="space-y-6">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="w-1 h-4 bg-[#6366f1] rounded-full" />
+                        <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#71717a]">AI Infrastructure Routing</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 p-8 bg-[#0f0f14] border border-[#1e1e26] rounded-2xl shadow-xl hover:border-[#6366f1]/30 transition-all duration-400 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-40 h-40 bg-[#6366f1]/5 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-[#fafafa] uppercase tracking-wider">Active LLM Provider</label>
+                            <select
+                                value={llmProvider}
+                                onChange={(e) => setLlmProvider(e.target.value)}
+                                className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all appearance-none"
+                            >
+                                <option value="cloud">Default (Mistral/Config)</option>
+                                <option value="openai">OpenAI (GPT-4o Series)</option>
+                                <option value="gemini">Google Gemini (GenAI)</option>
+                                <option value="mistral">Mistral AI</option>
+                                <option value="local">Local Ollama (Llama 3, Phi, etc)</option>
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-[#fafafa] uppercase tracking-wider">Specific Model Target</label>
+                            <input
+                                type="text"
+                                value={llmModel}
+                                onChange={(e) => setLlmModel(e.target.value)}
+                                placeholder="e.g. gemini-2.0-flash, gpt-4o, llama3"
+                                className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all"
+                            />
+                            <p className="text-[10px] text-[#52525b] font-medium">Leave blank for default. To use Gemini 2.0, explicitly type "gemini-2.0-flash" here.</p>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Section: API Keys */}
+                <section className="space-y-6 pt-6 border-t border-[#1a1a1d]">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="w-1 h-4 bg-[#6366f1] rounded-full" />
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#71717a]">Security & Authentication</h3>
@@ -156,7 +229,8 @@ export default function Settings({ onBack }) {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {[
-                            { label: 'Gemini API Key', value: geminiApiKey, setter: setGeminiApiKey, placeholder: 'AIzaSy...', desc: 'Core Embedding & RAG provider' },
+                            { label: 'OpenAI API Key', value: openaiApiKey, setter: setOpenaiApiKey, placeholder: 'sk-proj-...', desc: 'Required for GPT-4o inference' },
+                            { label: 'Gemini API Key', value: geminiApiKey, setter: setGeminiApiKey, placeholder: 'AIzaSy...', desc: 'Core Embedding & Gemini inference' },
                             { label: 'Mistral API Key', value: mistralApiKey, setter: setMistralApiKey, placeholder: 'Retrieve from console.mistral.ai', desc: 'Primary LLM Generation' },
                             { label: 'Lingo.dev API Key', value: lingodevApiKey, setter: setLingodevApiKey, placeholder: 'Get from platform.lingo.dev', desc: 'Multi-lingual ingestion engine' },
                             { label: 'Groq API Key', value: groqApiKey, setter: setGroqApiKey, placeholder: 'gsk_...', desc: 'Ultra-fast fallback vision model' },
@@ -173,7 +247,7 @@ export default function Settings({ onBack }) {
                                         value={field.value}
                                         onChange={(e) => field.setter(e.target.value)}
                                         placeholder={field.placeholder}
-                                        className="w-full bg-[#121214] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all"
+                                        className="w-full bg-[#07070a] border border-[#1e1e26] rounded-xl px-5 py-4 text-[13px] font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#6366f1] focus:ring-4 focus:ring-[#6366f1]/10 transition-all"
                                     />
                                 </div>
                                 <p className="text-[10px] text-[#52525b] font-medium">{field.desc}</p>
@@ -191,7 +265,7 @@ export default function Settings({ onBack }) {
                                 value={backendUrl}
                                 onChange={(e) => setBackendUrl(e.target.value)}
                                 placeholder="http://localhost:8000"
-                                className="w-full bg-[#121214] border border-[#27272a] rounded-lg px-4 py-3 text-xs font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/20 transition-all"
+                                className="w-full bg-[#07070a] border border-[#1e1e26] rounded-xl px-5 py-4 text-[13px] font-mono text-[#fafafa] placeholder-[#3f3f46] focus:outline-none focus:border-[#6366f1] focus:ring-4 focus:ring-[#6366f1]/10 transition-all shadow-inner"
                             />
                             <p className="text-[10px] text-[#52525b] font-medium">Point to your local or hosted SnapMind core server instance.</p>
                         </div>

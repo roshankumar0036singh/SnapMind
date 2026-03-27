@@ -64,8 +64,9 @@ export default function Settings({ onBack }) {
     };
 
     return (
-        <div className="h-full flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+        <div className="flex flex-col h-screen bg-white">
+            {/* Header - Fixed */}
+            <div className="shrink-0 px-5 py-4 border-b border-gray-100 flex items-center gap-3 bg-white/80 backdrop-blur-sm sticky top-0 z-20">
                 <button
                     onClick={onBack}
                     className="p-1 -ml-1 hover:bg-gray-100 rounded-lg transition-colors text-gray-500"
@@ -75,171 +76,120 @@ export default function Settings({ onBack }) {
                 <h2 className="font-bold text-gray-900">Settings</h2>
             </div>
 
-            <div className="p-5 space-y-6">
-
-                {/* API KEY */}
-                <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Key className="w-3.5 h-3.5" />
-                        Gemini API Key
-                    </label>
-                    <input
-                        type="password"
-                        value={geminiApiKey}
-                        onChange={(e) => setGeminiApiKey(e.target.value)}
-                        placeholder="AIzaSy..."
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all mb-1"
-                    />
-                    <p className="text-xs text-gray-400">
-                        Used for embedding documents and search.
-                    </p>
-                </div>
-
-                {/* MISTRAL API KEY */}
-                <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Key className="w-3.5 h-3.5" />
-                        Mistral API Key
-                    </label>
-                    <input
-                        type="password"
-                        value={mistralApiKey}
-                        onChange={(e) => setMistralApiKey(e.target.value)}
-                        placeholder="Retrieve from console.mistral.ai..."
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all mb-1"
-                    />
-                    <p className="text-xs text-gray-400">
-                        Primary model for chat generation and formatting.
-                    </p>
-                </div>
-
-                {/* LINGODEV API KEY */}
-                <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Key className="w-3.5 h-3.5" />
-                        Lingo.dev API Key
-                    </label>
-                    <input
-                        type="password"
-                        value={lingodevApiKey}
-                        onChange={(e) => setLingodevApiKey(e.target.value)}
-                        placeholder="Get from platform.lingo.dev..."
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all mb-1"
-                    />
-                    <p className="text-xs text-gray-400">
-                        Multi-language ingestion formatting.
-                    </p>
-                </div>
-
-                {/* GROQ API KEY */}
-                <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Key className="w-3.5 h-3.5" />
-                        Groq API Key (Fallback Vision)
-                    </label>
-                    <input
-                        type="password"
-                        value={groqApiKey}
-                        onChange={(e) => setGroqApiKey(e.target.value)}
-                        placeholder="gsk_..."
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all mb-1"
-                    />
-                    <p className="text-xs text-gray-400">
-                        Used as a fallback for Vision analysis (Llama 4 Scout).
-                    </p>
-                </div>
-
-                {/* FIRECRAWL API KEY */}
-                <div className="space-y-2">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Key className="w-3.5 h-3.5" />
-                        Firecrawl API Key
-                    </label>
-                    <input
-                        type="password"
-                        value={firecrawlApiKey}
-                        onChange={(e) => setFirecrawlApiKey(e.target.value)}
-                        placeholder="fc-..."
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition-all mb-1"
-                    />
-                    <p className="text-xs text-gray-400">
-                        Used for advanced web scraping and recursive crawls.
-                    </p>
-                </div>
-
-                {/* LOCAL BACKEND TOGGLE */}
-                <div className="space-y-3 p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
-                    <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                            <label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                Use Local Desktop Backend
-                            </label>
-                            <p className="text-xs text-gray-500">
-                                Connect to SnapMind Desktop for enhanced privacy and local Ollama generation.
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => setUseLocalBackend(!useLocalBackend)}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${useLocalBackend ? 'bg-indigo-600' : 'bg-gray-200'}`}
-                        >
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${useLocalBackend ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-5 pb-8">
+                
+                {/* Section: API Keys */}
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Key className="w-4 h-4 text-indigo-500" />
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">API Infrastructure</h3>
                     </div>
 
-                    {useLocalBackend && (
-                        <div className="pt-2 flex items-center gap-3">
+                    {[
+                        { id: 'gemini', label: 'Gemini (Vertex/AI)', value: geminiApiKey, setter: setGeminiApiKey, placeholder: 'AIzaSy...', hint: 'Embeddings & Vector Search' },
+                        { id: 'mistral', label: 'Mistral (Chat)', value: mistralApiKey, setter: setMistralApiKey, placeholder: 'Mistral API Key...', hint: 'Primary Chat & Reasoning' },
+                        { id: 'lingo', label: 'Lingo.dev (I18n)', value: lingodevApiKey, setter: setLingodevApiKey, placeholder: 'Lingo Key...', hint: 'Multi-language processing' },
+                        { id: 'groq', label: 'Groq (Vision)', value: groqApiKey, setter: setGroqApiKey, placeholder: 'gsk_...', hint: 'Fast Vision Analysis Falback' },
+                        { id: 'firecrawl', label: 'Firecrawl (Web)', value: firecrawlApiKey, setter: setFirecrawlApiKey, placeholder: 'fc-...', hint: 'Advanced Web Scraping' },
+                    ].map((key) => (
+                        <div key={key.id} className="space-y-1.5 bg-gray-50/50 p-3 rounded-xl border border-gray-100 transition-all focus-within:border-indigo-200">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex justify-between">
+                                {key.label}
+                                <span className="text-[9px] font-medium text-gray-400 normal-case">{key.hint}</span>
+                            </label>
+                            <input
+                                type="password"
+                                value={key.value}
+                                onChange={(e) => key.setter(e.target.value)}
+                                placeholder={key.placeholder}
+                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-mono"
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                {/* Section: Connectivity */}
+                <div className="space-y-3 pt-2">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Save className="w-4 h-4 text-indigo-500" />
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Routing</h3>
+                    </div>
+
+                    <div className="p-4 bg-indigo-50/40 rounded-xl border border-indigo-100/50">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="space-y-0.5">
+                                <label className="text-xs font-bold text-gray-900">
+                                    Local Fusion Mode
+                                </label>
+                                <p className="text-[10px] text-gray-500">
+                                    Bridge to SnapMind Desktop
+                                </p>
+                            </div>
                             <button
-                                onClick={testLocalConnection}
-                                disabled={localConnectionStatus === 'testing'}
-                                className="px-3 py-1.5 bg-white border border-gray-200 text-xs font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-gray-700"
+                                onClick={() => setUseLocalBackend(!useLocalBackend)}
+                                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${useLocalBackend ? 'bg-indigo-600' : 'bg-gray-200'}`}
                             >
-                                {localConnectionStatus === 'testing' ? 'Testing...' : 'Test Local Connection'}
+                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${useLocalBackend ? 'translate-x-5' : 'translate-x-0'}`} />
                             </button>
-                            {localConnectionStatus === 'success' && (
-                                <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Connected
-                                </span>
-                            )}
-                            {localConnectionStatus === 'failed' && (
-                                <span className="text-xs font-medium text-red-600 flex items-center gap-1">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500" /> Connection Failed
-                                </span>
-                            )}
+                        </div>
+
+                        {useLocalBackend && (
+                            <div className="pt-2 border-t border-indigo-100 mt-2 flex items-center justify-between">
+                                <button
+                                    onClick={testLocalConnection}
+                                    disabled={localConnectionStatus === 'testing'}
+                                    className="px-2 py-1 bg-white border border-indigo-200 text-[10px] font-bold text-indigo-700 rounded-lg hover:bg-indigo-50 transition-colors disabled:opacity-50"
+                                >
+                                    {localConnectionStatus === 'testing' ? 'Testing...' : 'Test Sync'}
+                                </button>
+                                {localConnectionStatus === 'success' && (
+                                    <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 italic">
+                                        ✓ Bridge Active
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {!useLocalBackend && (
+                        <div className="space-y-1.5 p-3 rounded-xl border border-gray-100 bg-gray-50/50">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                Cloud Node URL
+                            </label>
+                            <input
+                                type="text"
+                                value={backendUrl}
+                                onChange={(e) => setBackendUrl(e.target.value)}
+                                placeholder="https://..."
+                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-mono"
+                            />
                         </div>
                     )}
                 </div>
 
-                {/* BACKEND URL */}
-                <div className={`space-y-2 transition-opacity ${useLocalBackend ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                        <Save className="w-3.5 h-3.5" />
-                        Cloud Backend Server URL
-                    </label>
-                    <input
-                        type="text"
-                        value={backendUrl}
-                        onChange={(e) => setBackendUrl(e.target.value)}
-                        placeholder="https://roshan123478-snapmind-backend.hf.space"
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 focus:border-slate-500 transition-all mb-1"
-                        disabled={useLocalBackend}
-                    />
-                    <p className="text-xs text-gray-400">
-                        Point to your hosted Snapmind server.
-                    </p>
+                {/* Footer Sync */}
+                <div className="pt-4">
+                    <button
+                        onClick={handleSave}
+                        disabled={saved}
+                        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-bold transition-all shadow-lg ${saved
+                            ? 'bg-emerald-500 text-white shadow-emerald-200 translate-y-0'
+                            : 'bg-gray-900 text-white hover:bg-black hover:shadow-xl active:scale-95'
+                        }`}
+                    >
+                        {saved ? 'Synchronized ✓' : 'Save & Refresh Bridge'}
+                        {!saved && <Save className="w-4 h-4" />}
+                    </button>
                 </div>
-
-
-                <button
-                    onClick={handleSave}
-                    className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all ${saved
-                        ? 'bg-emerald-500 text-white shadow-emerald-200'
-                        : 'bg-gray-900 text-white hover:bg-gray-800 shadow-gray-200'
-                        } shadow-lg mt-4`}
-                >
-                    {saved ? 'Saved!' : 'Save Configuration'}
-                    {!saved && <Save className="w-4 h-4" />}
-                </button>
             </div>
+
+            <style dangerouslySetInnerHTML={{ __html: `
+                .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+            `}} />
         </div>
     );
 }

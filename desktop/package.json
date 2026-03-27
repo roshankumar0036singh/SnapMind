@@ -7,6 +7,9 @@
     "dev": "vite",
     "electron": "electron .",
     "start": "npm run dev & npm run electron",
+    "dist:vite": "vite build",
+    "build:win": "npm run dist:vite && electron-builder --win",
+    "build:mac": "npm run dist:vite && electron-builder --mac",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -31,9 +34,14 @@
     "mermaid": "^11.13.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-force-graph-3d": "^1.29.1",
     "react-markdown": "^10.1.0",
+    "react-window": "^2.2.7",
+    "recharts": "^3.8.1",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
-    "sonner": "^2.0.7"
+    "sonner": "^2.0.7",
+    "tesseract.js": "^7.0.0",
+    "three": "^0.183.2"
   }
 }

@@ -1,305 +1,173 @@
-import React, { useEffect, useRef, useState } from 'react';
-import cytoscape from 'cytoscape';
-import { Loader2, ZoomIn, ZoomOut, Maximize2, Database, ShieldCheck, Zap, Activity } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { ForceGraph3D } from 'react-force-graph-3d';
+import { Loader2, ZoomIn, ZoomOut, Maximize2, Database, ShieldCheck, Zap, Activity, MousePointer2 } from 'lucide-react';
+import * as THREE from 'three';
 
-const GraphMap = ({ data, isLoading }) => {
-    const containerRef = useRef(null);
-    const cyRef = useRef(null);
-    const [hoveredNode, setHoveredNode] = useState(null);
+const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
+    const fgRef = useRef();
+    const [hoverNode, setHoverNode] = useState(null);
 
-    useEffect(() => {
-        if (!containerRef.current || isLoading) return;
+    // Filter and sanitize data for ForceGraph3D
+    const graphData = useMemo(() => {
+        const nodes = (data.nodes || []).map(n => {
+            const nodeData = n.data || n;
+            return {
+                id: nodeData.id ? nodeData.id.toString() : 'unknown',
+                name: nodeData.label || nodeData.name || 'Concept Node',
+                type: nodeData.type || 'generic',
+                val: nodeData.degree ? Math.max(nodeData.degree, 1) : 1
+            };
+        });
 
-        // Convert data to Cytoscape format
-        const elements = [];
-        const nodeDegrees = {};
+        const links = (data.edges || data.links || []).map(e => {
+            const edgeData = e.data || e;
+            return {
+                source: edgeData.source ? edgeData.source.toString() : '',
+                target: edgeData.target ? edgeData.target.toString() : '',
+                label: (edgeData.label || edgeData.relation || 'related').toLowerCase()
+            };
+        }).filter(l => l.source && l.target);
 
-        // 1. Initial degree pass
-        if (data.edges) {
-            data.edges.forEach(edge => {
-                const edgeData = edge.data || edge;
-                if (!edgeData || !edgeData.source || !edgeData.target) return;
-                const s = edgeData.source.toString();
-                const t = edgeData.target.toString();
-                nodeDegrees[s] = (nodeDegrees[s] || 0) + 1;
-                nodeDegrees[t] = (nodeDegrees[t] || 0) + 1;
-            });
+        return { nodes, links };
+    }, [data]);
+
+    const handleNodeClick = useCallback(node => {
+        // Aim at node from outside it
+        const distance = 40;
+        const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+
+        if (fgRef.current) {
+            fgRef.current.cameraPosition(
+                { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new pos
+                node, // lookAt property
+                3000  // transitions duration (ms)
+            );
         }
-
-        // Nodes
-        if (data.nodes) {
-            data.nodes.forEach(node => {
-                const nodeData = node.data || node;
-                if (!nodeData || !nodeData.id) return;
-                
-                const id = nodeData.id.toString();
-                elements.push({
-                    data: {
-                        id: id,
-                        label: nodeData.label || nodeData.name || 'UNKNOWN',
-                        type: nodeData.type || 'concept',
-                        degree: nodeDegrees[id] || 0
-                    }
-                });
-            });
-        }
-
-        // Edges
-        if (data.edges) {
-            data.edges.forEach((edge, index) => {
-                const edgeData = edge.data || edge;
-                if (!edgeData || !edgeData.source || !edgeData.target) return;
-
-                elements.push({
-                    data: {
-                        id: edgeData.id ? edgeData.id.toString() : `e${index}`,
-                        source: edgeData.source.toString(),
-                        target: edgeData.target.toString(),
-                        label: (edgeData.label || edgeData.relation || '').toUpperCase()
-                    }
-                });
-            });
-        }
-
-        // Initialize Cytoscape
-        try {
-            cyRef.current = cytoscape({
-                container: containerRef.current,
-                elements: elements,
-                style: [
-                    {
-                        selector: 'node',
-                        style: {
-                            'label': 'data(label)',
-                            'background-color': '#121214',
-                            'color': '#fafafa',
-                            'font-size': '11px',
-                            'font-family': 'Geist Mono, monospace',
-                            'font-weight': '900',
-                            'text-valign': 'center',
-                            'text-halign': 'center',
-                            'border-width': 1,
-                            'border-color': '#27272a',
-                            'text-wrap': 'wrap',
-                            'text-max-width': '80px',
-                            'overlay-padding': '6px',
-                            'overlay-color': '#22c55e',
-                            'overlay-opacity': 0.05,
-                            'z-index': 10,
-                            'transition-property': 'background-color, border-color, width, height, border-width',
-                            'transition-duration': '0.3s'
-                        }
-                    },
-                    {
-                        selector: 'node[degree]',
-                        style: {
-                            'width': 'mapData(degree, 0, 10, 50, 90)',
-                            'height': 'mapData(degree, 0, 10, 50, 90)',
-                        }
-                    },
-                    {
-                        selector: 'node[type="person"]',
-                        style: { 
-                            'border-color': '#f59e0b',
-                            'border-width': 2,
-                            'text-background-opacity': 0.1,
-                            'text-background-color': '#f59e0b',
-                        }
-                    },
-                    {
-                        selector: 'node[type="organization"]',
-                        style: { 
-                            'border-color': '#3b82f6',
-                            'border-width': 2,
-                            'text-background-opacity': 0.1,
-                            'text-background-color': '#3b82f6',
-                        }
-                    },
-                    {
-                        selector: 'node:selected',
-                        style: {
-                            'border-color': '#22c55e',
-                            'border-width': 3,
-                            'background-color': '#18181b',
-                            'shadow-blur': 15,
-                            'shadow-color': '#22c55e',
-                            'shadow-opacity': 0.3
-                        }
-                    },
-                    {
-                        selector: 'node:hover',
-                        style: {
-                            'background-color': '#18181b',
-                            'border-width': 4,
-                            'border-color': '#22c55e',
-                            'z-index': 100
-                        }
-                    },
-                    {
-                        selector: 'edge',
-                        style: {
-                            'width': 1,
-                            'line-color': '#27272a',
-                            'target-arrow-color': '#27272a',
-                            'target-arrow-shape': 'triangle',
-                            'curve-style': 'bezier',
-                            'label': 'data(label)',
-                            'font-size': '8px',
-                            'font-family': 'Geist Mono, monospace',
-                            'font-weight': '900',
-                            'color': '#3f3f46',
-                            'text-background-opacity': 1,
-                            'text-background-color': '#09090b',
-                            'text-background-padding': '4px',
-                            'text-background-shape': 'roundrectangle',
-                            'edge-text-rotation': 'autorotate',
-                            'opacity': 0.6,
-                            'transition-property': 'line-color, width, opacity',
-                            'transition-duration': '0.3s'
-                        }
-                    },
-                    {
-                        selector: 'edge:hover',
-                        style: {
-                            'width': 2,
-                            'line-color': '#22c55e',
-                            'target-arrow-color': '#22c55e',
-                            'opacity': 1,
-                            'color': '#22c55e'
-                        }
-                    }
-                ],
-                layout: {
-                    name: 'cose',
-                    padding: 60,
-                    animate: elements.length < 50,
-                    animationDuration: 1000,
-                    fit: true,
-                    nodeRepulsion: 800000,
-                    gravity: 100,
-                }
-            });
-
-            cyRef.current.on('mouseover', 'node', (e) => {
-                const node = e.target;
-                setHoveredNode(node.data('label'));
-            });
-
-            cyRef.current.on('mouseout', 'node', () => {
-                setHoveredNode(null);
-            });
-        } catch (err) {
-            console.error("Failed to initialize Cytoscape:", err);
-        }
-
-        return () => {
-            if (cyRef.current) {
-                try {
-                    cyRef.current.destroy();
-                    cyRef.current = null;
-                } catch (e) {
-                    console.warn("Cleanup error:", e);
-                }
-            }
-        };
-    }, [data, isLoading]);
-
-    const handleZoomIn = () => cyRef.current?.zoom(cyRef.current.zoom() * 1.2);
-    const handleZoomOut = () => cyRef.current?.zoom(cyRef.current.zoom() * 0.8);
-    const handleFit = () => cyRef.current?.fit();
+    }, [fgRef]);
 
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center h-[500px] bg-[#09090b] rounded-2xl border border-[#27272a] shadow-inner">
+            <div className="flex-1 flex flex-col items-center justify-center bg-[#09090b]">
                 <div className="relative">
-                    <div className="absolute inset-0 bg-[#22c55e]/10 blur-2xl rounded-full animate-pulse"></div>
-                    <Loader2 className="w-12 h-12 text-[#22c55e] animate-spin relative z-10" />
+                    <div className="w-16 h-16 rounded-full border-2 border-[#6366f1]/20 border-t-[#6366f1] animate-spin" />
+                    <Database className="w-6 h-6 text-[#6366f1] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                 </div>
-                <span className="mt-6 text-[11px] font-black uppercase tracking-[0.2em] text-[#fafafa]">Mapping Semantic Nodes...</span>
-                <span className="text-[9px] font-black uppercase tracking-widest text-[#3f3f46] mt-2">Initializing Neural Graph Structure</span>
-            </div>
-        );
-    }
-
-    if (!data.nodes || data.nodes.length === 0) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[500px] bg-[#09090b] rounded-2xl border border-dashed border-[#27272a] text-center p-8">
-                <div className="w-16 h-16 bg-[#18181b] border border-[#27272a] text-[#3f3f46] rounded-2xl flex items-center justify-center mb-6">
-                    <Database className="w-6 h-6" />
-                </div>
-                <h3 className="text-[#fafafa] font-black text-sm uppercase tracking-[0.2em]">Neural Map Empty</h3>
-                <p className="text-[10px] text-[#71717a] max-w-[280px] mt-3 font-medium uppercase tracking-widest leading-relaxed">
-                    Entities and relations will materialize as your local library expands. Start a conversation to initialize graph extraction.
-                </p>
+                <p className="text-[10px] font-black text-[#71717a] uppercase tracking-[0.3em] mt-6">Initializing Neural Atlas</p>
             </div>
         );
     }
 
     return (
-        <div className="relative group overflow-hidden rounded-2xl border border-[#27272a] bg-[#09090b] shadow-2xl">
-            {/* Header / Info Bar */}
-            <div className="absolute top-6 left-6 z-20 flex flex-col items-start gap-3">
-                <div className="px-4 py-2 bg-[#121214]/80 backdrop-blur-md border border-[#27272a] rounded-lg shadow-xl">
-                    <span className="text-[10px] font-black text-[#fafafa] uppercase tracking-[0.2em] flex items-center gap-3">
-                        <div className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse"></div>
-                        {data.nodes.length} Nodes • {data.edges.length} Tensors
-                    </span>
-                </div>
-                {hoveredNode && (
-                    <div className="px-4 py-2 bg-[#22c55e] text-[#09090b] rounded-lg shadow-[0_0_30px_rgba(99,102,241,0.4)] animate-in fade-in slide-in-from-left-2 duration-300">
-                        <span className="text-[11px] font-black uppercase tracking-tighter">{hoveredNode}</span>
-                    </div>
-                )}
-            </div>
-
-            {/* Controls */}
-            <div className="absolute bottom-6 right-6 z-20 flex flex-col gap-3">
-                {[
-                    { icon: ZoomIn, action: handleZoomIn, label: 'Zoom In' },
-                    { icon: ZoomOut, action: handleZoomOut, label: 'Zoom Out' },
-                    { icon: Maximize2, action: handleFit, label: 'Recenter' }
-                ].map((btn, i) => (
-                    <button 
-                        key={i}
-                        onClick={btn.action} 
-                        className="p-2.5 bg-[#121214] border border-[#27272a] rounded-lg shadow-xl hover:border-[#22c55e] hover:text-[#22c55e] text-[#71717a] transition-all hover:shadow-[0_0_15px_rgba(99,102,241,0.1)] active:scale-90"
-                        title={btn.label}
-                    >
-                        <btn.icon className="w-4 h-4" />
-                    </button>
-                ))}
-            </div>
-
-            <div
-                ref={containerRef}
-                className="bg-[radial-gradient(#1a1a1d_1px,transparent_1px)] bg-[size:32px_32px]"
-                style={{
-                    width: '100%',
-                    height: '550px',
-                    cursor: 'crosshair'
+        <div className="flex-1 relative bg-[#07070a] overflow-hidden group">
+            {/* 3D GRAPH ENGINE */}
+            <ForceGraph3D
+                ref={fgRef}
+                graphData={graphData}
+                backgroundColor="#07070a"
+                showNavInfo={false}
+                
+                // Node Styling
+                nodeLabel={node => `
+                  <div style="background: rgba(15,15,20,0.95); border: 1px solid #27272a; padding: 12px; border-radius: 12px; backdrop-filter: blur(8px); box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                    <div style="color: #6366f1; font-weight: 900; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">${node.type} node</div>
+                    <div style="color: #fafafa; font-weight: bold; font-size: 13px;">${node.name}</div>
+                  </div>
+                `}
+                nodeRelSize={6}
+                nodeThreeObject={node => {
+                   const geometry = new THREE.SphereGeometry(Math.sqrt(node.val) * 2 + 2);
+                   const material = new THREE.MeshPhongMaterial({
+                     color: node.type === 'site' ? '#6366f1' : '#10b981',
+                     transparent: true,
+                     opacity: 0.85,
+                     emissive: node.type === 'site' ? '#4338ca' : '#047857',
+                     emissiveIntensity: 0.4,
+                     shininess: 100
+                   });
+                   return new THREE.Mesh(geometry, material);
                 }}
+                onNodeClick={handleNodeClick}
+                onNodeHover={setHoverNode}
+
+                // Link Styling
+                linkLabel={link => `<div style="padding: 4px 10px; background: rgba(0,0,0,0.8); border: 1px solid #1e1e26; border-radius: 6px; color: #71717a; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em;">${link.label}</div>`}
+                linkDirectionalArrowLength={4}
+                linkDirectionalArrowRelPos={1}
+                linkCurvature={0.2}
+                linkColor={() => '#1e1e26'}
+                linkWidth={0.6}
+                
+                // Camera / Controls
+                enableNodeDrag={false}
+                controlType="orbit"
             />
 
-            {/* Legend */}
-            <div className="absolute bottom-6 left-6 z-20 flex gap-6 px-4 py-2.5 bg-[#121214]/80 backdrop-blur-md rounded-lg border border-[#27272a] shadow-xl">
-                {[
-                    { color: 'bg-[#f59e0b]', label: 'Person' },
-                    { color: 'bg-[#3b82f6]', label: 'Organization' },
-                    { color: 'bg-[#fafafa]', label: 'Concept' }
-                ].map((item, i) => (
-                    <div key={i} className="flex items-center gap-2.5">
-                        <div className={`w-2 h-2 rounded-full ${item.color} shadow-[0_0_8px_rgba(0,0,0,0.5)]`}></div>
-                        <span className="text-[9px] font-black text-[#52525b] uppercase tracking-[0.15em]">{item.label}</span>
+            {/* FLOATING HUD */}
+            <div className="absolute inset-x-0 top-0 p-8 flex justify-between pointer-events-none z-50">
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#6366f1] shadow-[0_0_10px_#6366f1]" />
+                        <span className="text-[10px] font-black text-[#fafafa] uppercase tracking-[0.2em]">SnapMind Neural Atlas <span className="text-[#3f3f46]">v3.0</span></span>
                     </div>
-                ))}
+                    <p className="text-[9px] text-[#71717a] font-bold uppercase tracking-widest pl-4">Simulating {graphData.nodes.length} Neural Intersections</p>
+                </div>
+                
+                <div className="flex flex-col items-end gap-1">
+                    <div className="p-1 px-3 bg-[#10b981]/10 border border-[#10b981]/20 rounded-full flex items-center gap-2 shadow-[0_0_20px_rgba(16,185,129,0.1)]">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-pulse" />
+                        <span className="text-[8px] font-black text-[#10b981] uppercase tracking-tighter">Engine Optimized</span>
+                    </div>
+                </div>
             </div>
 
-            {/* Status Footer */}
-            <div className="absolute top-6 right-6 z-20 opacity-40 group-hover:opacity-100 transition-opacity">
-                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#27272a] bg-[#09090b]">
-                    <Activity className="w-3 h-3 text-[#22c55e]" />
-                    <span className="text-[9px] font-black text-[#71717a] uppercase tracking-widest leading-none">Kernel Visualization Active</span>
-                 </div>
+            {/* BOTTOM CONTROLS */}
+            <div className="absolute inset-x-0 bottom-0 p-8 flex justify-between items-end z-50 pointer-events-none">
+                <div className="flex items-center gap-3 pointer-events-auto">
+                    <div className="p-5 bg-[#0f0f14]/80 backdrop-blur-xl border border-[#1e1e26] rounded-[24px] flex items-center gap-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[8px] font-black text-[#3f3f46] uppercase tracking-[0.3em]">HMI Control Layer</span>
+                            <div className="flex items-center gap-6">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-[#1a1a1d] rounded-xl border border-[#27272a] shadow-inner"><MousePointer2 className="w-3.5 h-3.5 text-[#6366f1]" /></div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-[#fafafa] font-bold">Left Click</span>
+                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">Target & Fly</span>
+                                    </div>
+                                </div>
+                                <div className="w-px h-5 bg-[#1e1e26]" />
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 bg-[#1a1a1d] rounded-xl border border-[#27272a] shadow-inner"><Maximize2 className="w-3.5 h-3.5 text-[#71717a]" /></div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] text-[#fafafa] font-bold">Orbital Drag</span>
+                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">360° Inspection</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3 pointer-events-auto">
+                    <button 
+                      onClick={() => fgRef.current.zoomToFit(1200, 100)}
+                      className="p-5 px-8 bg-[#6366f1]/10 hover:bg-[#6366f1]/20 border border-[#6366f1]/30 text-[#6366f1] rounded-[24px] transition-all hover:scale-105 active:scale-95 font-black text-[10px] uppercase tracking-[0.25em] shadow-[0_10px_30px_rgba(99,102,241,0.1)] active:shadow-none"
+                    >
+                      Recenter Atlas
+                    </button>
+                    
+                    <button 
+                      className="p-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-[24px] transition-all"
+                    >
+                      <Zap className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+            
+            {/* AMBIENT EFFECTS */}
+            <div className="absolute inset-0 pointer-events-none">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.02),transparent_70%)]" />
+                <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-[#6366f1]/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-[#6366f1]/10 to-transparent" />
             </div>
         </div>
     );

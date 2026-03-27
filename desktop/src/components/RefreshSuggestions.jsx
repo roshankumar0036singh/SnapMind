@@ -60,10 +60,10 @@ export default function RefreshSuggestions({ backendUrl }) {
 
     if (suggestions.length === 0) {
         return (
-            <div className="p-12 text-center bg-[#09090b] min-h-screen">
-                <div className="max-w-md mx-auto p-12 rounded-2xl border border-dashed border-[#27272a] bg-[#121214] animate-in fade-in zoom-in-95 duration-500">
-                    <div className="w-16 h-16 bg-[#6366f1]/10 border border-[#6366f1]/20 text-[#6366f1] rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-[0_0_30px_rgba(99,102,241,0.1)]">
-                        <ShieldCheck className="w-8 h-8" />
+            <div className="p-16 text-center bg-[#09090b] min-h-screen flex flex-col items-center justify-center">
+                <div className="max-w-md w-full p-16 rounded-[32px] border border-[#1e1e26] bg-[#0f0f14] shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 duration-700">
+                    <div className="w-20 h-20 bg-gradient-to-br from-[#1e1e26] to-[#07070a] border border-[#6366f1]/30 text-[#6366f1] rounded-3xl flex items-center justify-center mx-auto mb-10 shadow-[0_0_40px_rgba(99,102,241,0.15)] relative group-hover:scale-110 transition-transform">
+                        <ShieldCheck className="w-10 h-10 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
                     </div>
                     <h3 className="text-[#fafafa] font-black text-sm uppercase tracking-[0.2em]">Library Integral</h3>
                     <p className="text-[10px] text-[#71717a] mt-3 leading-relaxed font-medium uppercase tracking-widest">
@@ -98,8 +98,8 @@ export default function RefreshSuggestions({ backendUrl }) {
             <div className="space-y-4">
                 {suggestions.map((item) => (
                     <div 
-                        key={item.id}
-                        className="group bg-[#121214] border border-[#27272a] rounded-xl overflow-hidden hover:border-[#6366f1]/30 transition-all duration-300"
+                        key={item.id || item.url}
+                        className="group bg-[#0f0f14] border border-[#1e1e26] rounded-[20px] overflow-hidden hover:border-[#6366f1]/40 hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)] transition-all duration-400"
                     >
                         <div className="flex items-stretch gap-0">
                             <div className="w-1 bg-[#f59e0b] group-hover:bg-[#6366f1] transition-colors" />
@@ -133,10 +133,10 @@ export default function RefreshSuggestions({ backendUrl }) {
                                         <button 
                                             onClick={() => handleRefresh(item.url)}
                                             disabled={refreshing === item.url}
-                                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                            className={`flex items-center gap-2.5 px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-[0.15em] transition-all ${
                                                 refreshing === item.url 
-                                                ? 'bg-[#18181b] text-[#3f3f46] cursor-not-allowed border border-[#27272a]' 
-                                                : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:shadow-[0_0_20px_rgba(99,102,241,0.2)] active:scale-95'
+                                                ? 'bg-[#18181b] text-[#52525b] cursor-not-allowed border border-[#27272a]' 
+                                                : 'bg-[#fafafa] text-[#09090b] hover:bg-[#6366f1] hover:text-white hover:shadow-[0_8px_25px_rgba(99,102,241,0.3)] active:scale-95'
                                             }`}
                                         >
                                             {refreshing === item.url ? (

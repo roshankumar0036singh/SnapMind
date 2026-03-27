@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Database, MessageSquare, Bookmark, HardDrive, Activity, Clock, Loader2, TrendingUp, ShieldCheck, Zap } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function AnalyticsView({ backendUrl }) {
     const [stats, setStats] = useState(null);
@@ -20,6 +21,18 @@ export default function AnalyticsView({ backendUrl }) {
         };
         fetchStats();
     }, [backendUrl]);
+
+    const handleExportLogs = () => {
+        if (!stats) return;
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(stats, null, 2));
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href", dataStr);
+        downloadAnchorNode.setAttribute("download", `snapmind_analytics_${new Date().toISOString().split('T')[0]}.json`);
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+        toast.success("Analytical ledger exported");
+    };
 
     if (loading) {
         return (
@@ -82,7 +95,6 @@ export default function AnalyticsView({ backendUrl }) {
 
             {/* Health Monitor Card */}
             <div className="bg-[#121214] border border-[#27272a] rounded-2xl p-6 relative overflow-hidden group">
-                {/* Background Pattern */}
                 <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#22c55e 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
                 
                 <div className="relative z-10 flex items-center justify-between">
@@ -120,7 +132,12 @@ export default function AnalyticsView({ backendUrl }) {
                         <Clock className="w-4 h-4 text-[#71717a]" />
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#fafafa]">Ingestion Ledger</h3>
                     </div>
-                    <button className="text-[9px] font-black uppercase tracking-widest text-[#22c55e] hover:text-[#4ade80] transition-colors">Export Logs</button>
+                    <button 
+                        onClick={handleExportLogs}
+                        className="text-[9px] font-black uppercase tracking-widest text-[#22c55e] hover:text-[#4ade80] transition-colors"
+                    >
+                        Export Logs
+                    </button>
                 </div>
                 
                 <div className="divide-y divide-[#1a1a1d]">

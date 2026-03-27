@@ -17,6 +17,16 @@ chrome.runtime.onInstalled.addListener(() => {
         title: "Send to SnapMind",
         contexts: ["selection"]
     });
+    chrome.contextMenus.create({
+        id: "snapmind-visual-search",
+        title: "Visual Search with SnapMind",
+        contexts: ["page", "image"]
+    });
+    chrome.contextMenus.create({
+        id: "snapmind-ai-to-code",
+        title: "Inspect UI to Code (React/Tailwind)",
+        contexts: ["all"]
+    });
 });
 
 // 2. Handle Context Menu Click
@@ -40,6 +50,75 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
                 text: info.selectionText
             }).catch(err => console.log("Panel not ready yet, message might be missed:", err));
         }, 500);
+    } else if (info.menuItemId === "snapmind-visual-search") {
+        console.log("Visual Search Triggered");
+        try {
+            const dataUrl = await captureVisibleTab(tab.windowId);
+            const response = await fetch('http://127.0.0.1:50650/api/vision/cache', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: dataUrl })
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.cache_id) {
+                    const snapmindUrl = `snapmind://vision?cache_id=${data.cache_id}`;
+                    
+                    // Creates an un-focused tab to trigger the deeply-linked protocol without destroying current context
+                    chrome.tabs.create({ url: snapmindUrl, active: false }, (newTab) => {
+                        // Close the protocol invocation tab almost instantly to clean up UI
+                        setTimeout(() => chrome.tabs.remove(newTab.id), 3000);
+                    });
+                }
+            } else {
+                console.error("Backend failed to cache image");
+            }
+        } catch (e) {
+            console.error("Visual search error:", e);
+        }
+    } else if (info.menuItemId === "snapmind-ai-to-code") {
+        console.log("AI-to-Code Triggered");
+        try {
+            // 1. Capture Element from Content Script
+            const capture = await chrome.tabs.sendMessage(tab.id, { type: 'CAPTURE_ELEMENT' });
+            if (capture && capture.success) {
+                // 2. Get API Keys from Storage
+                const storage = await chrome.storage.local.get(['geminiApiKey']);
+                
+                // 3. Send to Developer Synthesis Endpoint
+                const response = await fetch('http://127.0.0.1:50650/developer/reverse_engineer', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-gemini-key': storage.geminiApiKey || ''
+                    },
+                    body: JSON.stringify({
+                        html: capture.html,
+                        styles: capture.styles
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        // 4. Cache the resulting code and deep-link to SnapMind
+                        const cacheResp = await fetch('http://127.0.0.1:50650/api/vision/cache', {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ text_data: data.code, type: 'code_synthesis' })
+                        });
+                        const cacheData = await cacheResp.json();
+                        
+                        const snapmindUrl = `snapmind://code?cache_id=${cacheData.cache_id}`;
+                        chrome.tabs.create({ url: snapmindUrl, active: false }, (newTab) => {
+                             setTimeout(() => chrome.tabs.remove(newTab.id), 3000);
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("AI-to-Code error:", e);
+        }
     }
 });
 

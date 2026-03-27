@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Key, HardDrive, Cpu, Cloud, CheckCircle2, Server, ArrowRight, Loader2, PartyPopper } from 'lucide-react';
+import { Bot, Key, HardDrive, Cpu, Cloud, CheckCircle2, Server, ArrowRight, Loader2, PartyPopper } from 'lucide-react';
 import { chrome } from '../background/api';
+import BotLogo from './BotLogo';
 
 const STEPS = [
     { id: 'welcome', label: 'Welcome to SnapMind' },
@@ -83,7 +84,7 @@ export default function Onboarding({ onComplete }) {
     }, [step]);
 
     return (
-        <motion.div 
+        <motion.div
             className="fixed inset-0 bg-[#07070a] flex items-center justify-center z-50 text-[#a1a1aa] font-sans overflow-hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -93,26 +94,25 @@ export default function Onboarding({ onComplete }) {
             <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[#6366f1]/5 rounded-full blur-[150px] pointer-events-none" />
 
             <div className="w-full max-w-[800px] grid grid-cols-12 gap-8 surface-card p-6 overflow-hidden relative shadow-lg">
-                
+
                 {/* Left Column: Step Tracker (cols 1-4) */}
                 <div className="col-span-4 border-r border-[#1e1e26] pr-6 py-4 relative">
                     <h2 className="text-xl font-bold font-display text-[#f4f4f5] mb-8">Setup Engine</h2>
-                    
+
                     <div className="space-y-6 relative">
                         {/* Connecting Line */}
                         <div className="absolute left-[11px] top-3 bottom-8 w-px bg-[#1e1e26] z-0" />
-                        
+
                         {STEPS.map((s, i) => {
                             const isCompleted = i < step;
                             const isCurrent = i === step;
-                            
+
                             return (
                                 <div key={s.id} className="flex items-center gap-4 relative z-10 group">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center border-2 bg-[#0a0a0e] transition-all duration-300 ${
-                                        isCompleted ? 'border-[#6366f1] bg-[#6366f1]' :
-                                        isCurrent ? 'border-[#6366f1] shadow-[0_0_12px_rgba(99,102,241,0.4)]' :
-                                        'border-[#2a2a35] text-[#52525b]'
-                                    }`}>
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center border-2 bg-[#0a0a0e] transition-all duration-300 ${isCompleted ? 'border-[#6366f1] bg-[#6366f1]' :
+                                            isCurrent ? 'border-[#6366f1] shadow-[0_0_12px_rgba(99,102,241,0.4)]' :
+                                                'border-[#2a2a35] text-[#52525b]'
+                                        }`}>
                                         {isCompleted ? (
                                             <CheckCircle2 className="w-3.5 h-3.5 text-white" />
                                         ) : isCurrent ? (
@@ -121,11 +121,10 @@ export default function Onboarding({ onComplete }) {
                                             <span className="text-[10px] font-medium">{i + 1}</span>
                                         )}
                                     </div>
-                                    <span className={`text-sm tracking-tight transition-colors ${
-                                        isCurrent ? 'text-[#f4f4f5] font-semibold' :
-                                        isCompleted ? 'text-[#a1a1aa]' :
-                                        'text-[#52525b]'
-                                    }`}>
+                                    <span className={`text-sm tracking-tight transition-colors ${isCurrent ? 'text-[#f4f4f5] font-semibold' :
+                                            isCompleted ? 'text-[#a1a1aa]' :
+                                                'text-[#52525b]'
+                                        }`}>
                                         {s.label}
                                     </span>
                                 </div>
@@ -151,11 +150,11 @@ export default function Onboarding({ onComplete }) {
                             {step === 0 && (
                                 <div className="space-y-6">
                                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#6366f1]/20 to-[#6366f1]/5 border border-[#6366f1]/30 flex items-center justify-center shadow-glow mb-6">
-                                        <Sparkles className="w-6 h-6 text-[#6366f1]" />
+                                        <BotLogo className="w-6 h-6" color="#6366f1" />
                                     </div>
                                     <h1 className="text-3xl font-bold font-display text-[#f4f4f5]">Initialize Core.</h1>
                                     <p className="text-sm leading-relaxed text-[#a1a1aa]">
-                                        SnapMind operates completely isolated on your machine by default. 
+                                        SnapMind operates completely isolated on your machine by default.
                                         Before we launch, let's configure your engine limits, intelligence provider, and vault schema.
                                     </p>
                                 </div>
@@ -177,11 +176,10 @@ export default function Onboarding({ onComplete }) {
                                             <button
                                                 key={m.id}
                                                 onClick={() => setModelType(m.id)}
-                                                className={`p-4 rounded-xl border text-left flex items-start gap-4 transition-all ${
-                                                    modelType === m.id 
-                                                        ? 'border-[#6366f1] bg-[#6366f1]/5 shadow-[0_0_24px_rgba(99,102,241,0.1)]' 
+                                                className={`p-4 rounded-xl border text-left flex items-start gap-4 transition-all ${modelType === m.id
+                                                        ? 'border-[#6366f1] bg-[#6366f1]/5 shadow-[0_0_24px_rgba(99,102,241,0.1)]'
                                                         : 'border-[#1e1e26] hover:border-[#2a2a35] bg-[#07070a]'
-                                                }`}
+                                                    }`}
                                             >
                                                 <m.icon className={`w-5 h-5 shrink-0 ${modelType === m.id ? 'text-[#6366f1]' : 'text-[#52525b]'}`} />
                                                 <div>
@@ -237,9 +235,8 @@ export default function Onboarding({ onComplete }) {
                                     <div className="flex flex-col gap-3">
                                         <button
                                             onClick={() => setStorageMode('local')}
-                                            className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
-                                                storageMode === 'local' ? 'border-[#6366f1] bg-[#6366f1]/5' : 'border-[#1e1e26] bg-[#07070a]'
-                                            }`}
+                                            className={`p-4 rounded-xl border flex items-center justify-between transition-all ${storageMode === 'local' ? 'border-[#6366f1] bg-[#6366f1]/5' : 'border-[#1e1e26] bg-[#07070a]'
+                                                }`}
                                         >
                                             <div className="flex items-center gap-3 text-left">
                                                 <HardDrive className={`w-5 h-5 ${storageMode === 'local' ? 'text-[#6366f1]' : 'text-[#52525b]'}`} />
@@ -255,9 +252,8 @@ export default function Onboarding({ onComplete }) {
                                         </button>
                                         <button
                                             onClick={() => setStorageMode('cloud')}
-                                            className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
-                                                storageMode === 'cloud' ? 'border-[#6366f1] bg-[#6366f1]/5' : 'border-[#1e1e26] bg-[#07070a]'
-                                            }`}
+                                            className={`p-4 rounded-xl border flex items-center justify-between transition-all ${storageMode === 'cloud' ? 'border-[#6366f1] bg-[#6366f1]/5' : 'border-[#1e1e26] bg-[#07070a]'
+                                                }`}
                                         >
                                             <div className="flex items-center gap-3 text-left">
                                                 <Cloud className={`w-5 h-5 ${storageMode === 'cloud' ? 'text-[#6366f1]' : 'text-[#52525b]'}`} />
@@ -275,11 +271,10 @@ export default function Onboarding({ onComplete }) {
                             {step === 4 && (
                                 <div className="space-y-6 flex flex-col items-center justify-center text-center py-8">
                                     <div className="relative">
-                                        <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${
-                                            isTesting ? 'border-[#6366f1]/30 bg-[#6366f1]/5' :
-                                            testResult === 'success' ? 'border-[#22c55e] bg-[#22c55e]/10 shadow-[0_0_30px_rgba(99,102,241,0.2)]' :
-                                            'border-[#2a2a35] bg-[#0a0a0e]'
-                                        }`}>
+                                        <div className={`w-16 h-16 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${isTesting ? 'border-[#6366f1]/30 bg-[#6366f1]/5' :
+                                                testResult === 'success' ? 'border-[#22c55e] bg-[#22c55e]/10 shadow-[0_0_30px_rgba(99,102,241,0.2)]' :
+                                                    'border-[#2a2a35] bg-[#0a0a0e]'
+                                            }`}>
                                             {isTesting ? (
                                                 <Loader2 className="w-6 h-6 text-[#6366f1] animate-spin" />
                                             ) : testResult === 'success' ? (
@@ -294,15 +289,15 @@ export default function Onboarding({ onComplete }) {
                                             </svg>
                                         )}
                                     </div>
-                                    
+
                                     <div>
                                         <h2 className="text-lg font-bold font-display text-[#f4f4f5]">
                                             {isTesting ? 'Initializing Neural Link...' : testResult === 'success' ? 'Connection Verified' : 'Verify Handshake'}
                                         </h2>
                                         <p className="text-[11px] text-[#71717a] mt-1 max-w-[250px] mx-auto">
-                                            {isTesting ? 'Testing connection to vector database and validating API token response times.' : 
-                                            testResult === 'success' ? 'All systems nominal. Vector database linked successfully.' :
-                                            'Click below to ping the external embedding services and link the local database.'}
+                                            {isTesting ? 'Testing connection to vector database and validating API token response times.' :
+                                                testResult === 'success' ? 'All systems nominal. Vector database linked successfully.' :
+                                                    'Click below to ping the external embedding services and link the local database.'}
                                         </p>
                                     </div>
 
@@ -315,16 +310,11 @@ export default function Onboarding({ onComplete }) {
                             {/* Step 5: Ready */}
                             {step === 5 && (
                                 <div className="space-y-6 text-center py-6 relative">
-                                    {showConfetti && (
-                                         <div className="absolute inset-x-0 -top-8 flex justify-center text-3xl z-50 pointer-events-none animate-[fadeUp_2s_ease-out_forwards]">
-                                            🎉 ✨ 🚀
-                                         </div>
-                                    )}
 
                                     <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#6366f1]/30 to-indigo-400/10 border border-[#6366f1]/40 flex items-center justify-center shadow-glow-strong mb-4">
                                         <PartyPopper className="w-8 h-8 text-[#818cf8]" />
                                     </div>
-                                    
+
                                     <div>
                                         <h2 className="text-2xl font-bold font-display text-[#f4f4f5]">You're Ready.</h2>
                                         <p className="text-xs text-[#a1a1aa] mt-2 max-w-[280px] mx-auto leading-relaxed">
@@ -359,20 +349,19 @@ export default function Onboarding({ onComplete }) {
                             <span className="text-[10px] font-bold text-[#52525b] uppercase tracking-wider">
                                 {step + 1} OF {STEPS.length}
                             </span>
-                            
+
                             {step < STEPS.length - 1 ? (
-                                <button 
-                                    onClick={nextStep} 
+                                <button
+                                    onClick={nextStep}
                                     disabled={step === 4 && testResult !== 'success'}
-                                    className={`btn-primary flex items-center gap-2 px-6 py-2 text-xs transition-opacity ${
-                                        step === 4 && testResult !== 'success' ? 'opacity-50 cursor-not-allowed' : ''
-                                    }`}
+                                    className={`btn-primary flex items-center gap-2 px-6 py-2 text-xs transition-opacity ${step === 4 && testResult !== 'success' ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
                                 >
                                     Proceed <ArrowRight className="w-3.5 h-3.5" />
                                 </button>
                             ) : (
                                 <button onClick={handleComplete} className="btn-primary flex items-center gap-2 px-8 py-2.5 text-sm">
-                                    Open SnapMind <Sparkles className="w-4 h-4" />
+                                    Open SnapMind <BotLogo className="w-4 h-4" />
                                 </button>
                             )}
                         </div>

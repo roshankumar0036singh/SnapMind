@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { Bot } from 'lucide-react';
+import BotLogo from './BotLogo';
 
 const STATUS_MESSAGES = [
     "Initializing engine...",
@@ -83,26 +84,31 @@ export default function SplashScreen({ onComplete }) {
                 
                 <Particles />
 
-                <div className="relative flex flex-col items-center justify-center z-10 w-full max-w-sm">
+                <motion.div 
+                    className="relative flex flex-col items-center justify-center z-10 px-16 py-14 rounded-[42px] border border-[#6366f1]/20 bg-[#09090b]/40 backdrop-blur-md shadow-[0_24px_60px_rgba(0,0,0,0.4)]"
+                    initial={{ opacity: 0, scale: 0.96 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                >
                     {/* Logo Mark */}
                     <motion.div
-                        className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#6366f1]/20 to-[#6366f1]/5 border border-[#6366f1]/30 flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.2)]"
+                        className="w-20 h-20 rounded-[28px] bg-gradient-to-br from-[#6366f1]/20 to-[#6366f1]/5 border border-[#6366f1]/30 flex items-center justify-center shadow-[0_0_40px_rgba(99,102,241,0.2)] mb-8"
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.4, type: "spring", bounce: 0.3 }}
                     >
                         {/* Inner glowing pulse */}
                         <motion.div 
-                            className="absolute inset-0 rounded-2xl bg-[#6366f1]/0"
-                            animate={{ boxShadow: ["0 0 0 0px rgba(99,102,241,0.4)", "0 0 0 12px rgba(99,102,241,0)"] }}
+                            className="absolute inset-0 rounded-[28px] bg-[#6366f1]/0"
+                            animate={{ boxShadow: ["0 0 0 0px rgba(99,102,241,0.4)", "0 0 0 16px rgba(99,102,241,0)"] }}
                             transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
                         />
-                        <Sparkles className="w-8 h-8 text-[#6366f1]" />
+                        <BotLogo className="w-10 h-10" color="#6366f1" />
                     </motion.div>
 
                     {/* Wordmark */}
                     <motion.h1
-                        className="mt-6 text-3xl font-bold font-display tracking-tight text-[#f4f4f5]"
+                        className="text-4xl font-bold font-display tracking-tight text-[#f4f4f5]"
                         initial={{ opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
@@ -112,14 +118,14 @@ export default function SplashScreen({ onComplete }) {
 
                     {/* Tagline */}
                     <motion.p
-                        className="mt-2 text-sm text-[#a1a1aa] font-medium"
+                        className="mt-3 text-sm text-[#71717a] font-medium tracking-wide"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.4, delay: 0.4 }}
                     >
                         Ingest anything. Know everything.
                     </motion.p>
-                </div>
+                </motion.div>
 
                 {/* Bottom Progress Bar + Status */}
                 <div className="absolute bottom-16 left-0 right-0 flex flex-col items-center">

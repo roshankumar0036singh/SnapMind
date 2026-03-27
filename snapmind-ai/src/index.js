@@ -29,7 +29,8 @@ program
   .option('--watch <path>', 'Automatically index changes in the specified directory')
   .option('--repo <url>', 'Clone and index a GitHub repository')
   .option('--mount <path>', 'Mount and index a local directory recursively')
-  .option('--pages <range>', 'Specific page range to index (e.g., 1-10)');
+  .option('--pages <range>', 'Specific page range to index (e.g., 1-10)')
+  .option('--persona <name>', 'Select persona directly (scholar, coder, analyst, writer)');
 
 
 program
