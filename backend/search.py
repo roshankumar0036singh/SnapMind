@@ -754,146 +754,138 @@ NO SPECIFIC CONTEXT WAS RETRIEVED.
 Question: {query}
 """
 
-        # 1. System Message (Instructions + RAG Context)
-        if output_lang and output_lang not in ["auto", "en", "unknown"]:
-            from search import LANG_MAP
-            lang_name = LANG_MAP.get(output_lang, output_lang)
-            system_instruction += f"\n\nCRITICAL LANGUAGE RULE: The user requested the response in {lang_name}. You MUST output your ENTIRE response in {lang_name}."
+    # 1. System Message (Instructions + RAG Context)
+    if output_lang and output_lang not in ["auto", "en", "unknown"]:
+        from search import LANG_MAP
+        lang_name = LANG_MAP.get(output_lang, output_lang)
+        system_instruction += f"\n\nCRITICAL LANGUAGE RULE: The user requested the response in {lang_name}. You MUST output your ENTIRE response in {lang_name}."
 
-        system_content = f"{system_instruction}\n{citation_instruction}\n\nCONTEXT:\n{context}" if context else f"{system_instruction}\nNO CONTEXT FOUND."
+    system_content = f"{system_instruction}\n{citation_instruction}\n\nCONTEXT:\n{context}" if context else f"{system_instruction}\nNO CONTEXT FOUND."
+    
+    final_messages = [
+        {"role": "system", "content": system_content}
+    ]
+    
+    # Load history from DB if not provided by frontend
+    db_history = history
+    if not db_history and session_id:
+        db_history = load_chat_history(session_id, query)
+        print(f"[MEMORY] Loaded {len(db_history)} messages from Postgres memory")
         
-        final_messages = [
-            {"role": "system", "content": system_content}
-        ]
-        
-        # Load history from DB if not provided by frontend
-        db_history = history
-        if not db_history and session_id:
-            db_history = load_chat_history(session_id, query)
-            print(f"[MEMORY] Loaded {len(db_history)} messages from Postgres memory")
-            
-        if db_history:
-            for msg in db_history:
-                role = "user" if msg.get("role") == "user" else "assistant"
-                final_messages.append({"role": role, "content": msg.get("content", "")})
-        
-        final_messages.append({"role": "user", "content": query})
+    if db_history:
+        for msg in db_history:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            final_messages.append({"role": role, "content": msg.get("content", "")})
+    
+    final_messages.append({"role": "user", "content": query})
 
-        active_provider = (api_keys or {}).get("llm_provider", LLMProviderConfig.PROVIDER).lower()
-        active_model = (api_keys or {}).get("llm_model", "")
+    active_provider = (api_keys or {}).get("llm_provider", LLMProviderConfig.PROVIDER).lower()
+    active_model = (api_keys or {}).get("llm_model", "")
 
-        if active_provider in ["local", "hybrid", "ollama"]:
-            model_target = active_model or LLMProviderConfig.OLLAMA_GENERATION_MODEL
-            model_used = f"Ollama ({model_target})"
-            print(f"[CHAT] Using Local LLM (Ollama): {model_target}")
-            final_answer = ollama_client.generate(
-                prompt=query,
-                system_prompt=system_content,
-                model=model_target
-            )
-        elif active_provider == "openai":
-            model_target = active_model or ModelRegistry.GPT_4O_MINI
-            model_used = f"OpenAI ({model_target})"
-            print(f"[CHAT] Using OpenAI model: {model_target}")
-            client = get_openai_client(api_keys)
-            chat_response = client.chat.completions.create(
-                model=model_target,
-                messages=final_messages,
-            )
-            final_answer = chat_response.choices[0].message.content
-        elif active_provider == "gemini":
-            model_target = active_model or ModelRegistry.GEMINI_FLASH
-            model_used = f"Gemini ({model_target})"
-            print(f"[CHAT] Using Gemini model: {model_target}")
-            client = get_gemini_client(api_keys)
-            
-            gemini_system_instruction = final_messages[0]["content"] if final_messages and final_messages[0]["role"] == "system" else ""
-            gemini_contents = []
-            for m in final_messages:
-                if m["role"] != "system":
-                    parts = [{"text": m["content"]}]
-                    r = "user" if m["role"] == "user" else "model"
-                    gemini_contents.append({"role": r, "parts": parts})
-                    
-            from google.genai import types
-            chat_response = client.models.generate_content(
-                model=model_target,
-                contents=gemini_contents,
-                config=types.GenerateContentConfig(system_instruction=gemini_system_instruction)
-            )
-            final_answer = chat_response.text
-        else:
-            model_target = active_model or ModelRegistry.MISTRAL_SMALL
-            model_used = f"Mistral ({model_target})"
-            print(f"[CHAT] Generating with Mistral model: {model_target}")
-            client = get_mistral_client(api_keys)
-            chat_response = client.chat.complete(
-                model=model_target,
-                messages=final_messages,
-            )
-            final_answer = chat_response.choices[0].message.content
+    if active_provider in ["local", "hybrid", "ollama"]:
+        model_target = active_model or LLMProviderConfig.OLLAMA_GENERATION_MODEL
+        model_used = f"Ollama ({model_target})"
+        print(f"[CHAT] Using Local LLM (Ollama): {model_target}")
+        final_answer = ollama_client.generate(
+            prompt=query,
+            system_prompt=system_content,
+            model=model_target
+        )
+    elif active_provider == "openai":
+        model_target = active_model or ModelRegistry.GPT_4O_MINI
+        model_used = f"OpenAI ({model_target})"
+        print(f"[CHAT] Using OpenAI model: {model_target}")
+        client = get_openai_client(api_keys)
+        chat_response = client.chat.completions.create(
+            model=model_target,
+            messages=final_messages,
+        )
+        final_answer = chat_response.choices[0].message.content
+    elif active_provider == "gemini":
+        model_target = active_model or ModelRegistry.GEMINI_FLASH
+        model_used = f"Gemini ({model_target})"
+        print(f"[CHAT] Using Gemini model: {model_target}")
+        client = get_gemini_client(api_keys)
         
-        # [NEW] Post-process to strip any leaked numeric footnotes [19], [1]
-        import re
-        final_answer = re.sub(r'\[\d{1,3}\]', '', final_answer)
-        
-        # [FIX] Extract citations from the answer before translation
-        # Matches patterns like [db-block-12], [nb-block-5], [pin-SOCIAL-WINTER-OF-25], etc.
-    # [FIX] Expanded citation pattern to support source-URL and pin-tX- IDs
-        citation_pattern = r'\[((?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)(?:\s*,\s*(?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+))*\]'
-        citations_raw = re.findall(citation_pattern, final_answer, re.IGNORECASE)
-        
-        # Flatten and deduplicate citations
-        citations_set = set()
-        for citation_group in citations_raw:
-            # Split by comma if there are multiple citations in one bracket
-            ids = [cid.strip() for cid in re.split(r',', citation_group)]
-            citations_set.update(ids)
-        
-        citations_list = [{"blockId": cid} for cid in sorted(citations_set)]
-        
-        # [NEW] Post-Translation via Lingo.dev if output_lang is specified
-        print(f"[CHAT] Post-generation check: output_lang={output_lang}")
-        if output_lang and output_lang not in ["auto", "en", "unknown"]:
-            print(f"[CHAT] Applying post-generation Lingo.dev translation to: {output_lang}")
-            from rag_pipeline import translate_text_lingo
-            translated_answer, _, was_translated = translate_text_lingo(final_answer, target_lang=output_lang, api_keys=api_keys)
-            if translated_answer:
-                final_answer = translated_answer
-                print(f"[CHAT] Translation applied (was_translated={was_translated}, len={len(final_answer)})")
+        gemini_system_instruction = final_messages[0]["content"] if final_messages and final_messages[0]["role"] == "system" else ""
+        gemini_contents = []
+        for m in final_messages:
+            if m["role"] != "system":
+                parts = [{"text": m["content"]}]
+                r = "user" if m["role"] == "user" else "model"
+                gemini_contents.append({"role": r, "parts": parts})
                 
-        result = {
-            "answer": final_answer,
-            "citations": citations_list,
-            "context_found": bool(context),
-            "sources": ["Current Page"] if is_direct_context else [],
-            "model_used": model_used,
-            "retrieved_blocks": (retrieved_raw_blocks or []) + notebook_blocks
-        }
+        from google.genai import types
+        chat_response = client.models.generate_content(
+            model=model_target,
+            contents=gemini_contents,
+            config=types.GenerateContentConfig(system_instruction=gemini_system_instruction)
+        )
+        final_answer = chat_response.text
+    else:
+        model_target = active_model or ModelRegistry.MISTRAL_SMALL
+        model_used = f"Mistral ({model_target})"
+        print(f"[CHAT] Generating with Mistral model: {model_target}")
+        client = get_mistral_client(api_keys)
+        chat_response = client.chat.complete(
+            model=model_target,
+            messages=final_messages,
+        )
+        final_answer = chat_response.choices[0].message.content
+    
+    # [NEW] Post-process to strip any leaked numeric footnotes [19], [1]
+    import re
+    final_answer = re.sub(r'\[\d{1,3}\]', '', final_answer)
+    
+    # [FIX] Expanded citation pattern to support source-URL and pin-tX- IDs
+    citation_pattern = r'\[((?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)(?:\s*,\s*(?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+))*\]'
+    citations_raw = re.findall(citation_pattern, final_answer, re.IGNORECASE)
+    
+    # Flatten and deduplicate citations
+    citations_set = set()
+    for citation_group in citations_raw:
+        # Split by comma if there are multiple citations in one bracket
+        ids = [cid.strip() for cid in re.split(r',', citation_group)]
+        citations_set.update(ids)
+    
+    citations_list = [{"blockId": cid} for cid in sorted(citations_set)]
+    
+    # [NEW] Post-Translation via Lingo.dev if output_lang is specified
+    print(f"[CHAT] Post-generation check: output_lang={output_lang}")
+    if output_lang and output_lang not in ["auto", "en", "unknown"]:
+        print(f"[CHAT] Applying post-generation Lingo.dev translation to: {output_lang}")
+        from rag_pipeline import translate_text_lingo
+        translated_answer, _, was_translated = translate_text_lingo(final_answer, target_lang=output_lang, api_keys=api_keys)
+        if translated_answer:
+            final_answer = translated_answer
+            print(f"[CHAT] Translation applied (was_translated={was_translated}, len={len(final_answer)})")
+            
+    result = {
+        "answer": final_answer,
+        "citations": citations_list,
+        "context_found": bool(context),
+        "sources": ["Current Page"] if is_direct_context else [],
+        "model_used": model_used,
+        "retrieved_blocks": (retrieved_raw_blocks or []) + notebook_blocks
+    }
 
+    # Save memory turn (Phase 3)
+    if session_id:
+        try:
+            # Save user query
+            save_chat_message(session_id, "user", query, api_keys=api_keys)
+            # Save assistant response
+            save_chat_message(session_id, "assistant", final_answer, api_keys=api_keys)
+            print(f"[MEMORY] Saved Turn to memory (Session: {session_id})")
+        except Exception as e:
+            print(f"[MEMORY] Error saving turn: {e}")
+    
+    # Store in Cache (Phase 6)
+    if FeatureFlags.PHASE_6_CACHING and not is_direct_context and not history:
+        # Only cache single-turn RAG queries for now
+        store_in_cache(search_query, None, result, site_id)
         
-        # Save memory turn (Phase 3)
-        if session_id:
-            try:
-                # Save user query
-                save_chat_message(session_id, "user", query, api_keys=api_keys)
-                # Save assistant response
-                save_chat_message(session_id, "assistant", final_answer, api_keys=api_keys)
-                print(f"[MEMORY] Saved Turn to memory (Session: {session_id})")
-            except Exception as e:
-                print(f"[MEMORY] Error saving turn: {e}")
-        
-        # Store in Cache (Phase 6)
-        if FeatureFlags.PHASE_6_CACHING and not is_direct_context and not history:
-             # Only cache single-turn RAG queries for now
-             store_in_cache(search_query, None, result, site_id)
-             
-        return result
-    except Exception as e:
-        print(f"Warning: Mistral failed: {e}")
-        last_error = e
-
-    return {"error": f"All models failed. Last error: {str(last_error)}"}
+    return result
 
 def chat_logic_stream(query: str, page_content: str | None = None, content_blocks: list[dict] | None = None, site_id: str | None = None, history: list[dict] | None = None, session_id: str | None = None, api_keys: dict = None, search_query: str | None = None, query_lang: str | None = None, output_lang: str = "auto", query_notebook: bool = False, persona_id: str | None = None):
     """

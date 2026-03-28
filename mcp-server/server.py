@@ -19,12 +19,13 @@ from mcp.types import (
 # --- Tool Handlers (modular) ---
 from tools.search import handle_search
 from tools.chat import handle_chat
-from tools.ingest import handle_ingest_url, handle_ingest_file, handle_ingest_repo
+from tools.ingest import handle_ingest_url, handle_ingest_file, handle_ingest_repo, handle_ingest_status
 from tools.research import handle_web_research
 from tools.personas import handle_list_personas, handle_get_analytics
 
 # --- Resource Handlers (modular) ---
 from resources.kb import read_kb_stats, read_kb_tags
+from resources.sessions import read_session_history
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Server Instance
@@ -121,6 +122,17 @@ async def handle_list_tools():
             description="Get SnapMind knowledge base statistics: document count, bookmarks, sessions, storage usage.",
             inputSchema={"type": "object", "properties": {}}
         ),
+        Tool(
+            name="snapmind_ingest_status",
+            description="Poll the status of a background repository ingestion job started by snapmind_ingest_repo.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "job_id": {"type": "string", "description": "Job ID returned by snapmind_ingest_repo"}
+                },
+                "required": ["job_id"]
+            }
+        ),
     ]
 
 
@@ -132,6 +144,7 @@ async def handle_list_resources():
     return [
         Resource(uri="snapmind://kb/stats", name="Knowledge Base Statistics", mimeType="application/json"),
         Resource(uri="snapmind://kb/tags", name="Knowledge Base Tags", mimeType="application/json"),
+        Resource(uri="snapmind://sessions/{id}/history", name="Session Chat History", mimeType="application/json"),
     ]
 
 
@@ -141,6 +154,9 @@ async def handle_read_resource(uri: str):
         return await read_kb_stats()
     elif uri == "snapmind://kb/tags":
         return await read_kb_tags()
+    elif uri.startswith("snapmind://sessions/") and uri.endswith("/history"):
+        session_id = uri.split("/")[2]
+        return await read_session_history(session_id)
     else:
         raise ValueError(f"Unknown resource: {uri}")
 
@@ -246,6 +262,7 @@ TOOL_HANDLERS = {
     "snapmind_web_research": handle_web_research,
     "snapmind_list_personas": handle_list_personas,
     "snapmind_get_analytics": handle_get_analytics,
+    "snapmind_ingest_status": handle_ingest_status,
 }
 
 

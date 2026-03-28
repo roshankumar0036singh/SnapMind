@@ -66,3 +66,30 @@ async def handle_ingest_repo(arguments: dict) -> list[TextContent]:
         return [TextContent(type="text", text=f"Repo ingestion failed: {data.get('error', 'Unknown error')}")]
 
     return [TextContent(type="text", text=f"Started indexing repo: {arguments['repo_url']}\nJob ID: {data.get('job_id', 'N/A')}")]
+
+
+async def handle_ingest_status(arguments: dict) -> list[TextContent]:
+    """Poll the status of a background repository ingestion job."""
+    job_id = arguments.get("job_id")
+    if not job_id:
+        return [TextContent(type="text", text="Error: job_id is required.")]
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.get(
+            f"{BACKEND_URL}/ingest/status/{job_id}",
+            headers=get_headers()
+        )
+        data = response.json()
+
+    if not data.get("success"):
+        return [TextContent(type="text", text=f"Status check failed: {data.get('error', 'Unknown error')}")]
+
+    status = data.get("status", "unknown")
+    msg = data.get("message", "")
+    files = data.get("files_processed", "?")
+    chunks = data.get("chunks_count", "?")
+
+    return [TextContent(
+        type="text",
+        text=f"Job {job_id} — Status: {status.upper()}\n{msg}\nFiles processed: {files} | Chunks indexed: {chunks}"
+    )]
