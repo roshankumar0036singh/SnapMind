@@ -1,8 +1,9 @@
 import os
 from docx import Document
 from docx.shared import Inches
-from search import get_mistral_client
+from api_clients import get_mistral_client
 from database import get_db_pool
+from config import ModelRegistry
 from psycopg.rows import dict_row
 
 class ReportGenerator:
@@ -99,7 +100,7 @@ Instruction:
 """
         try:
             response = self.client.chat.complete(
-                model='mistral-large-latest',
+                model=ModelRegistry.MISTRAL_LARGE,
                 messages=[{"role": "user", "content": prompt}]
             )
             report_text = response.choices[0].message.content

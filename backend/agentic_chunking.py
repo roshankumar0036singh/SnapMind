@@ -3,6 +3,7 @@ import json
 import time
 from typing import List, Dict, Any
 from api_clients import get_mistral_client
+from config import ModelRegistry
 
 def run_agentic_chunking(text: str, api_keys: dict = None, target_chunk_size: int = 1000) -> List[Dict[str, Any]]:
     """
@@ -49,7 +50,7 @@ def run_agentic_chunking(text: str, api_keys: dict = None, target_chunk_size: in
         while attempts < 3:
             try:
                 response = mistral_client.chat.complete(
-                    model="mistral-large-latest",
+                    model=ModelRegistry.MISTRAL_LARGE,
                     messages=[{"role": "user", "content": prompt_template.format(
                         target_size=target_chunk_size,
                         text_snippet=text_snippet

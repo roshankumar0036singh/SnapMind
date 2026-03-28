@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 from api_clients import get_groq_key, get_hf_token, get_gemini_client, get_openai_client
+from config import ModelRegistry
 
 # --- Vision Cache Configuration ---
 CACHE_DIR = Path("data/vision_cache")
@@ -71,7 +72,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
         from google.genai import types
         
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=ModelRegistry.GEMINI_FLASH,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 types.Part.from_text(text=f"{system_instruction}\n\n{user_message_text}")
@@ -79,7 +80,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
         )
         
         if response.text:
-            result = {"answer": response.text, "success": True, "model_used": "gemini-2.0-flash"}
+            result = {"answer": response.text, "success": True, "model_used": ModelRegistry.GEMINI_FLASH}
             save_to_cache(img_hash, mode, final_prompt, result)
             return result
     except Exception as e:
@@ -92,7 +93,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
         print("[VISION] Attempting GPT-4o Vision...")
         
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=ModelRegistry.GPT_4O,
             messages=[
                 {"role": "system", "content": system_instruction},
                 {
@@ -123,7 +124,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                 json={
-                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                    "model": ModelRegistry.LLAMA_SCOUT,
                     "messages": [
                         {"role": "system", "content": system_instruction},
                         {

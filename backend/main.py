@@ -13,6 +13,7 @@ from rag_pipeline import ingest_website_logic
 from search import chat_logic
 
 load_dotenv()
+from config import ModelRegistry
 
 # --- Suppress Verbose Logging ---
 import logging
@@ -272,7 +273,7 @@ async def reverse_engineer_endpoint(request: ReverseEngineerRequest, req: Reques
     
     import google.generativeai as genai
     genai.configure(api_key=gemini_key)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model = genai.GenerativeModel(ModelRegistry.GEMINI_FLASH)
     
     system_prompt = """You are an elite Senior Frontend Engineer. Your task is to reverse-engineer a provided HTML snippet and its computed styles into a professional-grade React component.
 
@@ -304,14 +305,14 @@ def mcp_manifest():
         "status": "ok",
         "mcp_version": "1.0.0",
         "tools": [
-            {"name": "search", "description": "Semantic RAG search"},
-            {"name": "chat", "description": "Conversational Q&A"},
-            {"name": "ingest_url", "description": "Index websites"},
-            {"name": "ingest_file", "description": "Index local files"},
-            {"name": "ingest_repo", "description": "Index GitHub repos"},
-            {"name": "web_research", "description": "Multi-agent research"},
-            {"name": "list_personas", "description": "Discover custom personas"},
-            {"name": "get_analytics", "description": "Library statistics"}
+            {"name": "snapmind_search", "description": "Semantic RAG search"},
+            {"name": "snapmind_chat", "description": "Conversational Q&A"},
+            {"name": "snapmind_ingest_url", "description": "Index websites"},
+            {"name": "snapmind_ingest_file", "description": "Index local files"},
+            {"name": "snapmind_ingest_repo", "description": "Index GitHub repos"},
+            {"name": "snapmind_web_research", "description": "Multi-agent research"},
+            {"name": "snapmind_list_personas", "description": "Discover custom personas"},
+            {"name": "snapmind_get_analytics", "description": "Library statistics"}
         ],
         "resources": [
             "snapmind://kb/stats",

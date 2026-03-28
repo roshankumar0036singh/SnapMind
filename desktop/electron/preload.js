@@ -24,5 +24,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (event, data) => callback(data);
     ipcRenderer.on('vision-spotlight', subscription);
     return () => ipcRenderer.removeListener('vision-spotlight', subscription);
+  },
+  onToggleFocusMode: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('toggle-focus-mode', subscription);
+    return () => ipcRenderer.removeListener('toggle-focus-mode', subscription);
+  },
+  onTriggerSync: (callback) => {
+    const subscription = () => callback();
+    ipcRenderer.on('trigger-sync', subscription);
+    return () => ipcRenderer.removeListener('trigger-sync', subscription);
   }
 });

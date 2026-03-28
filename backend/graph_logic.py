@@ -8,7 +8,7 @@ import psycopg
 from psycopg import errors
 from api_clients import get_mistral_client
 from database import get_db_pool, db_retry
-import threading
+from config import ModelRegistry
 
 # Global lock to serialize database writes for the graph (prevents deadlocks between threads)
 GRAPH_LOCK = threading.Lock()
@@ -38,7 +38,7 @@ Output strictly in JSON format:
     try:
         print(f"[GRAPH] Extracting entities from {len(sample_text)} characters...")
         response = client.chat.complete(
-            model="mistral-large-latest",
+            model=ModelRegistry.MISTRAL_LARGE,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Extract the knowledge graph from this text:\n\n{sample_text}"}
@@ -121,7 +121,7 @@ def get_graph_context(query: str, api_keys: dict = None) -> str:
     extract_prompt = f"Identify the primary entities (names, organizations, concepts) in this query: {query}. Return ONLY a comma-separated list."
     try:
         res = client.chat.complete(
-            model="mistral-large-latest",
+            model=ModelRegistry.MISTRAL_LARGE,
             messages=[{"role": "user", "content": extract_prompt}]
         )
         entities = [e.strip() for e in res.choices[0].message.content.split(",") if e.strip()]

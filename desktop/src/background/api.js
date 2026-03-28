@@ -413,6 +413,17 @@ export const apiClient = {
         
         if (!response.ok) throw new Error(`Report generation failed: ${response.status}`);
         return response.blob(); // Backend returns a Docx file
+    },
+
+    async crawlUrl(url, sessionId = null) {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        const response = await fetch(`${baseUrl}/ingest`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ url, session_id: sessionId })
+        });
+        return response.json();
     }
 };
 

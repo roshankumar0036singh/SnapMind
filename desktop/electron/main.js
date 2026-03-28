@@ -50,24 +50,60 @@ function createWindow() {
 
 function createTray() {
   const iconPath = path.join(__dirname, '..', 'src', 'assets', 'icon.png');
-  // In a real app we'd catch file not found, but we'll assume it exists if copied
   try {
     tray = new Tray(iconPath);
-    tray.setToolTip('SnapMind');
+    tray.setToolTip('SnapMind Desktop Agent');
+    
+    // Help helper for capture
+    const triggerCapture = async () => {
+       try {
+        const sources = await desktopCapturer.getSources({ 
+          types: ['screen', 'window'], 
+          thumbnailSize: { width: 1920, height: 1080 } 
+        });
+        if (sources.length > 0 && mainWindow) {
+          const image = sources[0].thumbnail.toDataURL();
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.webContents.send('vision-spotlight', { image });
+        }
+      } catch (e) {
+        console.error('[Tray Capture] Error:', e);
+      }
+    };
+
     const contextMenu = Menu.buildFromTemplate([
-      { label: 'Show App', click: () => mainWindow.show() },
+      { label: 'SnapMind v3', enabled: false },
       { type: 'separator' },
-      { label: 'Quit', click: () => {
+      { label: 'Show Console', click: () => {
+        mainWindow.show();
+        mainWindow.focus();
+      }},
+      { label: 'Quick Vision Capture', accelerator: 'CmdOrCtrl+Alt+S', click: triggerCapture },
+      { label: 'Toggle Focus Mode', click: () => {
+        if (mainWindow) {
+           mainWindow.webContents.send('toggle-focus-mode');
+        }
+      }},
+      { type: 'separator' },
+      { label: 'Sync Knowledge', click: () => {
+         if (mainWindow) {
+            mainWindow.webContents.send('trigger-sync');
+         }
+      }},
+      { type: 'separator' },
+      { label: 'Quit SnapMind', click: () => {
         app.isQuitting = true;
         app.quit();
       }}
     ]);
+
     tray.setContextMenu(contextMenu);
-    tray.on('click', () => {
+    tray.on('double-click', () => {
       mainWindow.isVisible() ? mainWindow.hide() : mainWindow.show();
     });
   } catch(e) {
-    console.warn("Tray icon missing, tray disabled.");
+    console.warn("Tray icon error:", e);
   }
 }
 

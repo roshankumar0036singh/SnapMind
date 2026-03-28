@@ -1,3 +1,8 @@
+"""
+SnapMind MCP Server
+Exposes the SnapMind RAG backend as MCP tools, resources, and prompts.
+Transport: stdio (JSON-RPC 2.0)
+"""
 import anyio
 from mcp.server.stdio import stdio_server
 from mcp.server import Server
@@ -9,62 +14,71 @@ from mcp.types import (
     TextContent,
     GetPromptResult,
     PromptMessage,
-    ImageContent,
-    EmbeddedResource,
 )
-import httpx
-import json
-import os
 
-from config import BACKEND_URL, get_headers
+# --- Tool Handlers (modular) ---
+from tools.search import handle_search
+from tools.chat import handle_chat
+from tools.ingest import handle_ingest_url, handle_ingest_file, handle_ingest_repo
+from tools.research import handle_web_research
+from tools.personas import handle_list_personas, handle_get_analytics
 
-# Create the server
+# --- Resource Handlers (modular) ---
+from resources.kb import read_kb_stats, read_kb_tags
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Server Instance
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 server = Server("snapmind")
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Tool Definitions
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @server.list_tools()
 async def handle_list_tools():
     return [
         Tool(
-            name="search",
-            description="Performs a semantic search across the entire RAG knowledge base (documents, bookmarks, and chat history).",
+            name="snapmind_search",
+            description="Semantic search across the entire SnapMind RAG knowledge base (documents, bookmarks, chat history).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "The search query"},
-                    "limit": {"type": "number", "description": "Maximum number of results (default 10)", "default": 10}
+                    "limit": {"type": "number", "description": "Max results (default 10)", "default": 10}
                 },
                 "required": ["query"]
             }
         ),
         Tool(
-            name="chat",
-            description="Ask a question to the SnapMind RAG knowledge base. Uses indexed data to provide cited answers.",
+            name="snapmind_chat",
+            description="Ask a question with full RAG context from your SnapMind knowledge base. Supports persona selection.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "The question to ask"},
-                    "site_id": {"type": "string", "description": "Optional: Restrict answer to a specific site UUID or URL"},
-                    "session_id": {"type": "string", "description": "Optional: Continue a specific conversation session"},
-                    "persona_id": {"type": "string", "description": "Optional: UUID of a custom persona to use"}
+                    "site_id": {"type": "string", "description": "Optional: restrict to a specific site UUID"},
+                    "session_id": {"type": "string", "description": "Optional: continue a conversation session"},
+                    "persona_id": {"type": "string", "description": "Optional: use a custom persona (UUID)"}
                 },
                 "required": ["query"]
             }
         ),
         Tool(
-            name="ingest_url",
-            description="Index a website URL into the SnapMind knowledge base.",
+            name="snapmind_ingest_url",
+            description="Index a website URL into the SnapMind knowledge base for future retrieval.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "url": {"type": "string", "description": "The URL to index"},
                     "crawl_mode": {"type": "string", "enum": ["single", "multi"], "default": "single"},
-                    "max_pages": {"type": "number", "default": 20}
+                    "max_pages": {"type": "number", "description": "Max pages to crawl (multi mode)", "default": 20}
                 },
                 "required": ["url"]
             }
         ),
         Tool(
-            name="ingest_file",
+            name="snapmind_ingest_file",
             description="Index a local file (PDF, DOCX, CSV, TXT) into the SnapMind knowledge base.",
             inputSchema={
                 "type": "object",
@@ -75,19 +89,19 @@ async def handle_list_tools():
             }
         ),
         Tool(
-            name="ingest_repo",
+            name="snapmind_ingest_repo",
             description="Clone and index an entire GitHub repository into the knowledge base.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "repo_url": {"type": "string", "description": "GitHub repository URL (ending in .git)"}
+                    "repo_url": {"type": "string", "description": "GitHub repository URL"}
                 },
                 "required": ["repo_url"]
             }
         ),
         Tool(
-            name="web_research",
-            description="Perform deep multi-agent research on a topic using the SnapMind browser agents.",
+            name="snapmind_web_research",
+            description="Deep multi-agent web research on a topic using SnapMind browser agents. Returns a synthesized report with citations.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -98,37 +112,42 @@ async def handle_list_tools():
             }
         ),
         Tool(
-            name="list_personas",
+            name="snapmind_list_personas",
             description="List all available AI personas in your SnapMind account.",
             inputSchema={"type": "object", "properties": {}}
         ),
         Tool(
-            name="get_analytics",
-            description="Get library statistics.",
+            name="snapmind_get_analytics",
+            description="Get SnapMind knowledge base statistics: document count, bookmarks, sessions, storage usage.",
             inputSchema={"type": "object", "properties": {}}
-        )
+        ),
     ]
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Resource Definitions
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @server.list_resources()
 async def handle_list_resources():
     return [
         Resource(uri="snapmind://kb/stats", name="Knowledge Base Statistics", mimeType="application/json"),
-        Resource(uri="snapmind://kb/tags", name="Knowledge Base Tags", mimeType="application/json")
+        Resource(uri="snapmind://kb/tags", name="Knowledge Base Tags", mimeType="application/json"),
     ]
+
 
 @server.read_resource()
 async def handle_read_resource(uri: str):
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        headers = get_headers()
-        if uri == "snapmind://kb/stats":
-            resp = await client.get(f"{BACKEND_URL}/admin/analytics", headers=headers)
-            return resp.text
-        elif uri == "snapmind://kb/tags":
-            resp = await client.get(f"{BACKEND_URL}/tags", headers=headers)
-            return resp.text
-        else:
-            raise ValueError(f"Unknown resource: {uri}")
+    if uri == "snapmind://kb/stats":
+        return await read_kb_stats()
+    elif uri == "snapmind://kb/tags":
+        return await read_kb_tags()
+    else:
+        raise ValueError(f"Unknown resource: {uri}")
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Prompt Templates
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 @server.list_prompts()
 async def handle_list_prompts():
     return [
@@ -141,7 +160,7 @@ async def handle_list_prompts():
         ),
         Prompt(
             name="code_review",
-            description="Review a codebase or specific file against SnapMind's indexed best practices.",
+            description="Review a codebase against SnapMind's indexed best practices and documentation.",
             arguments=[
                 PromptArgument(name="context", description="What to review (e.g. recent changes, a specific module)", required=True)
             ]
@@ -152,8 +171,9 @@ async def handle_list_prompts():
             arguments=[
                 PromptArgument(name="topic", description="The topic to summarize", required=False)
             ]
-        )
+        ),
     ]
+
 
 @server.get_prompt()
 async def handle_get_prompt(name: str, arguments: dict):
@@ -166,7 +186,11 @@ async def handle_get_prompt(name: str, arguments: dict):
                     role="user",
                     content=TextContent(
                         type="text",
-                        text=f"Please use the `web_research` tool to perform a deep investigation into '{topic}'. Then, search my existing knowledge base with `search` to see if we have any prior context. Finally, synthesize a comprehensive report."
+                        text=(
+                            f"Please use the `snapmind_web_research` tool to perform a deep investigation into '{topic}'. "
+                            f"Then, search my existing knowledge base with `snapmind_search` to see if we have any prior context. "
+                            f"Finally, synthesize a comprehensive report combining both new and existing knowledge."
+                        )
                     )
                 )
             ]
@@ -180,7 +204,11 @@ async def handle_get_prompt(name: str, arguments: dict):
                     role="user",
                     content=TextContent(
                         type="text",
-                        text=f"Using the context of '{context}', please search my knowledge base for relevant architectural patterns or best practices using the `search` tool. Then, provide a detailed review of the code based on those findings."
+                        text=(
+                            f"Using the context of '{context}', please search my knowledge base for relevant architectural patterns "
+                            f"or best practices using the `snapmind_search` tool. Then, provide a detailed review of the code "
+                            f"based on those findings."
+                        )
                     )
                 )
             ]
@@ -194,7 +222,10 @@ async def handle_get_prompt(name: str, arguments: dict):
                     role="user",
                     content=TextContent(
                         type="text",
-                        text=f"Please search my research notebook (bookmarks) using the `search` tool with query '{topic}' and filter for bookmarks. Summarize the key findings, trends, and top sources saved in my notebook."
+                        text=(
+                            f"Please search my research notebook using the `snapmind_search` tool with query '{topic}'. "
+                            f"Summarize the key findings, trends, and top sources saved in my notebook."
+                        )
                     )
                 )
             ]
@@ -202,140 +233,33 @@ async def handle_get_prompt(name: str, arguments: dict):
     else:
         raise ValueError(f"Unknown prompt: {name}")
 
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Tool Dispatcher
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOOL_HANDLERS = {
+    "snapmind_search": handle_search,
+    "snapmind_chat": handle_chat,
+    "snapmind_ingest_url": handle_ingest_url,
+    "snapmind_ingest_file": handle_ingest_file,
+    "snapmind_ingest_repo": handle_ingest_repo,
+    "snapmind_web_research": handle_web_research,
+    "snapmind_list_personas": handle_list_personas,
+    "snapmind_get_analytics": handle_get_analytics,
+}
+
+
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict):
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        headers = get_headers()
-        
-        if name == "search":
-            query = arguments.get("query")
-            limit = arguments.get("limit", 10)
-            
-            response = await client.post(
-                f"{BACKEND_URL}/search/global",
-                json={"query": query, "limit": limit},
-                headers=headers
-            )
-            data = response.json()
-            if not data.get("success"):
-                return [TextContent(type="text", text=f"Search failed: {data.get('error', 'Unknown error')}")]
-            
-            results = data.get("results", [])
-            if not results:
-                return [TextContent(type="text", text="No results found in your knowledge base.")]
-                
-            formatted = "\n\n".join([
-                f"[{r['type'].upper()}] {r['url']}\nScore: {r['score']:.2f}\nContent: {r['content'][:300]}..."
-                for r in results
-            ])
-            return [TextContent(type="text", text=f"Found {len(results)} matches:\n\n{formatted}")]
+    handler = TOOL_HANDLERS.get(name)
+    if handler is None:
+        raise ValueError(f"Unknown tool: {name}")
+    return await handler(arguments)
 
-        elif name == "chat":
-            response = await client.post(
-                f"{BACKEND_URL}/chat",
-                json={
-                    "query": arguments.get("query"),
-                    "site_id": arguments.get("site_id"),
-                    "session_id": arguments.get("session_id"),
-                    "persona_id": arguments.get("persona_id")
-                },
-                headers=headers
-            )
-            data = response.json()
-            if "error" in data:
-                return [TextContent(type="text", text=f"Chat error: {data['error']}")]
-            
-            return [TextContent(type="text", text=data.get("answer", ""))]
 
-        elif name == "ingest_url":
-            response = await client.post(
-                f"{BACKEND_URL}/ingest",
-                json={
-                    "url": arguments.get("url"),
-                    "crawl_mode": arguments.get("crawl_mode", "single"),
-                    "max_pages": arguments.get("max_pages", 20)
-                },
-                headers=headers
-            )
-            data = response.json()
-            if not data.get("success"):
-                return [TextContent(type="text", text=f"Ingestion failed: {data.get('error', 'Unknown error')}")]
-            return [TextContent(type="text", text=f"✅ Successfully queued: {arguments['url']}")]
-
-        elif name == "ingest_file":
-            path = arguments.get("file_path")
-            if not os.path.exists(path):
-                return [TextContent(type="text", text=f"Error: File '{path}' not found.")]
-            
-            with open(path, "rb") as f:
-                files = {"file": (os.path.basename(path), f)}
-                response = await client.post(
-                    f"{BACKEND_URL}/ingest/file",
-                    files=files,
-                    headers={k: v for k, v in headers.items() if k.lower() != "content-type"}
-                )
-            data = response.json()
-            if not data.get("success"):
-                return [TextContent(type="text", text=f"File ingestion failed: {data.get('error', 'Unknown error')}")]
-            return [TextContent(type="text", text=f"✅ Successfully indexed file: {os.path.basename(path)}")]
-
-        elif name == "ingest_repo":
-            response = await client.post(
-                f"{BACKEND_URL}/ingest/github",
-                json={"repo_url": arguments.get("repo_url")},
-                headers=headers
-            )
-            data = response.json()
-            if not data.get("success"):
-                return [TextContent(type="text", text=f"Repo ingestion failed: {data.get('error', 'Unknown error')}")]
-            return [TextContent(type="text", text=f"🚀 Started indexing repo: {arguments['repo_url']}\nJob ID: {data.get('job_id')}")]
-
-        elif name == "web_research":
-            response = await client.post(
-                f"{BACKEND_URL}/browser/research",
-                json={"query": arguments.get("query"), "session_id": arguments.get("session_id")},
-                headers=headers
-            )
-            data = response.json()
-            if "error" in data:
-                return [TextContent(type="text", text=f"Research error: {data['error']}")]
-            return [TextContent(type="text", text=data.get("answer", ""))]
-
-        elif name == "list_personas":
-            response = await client.get(f"{BACKEND_URL}/personas", headers=headers)
-            data = response.json()
-            if not data.get("success"):
-                return [TextContent(type="text", text="Failed to fetch personas.")]
-            
-            personas = data.get("personas", [])
-            if not personas:
-                return [TextContent(type="text", text="No custom personas found.")]
-                
-            formatted = "\n".join([f"- {p['name']} (ID: {p['id']})" for p in personas])
-            return [TextContent(type="text", text=f"Available Custom Personas:\n{formatted}")]
-
-        elif name == "get_analytics":
-            response = await client.get(
-                f"{BACKEND_URL}/admin/analytics",
-                headers=headers
-            )
-            data = response.json()
-            if "error" in data:
-                return [TextContent(type="text", text=f"Analytics error: {data['error']}")]
-                
-            stats = (
-                f"📊 SnapMind Library Stats:\n"
-                f"- Documents Indexed: {data.get('docs', 0)}\n"
-                f"- Bookmarks Saved: {data.get('bookmarks', 0)}\n"
-                f"- Total Sessions: {data.get('sessions', 0)}\n"
-                f"- Storage Used: {data.get('storage', '0 B')}\n"
-                f"- Health: {data.get('health', 'unknown')}"
-            )
-            return [TextContent(type="text", text=stats)]
-
-        else:
-            raise ValueError(f"Unknown tool: {name}")
-
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Entry Point
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 async def main():
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
@@ -343,6 +267,7 @@ async def main():
             write_stream,
             server.create_initialization_options()
         )
+
 
 if __name__ == "__main__":
     import asyncio

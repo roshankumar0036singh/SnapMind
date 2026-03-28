@@ -32,6 +32,7 @@ import BookmarkList from './components/BookmarkList';
 import PersonaSelector from './components/PersonaSelector';
 import NotebookPanel from './components/NotebookPanel';
 import LanguageSelector from './components/LanguageSelector';
+import ClipboardBubble from './components/ClipboardBubble';
 
 // Custom Markdown Components
 
@@ -249,6 +250,7 @@ function App() {
   const [suggestions, setSuggestions] = useState([]); // Feature 4: Smart Suggestions
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [spotlightVisionData, setSpotlightVisionData] = useState(null); // [NEW] Feature 9: Screen Intel
+  const [isFocusMode, setIsFocusMode] = useState(false); // [NEW] Feature 22: Focus Mode
   const [cropPreview, setCropPreview] = useState(null); // Data URL of crop
   const [contentBlocks, setContentBlocks] = useState([]); // Store blocks for hover lookups
 
@@ -989,22 +991,67 @@ function App() {
           toast.success('Indexing page... (Ctrl+I)');
         }
       }
+      // Feature 22: Focus Mode Toggle
+      if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        setIsFocusMode(prev => !prev);
+        toast.success(isFocusMode ? 'Focus Mode: OFF' : 'Focus Mode: ON — Esc to exit', { duration: 1500 });
+      }
+      // Esc exits focus mode
+      if (e.key === 'Escape' && isFocusMode) {
+        setIsFocusMode(false);
+        toast.success('Focus Mode: OFF', { duration: 1500 });
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isLoading, currentUrl]);
+  }, [isLoading, currentUrl, isFocusMode]);
 
-  // [NEW] Feature 9: Universal Screen Intelligence Listener
+  // [NEW] Feature 9: Universal Screen Intelligence Listener & other Electron listeners
   useEffect(() => {
-    if (window.electronAPI?.onVisionSpotlight) {
-      const unsubscribe = window.electronAPI.onVisionSpotlight((data) => {
+    if (window.electronAPI) {
+      const unsubscribeVision = window.electronAPI.onVisionSpotlight((data) => {
         setSpotlightVisionData(data.image); // data.image is the base64 screenshot
         setIsSpotlightOpen(true);
       });
-      return unsubscribe;
+      
+      const unsubscribeFocus = window.electronAPI.onToggleFocusMode(() => {
+        setIsFocusMode(prev => !prev);
+        toast.success(`Focus Mode ${!isFocusMode ? 'Enabled' : 'Disabled'}`);
+      });
+
+      const unsubscribeSync = window.electronAPI.onTriggerSync(() => {
+        toast.info("Knowledge Sync Triggered...");
+        // Trigger refresh logic (SiteList or global RAG sync)
+        setView('chat');
+        setMode('rag');
+      });
+
+      return () => {
+        unsubscribeVision();
+        unsubscribeFocus();
+        unsubscribeSync();
+      };
     }
-  }, []);
+  }, [isFocusMode]);
+
+  // [NEW] Feature 9: Trigger Vision Query from Spotlight
+  useEffect(() => {
+    const handleTriggerVision = (e) => {
+      const { query, image } = e.detail;
+      setMode('visual');
+      setCropPreview(image);
+      setInput(query);
+      // We use a small timeout to let the state update before sending
+      setTimeout(() => {
+        handleSend(query, 'visual');
+      }, 100);
+    };
+
+    window.addEventListener('trigger-vision-query', handleTriggerVision);
+    return () => window.removeEventListener('trigger-vision-query', handleTriggerVision);
+  }, [handleSend]);
 
   // [NEW] Update Greeting on Mode Switch if session is fresh
   useEffect(() => {
@@ -1759,9 +1806,61 @@ function App() {
       }], "Provide a concise, professional summary of this specific document snippet. Focus on key data points and conclusions.");
       setCitationSummary(response.answer);
     } catch (e) {
-      toast.error("Summarization failed");
+      toast.error("Process failed");
     } finally {
       setIsSummarizingCitation(false);
+    }
+  };
+
+  // [NEW] Feature 6: Clipboard Action Handler
+  const handleClipboardAction = async (actionId, clip) => {
+    switch (actionId) {
+      case 'summarize':
+        setMode('rag');
+        setInput(`Summarize this text: ${clip.content}`);
+        handleSend(`Summarize this text: ${clip.content}`, 'rag');
+        break;
+      case 'translate':
+        setMode('rag');
+        setInput(`Translate this text to ${outputLang === 'auto' ? 'English' : outputLang}: ${clip.content}`);
+        handleSend(`Translate this text to ${outputLang === 'auto' ? 'English' : outputLang}: ${clip.content}`, 'rag');
+        break;
+      case 'explain_code':
+        setMode('rag');
+        setInput(`Explain this code snippet and suggest improvements: \n\n\`\`\`\n${clip.content}\n\`\`\``);
+        handleSend(`Explain this code snippet and suggest improvements: \n\n\`\`\`\n${clip.content}\n\`\`\``, 'rag');
+        break;
+      case 'crawl_url':
+        setMode('rag');
+        setExternalUrl(clip.content);
+        setInput(`Analyze what this page is about: ${clip.content}`);
+        handleSend(`Analyze what this page is about: ${clip.content}`, 'rag');
+        break;
+      case 'analyze_vision':
+        setMode('visual');
+        setCropPreview(clip.content); // Base64 image
+        setInput("What is in this image?");
+        handleSend("What is in this image?", 'visual');
+        break;
+      case 'ocr_to_chat':
+        setMode('visual');
+        setCropPreview(clip.content);
+        setInput("Perform OCR and extract all text from this image.");
+        handleSend("Perform OCR and extract all text from this image.", 'visual');
+        break;
+      case 'add_to_pins':
+        try {
+          const response = await apiClient.crawlUrl(clip.content);
+          if (response.blocks) {
+             setPinnedTabs(prev => [...prev, { title: response.title || 'Pinned Clip', url: clip.content, blocks: response.blocks }]);
+             toast.success("URL content pinned successfully!");
+          }
+        } catch (e) {
+          toast.error("Failed to pin URL");
+        }
+        break;
+      default:
+        break;
     }
   };
 
@@ -2055,6 +2154,7 @@ function App() {
   return (
     <div className="flex h-screen w-full bg-[#07070a] text-[#a1a1aa] font-sans overflow-hidden selection:bg-[#6366f1]/30 selection:text-white">
       {/* SIDEBAR NAVIGATION (280px) */}
+      {!isFocusMode && (
       <aside className="w-[300px] bg-[#09090b] border-r border-[#1e1e26]/60 flex flex-col z-50 pt-12 shadow-[10px_0_30px_rgba(0,0,0,0.3)]">
         <div className="px-7 mb-10 group cursor-default">
           <div className="flex items-center gap-4 py-4 px-5 bg-[#111115] border border-[#27272a] rounded-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.4)] transition-all hover:border-[#6366f1]/30">
@@ -2142,6 +2242,7 @@ function App() {
           </div>
         </div>
       </aside>
+      )}
 
       {/* MAIN CONTENT AREA */}
       <main className="flex-1 flex flex-col relative">
@@ -2174,6 +2275,22 @@ function App() {
         </div>
 
         {/* HEADER / TOOLBAR */}
+        {isFocusMode && (
+          <div className="absolute top-4 right-4 z-50 flex items-center gap-3">
+            <div className="px-3 py-1.5 bg-[#6366f1]/10 border border-[#6366f1]/30 rounded-full flex items-center gap-2 animate-pulse">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#6366f1]" />
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-[#6366f1]">Focus Mode</span>
+            </div>
+            <button
+              onClick={() => setIsFocusMode(false)}
+              className="p-1.5 bg-[#18181b] border border-[#27272a] rounded-lg hover:bg-[#27272a] text-[#71717a] hover:text-white transition-all"
+              title="Exit Focus Mode (Esc)"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+        {!isFocusMode && (
         <header className="h-14 border-b border-[#1a1a1d] flex items-center justify-between px-8 bg-[#09090b]/40 backdrop-blur-md sticky top-0 z-40">
           <div className="flex items-center gap-4">
              <h2 className="text-sm font-bold tracking-tight text-[#fafafa] lowercase">
@@ -2218,6 +2335,7 @@ function App() {
              </button>
           </div>
         </header>
+        )}
 
 
         {/* VIEW CONDITIONAL RENDERING */}
@@ -2941,6 +3059,7 @@ function App() {
             onClose={() => { setIsSpotlightOpen(false); setSpotlightVisionData(null); }}
             visionData={spotlightVisionData}
           />
+          <ClipboardBubble onAction={handleClipboardAction} />
         </div>
       </main>
     </div>

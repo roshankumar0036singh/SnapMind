@@ -15,6 +15,7 @@ import ora from 'ora';
 import fs from 'fs-extra';
 import path from 'path';
 import config from '../utils/config.js';
+import { loadPlugins, runPlugin } from '../utils/plugins.js';
 
 const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.SCHOLAR;
 
@@ -114,6 +115,8 @@ export async function startScholar(options = {}) {
       }
     }
     
+    const plugins = await loadPlugins();
+
     while (true) {
       const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.yellow('scholar>') }]);
       if (query.toLowerCase() === 'exit') break;
@@ -151,7 +154,20 @@ export async function startScholar(options = {}) {
       if (query.startsWith('/snapshot')) {
         const name = query.split(' ')[1] || 'default';
         await saveSession(namespace, history, name);
-        console.log(chalk.green(`\n📸 Snapshot saved as: ${chalk.bold(name)}`));
+        console.log(chalk.green(`\nSnapshot saved as: ${chalk.bold(name)}`));
+        continue;
+      }
+
+      if (query.startsWith('/diff')) {
+        const parts = query.split(' ');
+        const nameA = parts[1];
+        const nameB = parts[2];
+        if (!nameA || !nameB) {
+          console.log(chalk.yellow('\nUsage: /diff <snapshot_a> <snapshot_b>'));
+          continue;
+        }
+        const { diffSnapshots } = await import('../utils/diff.js');
+        await diffSnapshots(namespace, nameA, nameB);
         continue;
       }
 
@@ -181,13 +197,23 @@ export async function startScholar(options = {}) {
         const index = parseInt(query.split(' ')[1]) - 1;
         if (currentResults[index]) {
           const doc = currentResults[index];
-          console.log(chalk.cyan(`\n📖 Full Citation [Source ${index + 1}]:`));
-          console.log(chalk.gray(`Path: ${doc.metadata.source}`));
+          const page = doc.metadata?.loc?.pageNumber || '?';
+          const source = path.basename(doc.metadata?.source || 'Unknown');
+          console.log(chalk.cyan(`\nFull Citation [Source ${index + 1}]:`));
+          console.log(chalk.gray(`  File : ${source}`));
+          console.log(chalk.gray(`  Page : ${page}`));
           console.log(chalk.white(`\n${doc.pageContent}\n`));
+          console.log(chalk.gray(`  --- [${source}, p.${page}]`));
         } else {
           console.log(chalk.red('Invalid citation index. Use /cite [index] from the previous response.'));
         }
         continue;
+      }
+
+      // Plugin system: attempt to run any user plugin
+      if (query.startsWith('/')) {
+        const handled = await runPlugin(query, { query, history, vectorStore, llm, streamToTerminal }, plugins);
+        if (handled) continue;
       }
 
       if (query.toLowerCase() === '/stats') {

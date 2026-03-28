@@ -5,7 +5,7 @@ import requests
 import re
 from pydantic import BaseModel
 from api_clients import get_mistral_client, get_firecrawl_key
-from config import ContextConfig
+from config import ContextConfig, ModelRegistry
 
 def clean_scraped_markdown(text: str) -> str:
     """General-purpose heuristic to strip navigation boilerplate and breadcrumbs."""
@@ -389,7 +389,7 @@ User Query: {user_query}
 """
         try:
             response = client.chat.complete(
-                model='mistral-large-latest',
+                model=ModelRegistry.MISTRAL_LARGE,
                 messages=[{"role": "user", "content": prompt}]
             )
             raw_answer = response.choices[0].message.content.strip()
@@ -454,7 +454,7 @@ User Query: {query}
 """
         try:
             response = client.chat.complete(
-                model='mistral-small-latest',
+                model=ModelRegistry.MISTRAL_SMALL,
                 messages=[{"role": "user", "content": prompt}]
             )
             text = response.choices[0].message.content.strip()
@@ -506,7 +506,7 @@ Content:
         for attempt in range(max_retries + 1):
             try:
                 response = client.chat.complete(
-                    model='mistral-small-latest',
+                    model=ModelRegistry.MISTRAL_SMALL,
                     messages=[{"role": "user", "content": prompt}]
                 )
                 sliced_text = response.choices[0].message.content.strip()
@@ -607,7 +607,7 @@ Results:
 """
         try:
             response = client.chat.complete(
-                model='mistral-small-latest',
+                model=ModelRegistry.MISTRAL_SMALL,
                 messages=[{"role": "user", "content": prompt}]
             )
             text = response.choices[0].message.content.strip()

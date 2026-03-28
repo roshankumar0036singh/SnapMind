@@ -13,14 +13,19 @@ import { recordUsage } from './monitor.js';
 export async function getEmbeddings(options = {}) {
   const provider = options.provider || config.get('provider');
   const airgap = options.airgap || false;
+  const multilingual = options.multilingual || config.get('multilingual') || false;
 
   if (airgap || provider === 'ollama') {
-    return new OllamaEmbeddings({ model: 'nomic-embed-text' });
+    // Use multilingual model if requested
+    const model = multilingual ? 'snowflake-arctic-embed' : 'nomic-embed-text';
+    return new OllamaEmbeddings({ model });
   }
 
   switch (provider) {
     case 'openai':
-      return new OpenAIEmbeddings({ apiKey: await getKey('openai') });
+      // text-embedding-3-large supports 100+ languages natively
+      const model = multilingual ? 'text-embedding-3-large' : 'text-embedding-3-small';
+      return new OpenAIEmbeddings({ apiKey: await getKey('openai'), model });
     case 'mistral':
     default:
       return new MistralAIEmbeddings({ apiKey: await getKey('mistral') });

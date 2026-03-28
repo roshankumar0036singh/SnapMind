@@ -25,7 +25,7 @@ db_pool = get_db_pool()
 FIRECRAWL_BASE_URL = "https://api.firecrawl.dev/v1"
 
 # Import configuration
-from config import ChunkingConfig, EmbeddingConfig, FeatureFlags
+from config import ChunkingConfig, EmbeddingConfig, SearchConfig, FeatureFlags, RerankingConfig, ModelRegistry
 
 # Import semantic chunking
 from chunking import chunk_text
@@ -194,7 +194,7 @@ def translate_text_mistral(text: str, target_lang: str = "en", api_keys: dict = 
                  
         start_time = time.time()
         resp = mistral_client.chat.complete(
-            model="mistral-small-latest",
+            model=ModelRegistry.MISTRAL_SMALL,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
@@ -233,7 +233,7 @@ def extract_semantic_tags(text: str, api_keys: dict = None) -> List[str]:
             return []
             
         response = mistral_client.chat.complete(
-            model="mistral-small-latest",
+            model=ModelRegistry.MISTRAL_SMALL,
             messages=[{
                 "role": "system", 
                 "content": "You are a semantic tag extractor. Read the text and extract 2-5 highly relevant, single-word or short-phrase technical tags (e.g. 'React', 'Git', 'Authentication', 'Python'). DO NOT include explanations, generic words like 'code' or 'tutorial', or markdown. Output strictly a JSON object with a 'tags' key containing an array of strings: {\"tags\": [\"tag1\", \"tag2\"]}."

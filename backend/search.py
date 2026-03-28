@@ -9,7 +9,7 @@ from api_clients import get_mistral_client, get_openai_client, get_gemini_client
 
 # Import hybrid search, reranking, and configuration
 from hybrid_search import HybridSearcher
-from config import SearchConfig, FeatureFlags, RerankingConfig, CacheConfig, ContextConfig, LLMProviderConfig
+from config import SearchConfig, FeatureFlags, RerankingConfig, CacheConfig, ContextConfig, LLMProviderConfig, ModelRegistry
 from cache import cache_query, store_in_cache
 from context_optimizer import optimize_context
 from query_processor import enhance_query, get_best_query_for_search
@@ -38,7 +38,7 @@ def get_reranker():
             _reranker_instance = None
     return _reranker_instance
 
-GENERATION_MODEL = "mistral-small-latest"
+GENERATION_MODEL = ModelRegistry.MISTRAL_SMALL
 
 LANG_MAP = {
     "en": "English",
@@ -754,10 +754,12 @@ NO SPECIFIC CONTEXT WAS RETRIEVED.
 Question: {query}
 """
 
-    # Mistral Generation
-    try:
-        print(f"Generating with Mistral model: mistral-small-latest")
-        
+        # 1. System Message (Instructions + RAG Context)
+        if output_lang and output_lang not in ["auto", "en", "unknown"]:
+            from search import LANG_MAP
+            lang_name = LANG_MAP.get(output_lang, output_lang)
+            system_instruction += f"\n\nCRITICAL LANGUAGE RULE: The user requested the response in {lang_name}. You MUST output your ENTIRE response in {lang_name}."
+
         system_content = f"{system_instruction}\n{citation_instruction}\n\nCONTEXT:\n{context}" if context else f"{system_instruction}\nNO CONTEXT FOUND."
         
         final_messages = [
@@ -790,7 +792,7 @@ Question: {query}
                 model=model_target
             )
         elif active_provider == "openai":
-            model_target = active_model or "gpt-4o-mini"
+            model_target = active_model or ModelRegistry.GPT_4O_MINI
             model_used = f"OpenAI ({model_target})"
             print(f"[CHAT] Using OpenAI model: {model_target}")
             client = get_openai_client(api_keys)
@@ -800,7 +802,7 @@ Question: {query}
             )
             final_answer = chat_response.choices[0].message.content
         elif active_provider == "gemini":
-            model_target = active_model or "gemini-2.0-flash"
+            model_target = active_model or ModelRegistry.GEMINI_FLASH
             model_used = f"Gemini ({model_target})"
             print(f"[CHAT] Using Gemini model: {model_target}")
             client = get_gemini_client(api_keys)
@@ -821,7 +823,7 @@ Question: {query}
             )
             final_answer = chat_response.text
         else:
-            model_target = active_model or "mistral-small-latest"
+            model_target = active_model or ModelRegistry.MISTRAL_SMALL
             model_used = f"Mistral ({model_target})"
             print(f"[CHAT] Generating with Mistral model: {model_target}")
             client = get_mistral_client(api_keys)
@@ -876,7 +878,7 @@ Question: {query}
                 # Save user query
                 save_chat_message(session_id, "user", query, api_keys=api_keys)
                 # Save assistant response
-                save_chat_message(session_id, "assistant", answer, api_keys=api_keys)
+                save_chat_message(session_id, "assistant", final_answer, api_keys=api_keys)
                 print(f"[MEMORY] Saved Turn to memory (Session: {session_id})")
             except Exception as e:
                 print(f"[MEMORY] Error saving turn: {e}")
@@ -1307,12 +1309,17 @@ Question: {query}
             print(f"Streaming with Local LLM (Ollama): {LLMProviderConfig.OLLAMA_GENERATION_MODEL}")
             model_used = LLMProviderConfig.OLLAMA_GENERATION_MODEL
         else:
-            print(f"Streaming with Mistral model: mistral-small-latest")
-            model_used = "mistral-small-latest"
+            model_used = ModelRegistry.MISTRAL_SMALL
+            model_target = active_model or ModelRegistry.MISTRAL_SMALL
         
         print(f"[PERF] Total pre-stream time: {_time.time() - _t0:.2f}s")
         
         # 1. System Message (Instructions + RAG Context)
+        if output_lang and output_lang not in ["auto", "en", "unknown"]:
+            from search import LANG_MAP
+            lang_name = LANG_MAP.get(output_lang, output_lang)
+            system_instruction += f"\n\nCRITICAL LANGUAGE RULE: The user requested the response in {lang_name}. You MUST output your ENTIRE response in {lang_name} from the very first token."
+            
         system_content = f"{system_instruction}\n{citation_instruction}\n\nCONTEXT:\n{context}" if context else f"{system_instruction}\nNO CONTEXT FOUND."
         
         final_messages = [
@@ -1347,12 +1354,10 @@ Question: {query}
             )
             for text_chunk in stream_response:
                 full_response += text_chunk
-                if output_lang and output_lang not in ["auto", "en", "unknown"]:
-                    continue
                 yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
                 
         elif active_provider == "openai":
-            model_target = active_model or "gpt-4o-mini"
+            model_target = active_model or ModelRegistry.GPT_4O_MINI
             model_used = f"OpenAI ({model_target})"
             print(f"[LLM] Streaming with OpenAI model: {model_target}")
             client = get_openai_client(api_keys)
@@ -1365,12 +1370,10 @@ Question: {query}
                 if chunk.choices[0].delta.content is not None:
                     text_chunk = chunk.choices[0].delta.content
                     full_response += text_chunk
-                    if output_lang and output_lang not in ["auto", "en", "unknown"]:
-                        continue
                     yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
                     
         elif active_provider == "gemini":
-            model_target = active_model or "gemini-2.0-flash"
+            model_target = active_model or ModelRegistry.GEMINI_FLASH
             model_used = f"Gemini ({model_target})"
             print(f"[LLM] Streaming with Gemini model: {model_target}")
             client = get_gemini_client(api_keys)
@@ -1393,12 +1396,10 @@ Question: {query}
             for chunk in stream_response:
                 text_chunk = chunk.text
                 full_response += text_chunk
-                if output_lang and output_lang not in ["auto", "en", "unknown"]:
-                    continue
                 yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
 
         else: # Standard Mistral fallback
-            model_target = active_model or "mistral-small-latest"
+            model_target = active_model or ModelRegistry.MISTRAL_SMALL
             model_used = f"Mistral ({model_target})"
             print(f"[LLM] Streaming with Mistral model: {model_target}")
             client = get_mistral_client(api_keys)
@@ -1410,8 +1411,6 @@ Question: {query}
                  if chunk.data.choices[0].delta.content:
                     text_chunk = chunk.data.choices[0].delta.content
                     full_response += text_chunk
-                    if output_lang and output_lang not in ["auto", "en", "unknown"]:
-                        continue
                     yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
         
         # [NEW] Post-Translation via Lingo.dev for stream
@@ -1478,7 +1477,7 @@ DO NOT include any explanations. Output strictly a JSON object with a 'suggestio
 
         client = get_mistral_client(api_keys)
         response = client.chat.complete(
-            model="mistral-small-latest",
+            model=ModelRegistry.MISTRAL_SMALL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": context if context else "General tech topics"}

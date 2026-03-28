@@ -7,6 +7,7 @@ import time
 from playwright.async_api import async_playwright
 from markdownify import markdownify as md
 from browser_agents import clean_scraped_markdown, chunk_at_word_boundary, extract_highlight_snippet
+from config import ModelRegistry
 
 class LocalBrowserAgent:
     def __init__(self, headless: bool = True):
@@ -251,7 +252,7 @@ User Query: {user_query}
 """
             # mistral-large-latest via run_in_executor if needed, but here we'll just call it
             response = client.chat.complete(
-                model='mistral-large-latest',
+                model=ModelRegistry.MISTRAL_LARGE,
                 messages=[{"role": "user", "content": prompt}]
             )
             raw_answer = response.choices[0].message.content.strip()

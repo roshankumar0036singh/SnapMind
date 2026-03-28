@@ -10,6 +10,32 @@ load_dotenv()
 
 
 # ============================================================================
+# MODEL REGISTRY
+# ============================================================================
+
+class ModelRegistry:
+    """Central registry for all LLM model identifiers"""
+    
+    # Mistral Models
+    MISTRAL_SMALL = os.getenv("MISTRAL_SMALL_MODEL", "mistral-small-latest")
+    MISTRAL_LARGE = os.getenv("MISTRAL_LARGE_MODEL", "mistral-large-latest")
+    MISTRAL_EMBED = os.getenv("MISTRAL_EMBED_MODEL", "mistral-embed")
+    
+    # Gemini Models
+    GEMINI_FLASH = os.getenv("GEMINI_FLASH_MODEL", "gemini-2.0-flash")
+    GEMINI_FLASH_LITE = os.getenv("GEMINI_FLASH_LITE_MODEL", "gemini-2.0-flash-lite")
+    GEMINI_PRO = os.getenv("GEMINI_PRO_MODEL", "gemini-1.5-pro")
+    
+    # OpenAI Models
+    GPT_4O = os.getenv("GPT_4O_MODEL", "gpt-4o")
+    GPT_4O_MINI = os.getenv("GPT_4O_MINI_MODEL", "gpt-4o-mini")
+    
+    # Groq / Llama / Other
+    LLAMA_SCOUT = os.getenv("LLAMA_SCOUT_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+    LLAMA3 = os.getenv("LLAMA3_MODEL", "llama3")
+
+
+# ============================================================================
 # PHASE 1: CHUNKING CONFIGURATION
 # ============================================================================
 
@@ -18,7 +44,7 @@ class ChunkingConfig:
     
     # Semantic Chunking Settings
     SEMANTIC_CHUNKING_ENABLED = os.getenv("SEMANTIC_CHUNKING_ENABLED", "true").lower() == "true"
-    AGENTIC_CHUNKING_MODEL = "mistral-large-latest"
+    AGENTIC_CHUNKING_MODEL = ModelRegistry.MISTRAL_LARGE
     AGENTIC_CHUNKING_TARGET_SIZE = 1000
     
     # Chunk size parameters (in characters)
@@ -45,7 +71,7 @@ class EmbeddingConfig:
     """Configuration for embedding generation"""
     
     # Embedding model
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "mistral-embed")
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", ModelRegistry.MISTRAL_EMBED)
     
     # Parallel processing
     MAX_EMBEDDING_WORKERS = int(os.getenv("MAX_EMBEDDING_WORKERS", "3"))
@@ -129,13 +155,13 @@ class LLMProviderConfig:
     
     # Ollama settings
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_GENERATION_MODEL = os.getenv("OLLAMA_GENERATION_MODEL", "llama3")
+    OLLAMA_GENERATION_MODEL = os.getenv("OLLAMA_GENERATION_MODEL", ModelRegistry.LLAMA3)
 
 class GenerationConfig:
     """Configuration for LLM generation"""
     
     # Generation model
-    GENERATION_MODEL = os.getenv("GENERATION_MODEL", "mistral-small-latest")
+    GENERATION_MODEL = os.getenv("GENERATION_MODEL", ModelRegistry.MISTRAL_SMALL)
     
     # Fallback models (in order of preference)
     FALLBACK_MODELS = os.getenv("FALLBACK_MODELS", "").split(",") if os.getenv("FALLBACK_MODELS") else []

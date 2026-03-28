@@ -26,13 +26,14 @@ const program = new Command();
 program
   .name('snapmind-ai')
   .description('The ultimate local AI companion for students, developers, and analysts.')
-  .version('1.0.0')
+  .version('1.1.3')
   .option('--airgap', 'Run in 100% offline mode using local models only')
   .option('--watch <path>', 'Automatically index changes in the specified directory')
   .option('--repo <url>', 'Clone and index a GitHub repository')
   .option('--mount <path>', 'Mount and index a local directory recursively')
   .option('--pages <range>', 'Specific page range to index (e.g., 1-10)')
-  .option('--persona <name>', 'Select persona directly (scholar, coder, analyst, writer)');
+  .option('--persona <name>', 'Select persona directly (scholar, coder, analyst, writer)')
+  .option('--pipe', 'Read input from stdin (e.g., cat file.txt | snapmind-ai --pipe --persona scholar)');
 
 
 program
@@ -192,6 +193,25 @@ program
     if (program.args.length > 0 && program.args[0] === 'config') return;
 
     const isDirect = options.repo || options.mount || options.persona || options.watch;
+    
+    // Pipe Mode (Feature 29): read from stdin
+    if (options.pipe) {
+      const fs = (await import('fs-extra')).default;
+      const path = (await import('path')).default;
+      const chunks = [];
+      for await (const chunk of process.stdin) {
+        chunks.push(chunk);
+      }
+      const content = Buffer.concat(chunks).toString('utf8');
+      if (content.trim().length > 0) {
+        const tmpDir = path.join(process.cwd(), '.snapmind_cache', 'pipe_input');
+        await fs.ensureDir(tmpDir);
+        const tmpFile = path.join(tmpDir, `stdin_${Date.now()}.txt`);
+        await fs.writeFile(tmpFile, content);
+        options.mount = tmpDir;
+        console.log(chalk.gray(`\nPipe: Received ${content.length} chars from stdin.`));
+      }
+    }
     
     // Auto-Routing (Feature 25)
     if (!options.persona && program.args.length > 0) {
