@@ -622,7 +622,7 @@ def normalize_url(url: str) -> str:
     except:
         return url
 
-def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "auto", session_id: str = None) -> Dict[str, Any]:
+def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "auto", session_id: str = None, yield_callback=None) -> Dict[str, Any]:
     """Backend logic for ingesting a website."""
     global FeatureFlags
     
@@ -650,6 +650,8 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
             print(f"[INGEST] Warning: Could not create job row: {e}")
 
     def update_job_status(status, message, chunks=0):
+        if yield_callback:
+            yield_callback(status, message, chunks)
         if job_id and db_pool:
             try:
                 with db_pool.connection() as conn:
@@ -669,7 +671,7 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         if success:
             # Pass the requested language so Lingo.dev translates the transcript
             print(f"[INGEST] Passing YouTube transcript to ingest_text_logic (target_lang={target_lang}, session={session_id})")
-            res = ingest_text_logic(normalized_url, text_content, target_lang=target_lang, api_keys=api_keys, session_id=session_id, page_title=yt_title)
+            res = ingest_text_logic(normalized_url, text_content, target_lang=target_lang, api_keys=api_keys, session_id=session_id, page_title=yt_title, yield_callback=yield_callback)
             if res.get("success"):
                 update_job_status("completed", res.get("message", "Success"), res.get("chunks_count", 0))
             else:
@@ -687,7 +689,7 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         
         if success:
             print(f"[INGEST] Passing Twitter thread to ingest_text_logic (target_lang={target_lang}, session={session_id})")
-            res = ingest_text_logic(normalized_url, thread_content, target_lang=target_lang, api_keys=api_keys, session_id=session_id)
+            res = ingest_text_logic(normalized_url, thread_content, target_lang=target_lang, api_keys=api_keys, session_id=session_id, yield_callback=yield_callback)
             if res.get("success"):
                 update_job_status("completed", res.get("message", "Success"), res.get("chunks_count", 0))
             else:
@@ -731,12 +733,22 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
     try:
         if FeatureFlags.GRAPHRAG_ENABLED:
             from graph_logic import extract_graph_data, insert_graph_data
-            print(f"[INGEST] Extracting GraphRAG data...")
-            graph_data = extract_graph_data(markdown_content, api_keys=api_keys)
-            if graph_data.get("nodes") or graph_data.get("edges"):
-                insert_graph_data(graph_data, normalized_url, session_id=session_id)
+            update_job_status("processing", "Knowledge Graph Extraction starting in background...")
+            print(f"[INGEST] Extracting GraphRAG data in background...")
+            
+            def process_graph():
+                try:
+                    graph_data = extract_graph_data(markdown_content, api_keys=api_keys)
+                    if graph_data.get("nodes") or graph_data.get("edges"):
+                        insert_graph_data(graph_data, normalized_url, session_id=session_id)
+                        print("[GRAPH] Background Knowledge Graph extraction completed successfully.")
+                except Exception as e:
+                    print(f"[GRAPH WARNING] Background graph extraction failed: {e}")
+            
+            import threading
+            threading.Thread(target=process_graph, daemon=True).start()
     except Exception as e:
-        print(f"[INGEST WARNING] GraphRAG extraction failed, continuing: {e}")
+        print(f"[INGEST WARNING] GraphRAG background setup failed: {e}")
 
     # 2.5: Translate content via Lingo.dev
     try:
@@ -838,12 +850,17 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         update_job_status("failed", f"Fatal error: {str(e)}")
         return {"success": False, "error": f"Fatal ingestion error: {str(e)}"}
 
-def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", api_keys: dict = None, extra_metadata: dict = None, session_id: str = None, page_title: str = None) -> Dict[str, Any]:
+def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", api_keys: dict = None, extra_metadata: dict = None, session_id: str = None, page_title: str = None, yield_callback=None) -> Dict[str, Any]:
     """Ingest raw text content (e.g., from VLM extraction)."""
     global FeatureFlags
     try:
         normalized_url = normalize_url(url)
-        update_job_status(session_id, "processing", f"Ingesting {normalized_url}...", 10)
+        # Wrap update_job_status locally or manually invoke yield_callback
+        def local_update_job_status(sid, status, message, pct):
+            update_job_status(sid, status, message, pct)
+            if yield_callback: yield_callback(status, message, pct)
+            
+        local_update_job_status(session_id, "processing", f"Ingesting {normalized_url}...", 10)
         print(f"[INGEST_TEXT] Processing text for: {normalized_url}")
         
         if not text_content or len(text_content.strip()) < 10:
@@ -855,7 +872,7 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         
         # Use translated text for everything else
         if is_translated:
-            update_job_status(session_id, "processing", f"Translated {original_lang} -> {target_lang}", 30)
+            local_update_job_status(session_id, "processing", f"Translated {original_lang} -> {target_lang}", 30)
             print(f"[INGEST_TEXT] Translated from {original_lang} to {target_lang}.")
             text_content = translated_text
 
@@ -905,10 +922,10 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
                 use_semantic=True # Forced true for large docs
             )
         
-        update_job_status(session_id, "processing", f"Created {len(chunks)} chunks", 60)
+        local_update_job_status(session_id, "processing", f"Created {len(chunks)} chunks", 60)
         
         if not chunks:
-            update_job_status(session_id, "failed", "No valid chunks created from text.")
+            local_update_job_status(session_id, "failed", "No valid chunks created from text.", 100)
             return {"success": False, "error": "No valid chunks created from text."}
         
         print(f"[INGEST_TEXT] Created {len(chunks)} chunks")
@@ -921,10 +938,18 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         # [NEW] Phase 13: GraphRAG Extraction
         if FeatureFlags.GRAPHRAG_ENABLED:
             from graph_logic import extract_graph_data, insert_graph_data
-            graph_data = extract_graph_data(text_content, api_keys=api_keys)
-            if graph_data.get("nodes") or graph_data.get("edges"):
-                update_job_status(session_id, "processing", "Extracting Knowledge Graph...", 80)
-                insert_graph_data(graph_data, normalized_url, session_id=session_id)
+            local_update_job_status(session_id, "processing", "Extracting Knowledge Graph in background...", 80)
+            
+            def process_text_graph():
+                try:
+                    graph_data = extract_graph_data(text_content, api_keys=api_keys)
+                    if graph_data.get("nodes") or graph_data.get("edges"):
+                        insert_graph_data(graph_data, normalized_url, session_id=session_id)
+                except Exception as e:
+                    print(f"[GRAPH WARNING] Background text graph extraction failed: {e}")
+            
+            import threading
+            threading.Thread(target=process_text_graph, daemon=True).start()
         
         # Inject tags and translation data into the chunks BEFORE embedding
         for chunk in chunks:
@@ -949,7 +974,7 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         )
         
         if not data_list:
-            update_job_status(session_id, "failed", "Failed to create embeddings.")
+            local_update_job_status(session_id, "failed", "Failed to create embeddings.", 100)
             return {"success": False, "message": "Failed to create embeddings."}
 
         # 5. Bulk insert with retries for connection stability
@@ -976,10 +1001,10 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
             perform_bulk_text_insert(args_list)
         except Exception as e:
             print(f"[INGEST_TEXT FATAL ERROR] All retries failed: {e}")
-            update_job_status(session_id, "failed", f"DB insertion failed after retries: {e}")
+            local_update_job_status(session_id, "failed", f"DB insertion failed after retries: {e}", 100)
             return {"success": False, "message": f"DB insertion failed after retries: {e}"}
             
-        update_job_status(session_id, "completed", f"Successfully ingested {len(data_list)} chunks.", 100)
+        local_update_job_status(session_id, "completed", f"Successfully ingested {len(data_list)} chunks.", 100)
         return {
             "success": True, 
             "message": f"Successfully ingested {len(data_list)} chunks.",
@@ -990,11 +1015,11 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
         import traceback
         print(f"[INGEST_TEXT FATAL ERROR] {e}")
         traceback.print_exc()
-        update_job_status(session_id, "failed", f"Fatal text ingestion error: {str(e)}")
+        local_update_job_status(session_id, "failed", f"Fatal text ingestion error: {str(e)}", 100)
         return {"success": False, "error": f"Fatal text ingestion error: {str(e)}"}
     
 
-def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content_type: str, target_lang: str = "auto", api_keys: dict = None, session_id: str = None, page_title: str = None) -> Dict[str, Any]:
+def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content_type: str, target_lang: str = "auto", api_keys: dict = None, session_id: str = None, page_title: str = None, yield_callback=None) -> Dict[str, Any]:
     """Parse local binary files to text, chunk, and embed them just like web text."""
     import io
     
@@ -1080,9 +1105,9 @@ def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content
     print(f"[INGEST_FILE] Parsed/Analyzed {len(text_content)} characters. Forwarding to text pipeline...")
     
     # Send the raw extracted text downstream to chunk & embed
-    return ingest_text_logic(source_url, text_content, target_lang=target_lang, api_keys=api_keys, extra_metadata=extra_metadata, session_id=session_id, page_title=page_title or filename)
+    return ingest_text_logic(source_url, text_content, target_lang=target_lang, api_keys=api_keys, extra_metadata=extra_metadata, session_id=session_id, page_title=page_title or filename, yield_callback=yield_callback)
 
-def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, api_keys: dict = None, session_id: str = None) -> Dict[str, Any]:
+def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, api_keys: dict = None, session_id: str = None, yield_callback=None) -> Dict[str, Any]:
     """
     Crawl and ingest multiple pages from a website.
     
@@ -1125,6 +1150,7 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                 print(f"[MULTIPAGE] Warning: Could not create job row: {e}")
 
         def update_job_status(status, message, chunks=0):
+            if yield_callback: yield_callback(status, message, chunks)
             if job_id and db_pool:
                 try:
                     with db_pool.connection() as conn:

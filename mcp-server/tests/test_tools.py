@@ -9,7 +9,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 
-BASE_URL = "https://roshan123478-snapmind-backend.hf.space"
+BASE_URL = "http://localhost:8000"
 
 
 # ──────────────────────────────────────────────────────

@@ -1051,7 +1051,7 @@ function App() {
 
     window.addEventListener('trigger-vision-query', handleTriggerVision);
     return () => window.removeEventListener('trigger-vision-query', handleTriggerVision);
-  }, [handleSend]);
+  }, []);
 
   // [NEW] Update Greeting on Mode Switch if session is fresh
   useEffect(() => {

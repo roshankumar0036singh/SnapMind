@@ -1297,13 +1297,6 @@ Question: {query}
 
     # Streaming Generation
     try:
-        if LLMProviderConfig.PROVIDER in ["local", "hybrid"]:
-            print(f"Streaming with Local LLM (Ollama): {LLMProviderConfig.OLLAMA_GENERATION_MODEL}")
-            model_used = LLMProviderConfig.OLLAMA_GENERATION_MODEL
-        else:
-            model_used = ModelRegistry.MISTRAL_SMALL
-            model_target = active_model or ModelRegistry.MISTRAL_SMALL
-        
         print(f"[PERF] Total pre-stream time: {_time.time() - _t0:.2f}s")
         
         # 1. System Message (Instructions + RAG Context)
@@ -1395,15 +1388,34 @@ Question: {query}
             model_used = f"Mistral ({model_target})"
             print(f"[LLM] Streaming with Mistral model: {model_target}")
             client = get_mistral_client(api_keys)
-            stream_response = client.chat.stream(
-                model=model_target,
-                messages=final_messages,
-            )
-            for chunk in stream_response:
-                 if chunk.data.choices[0].delta.content:
-                    text_chunk = chunk.data.choices[0].delta.content
-                    full_response += text_chunk
-                    yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
+            try:
+                stream_response = client.chat.stream(
+                    model=model_target,
+                    messages=final_messages,
+                )
+                for chunk in stream_response:
+                    if chunk.data.choices[0].delta.content:
+                        text_chunk = chunk.data.choices[0].delta.content
+                        full_response += text_chunk
+                        yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
+            except Exception as mistral_stream_err:
+                # [FIX] Streaming failed (e.g. WinError 10060 connection timeout).
+                # Fall back to non-streaming Mistral completion and emit as one chunk.
+                print(f"[LLM] Mistral streaming failed ({mistral_stream_err}). Falling back to non-streaming...")
+                try:
+                    fallback_response = client.chat.complete(
+                        model=model_target,
+                        messages=final_messages,
+                    )
+                    full_response = fallback_response.choices[0].message.content or ""
+                    if full_response:
+                        yield json.dumps({"type": "token", "text": full_response}) + "\n"
+                        print(f"[LLM] Mistral non-streaming fallback succeeded ({len(full_response)} chars).")
+                    else:
+                        raise ValueError("Mistral non-streaming fallback returned empty response.")
+                except Exception as mistral_fallback_err:
+                    print(f"[LLM] Mistral non-streaming fallback also failed: {mistral_fallback_err}")
+                    raise  # Let the outer except handle it and yield error
         
         # [NEW] Post-Translation via Lingo.dev for stream
         print(f"[CHAT-STREAM] Post-generation check: output_lang={output_lang}, response_len={len(full_response)}")
@@ -1415,7 +1427,7 @@ Question: {query}
                  full_response = translated_answer
                  import re
                  full_response = re.sub(r'\[\d{1,3}\]', '', full_response)
-                 print(f"[CHAT-STREAM] Translation applied successfully ({len(full_response)} chars)")
+                 print(f"[CHAT-STREAM] Translation applied successfully ({len(full_response)} chars).")
              elif translated_answer:
                  # Lingo returned something but is_trans was False — use it anyway since user explicitly asked
                  full_response = translated_answer
@@ -1445,9 +1457,9 @@ Question: {query}
         return
         
     except Exception as e:
-        print(f"Warning: Mistral streaming failed: {e}")
+        print(f"[LLM] Streaming generation failed for provider '{active_provider}': {e}")
 
-    yield json.dumps({"type": "error", "error": "All models failed."}) + "\n"
+    yield json.dumps({"type": "error", "error": "All streaming attempts failed. Please check your API key or network connection and try again."}) + "\n"
 
 def get_chat_suggestions(page_content: str | None, url: str | None, site_id: str | None, api_keys: dict = None) -> dict:
     import json

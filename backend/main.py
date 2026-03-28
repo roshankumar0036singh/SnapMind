@@ -159,6 +159,7 @@ class IngestRequest(BaseModel):
     max_depth: int = 3   # For multi-page crawling
     target_lang: str = "auto"  # [NEW] Language for Lingo.dev translation
     session_id: str | None = None # [NEW] Phase 25: Conversation-Scoped Graph
+    stream: bool = False # [NEW] Stream progress via NDJSON
 
 class RepoIngestRequest(BaseModel):
     repo_url: str
@@ -484,6 +485,65 @@ async def ingest_endpoint(request: IngestRequest, req: Request):
             else:
                 print(f"[INGEST] ✗ {key_name} key MISSING (env fallback will be used)")
         
+        if request.stream:
+            from fastapi.responses import StreamingResponse
+            import threading
+            
+            async def event_generator():
+                q = asyncio.Queue()
+                loop = asyncio.get_running_loop()
+                
+                def yield_callback(status: str, message: str, progress: int = 0):
+                    event = {"status": status, "message": message, "progress": progress}
+                    try:
+                        asyncio.run_coroutine_threadsafe(q.put(event), loop)
+                    except RuntimeError:
+                        pass
+                
+                result_container = {}
+                def run_logic():
+                    try:
+                        if request.text_content:
+                            from rag_pipeline import ingest_text_logic
+                            res = ingest_text_logic(request.url, request.text_content, api_keys=api_keys, session_id=request.session_id, yield_callback=yield_callback)
+                        elif request.crawl_mode == "multi":
+                            from rag_pipeline import ingest_multipage_logic
+                            res = ingest_multipage_logic(
+                                request.url,
+                                request.max_pages,
+                                request.max_depth,
+                                api_keys,
+                                session_id=request.session_id,
+                                yield_callback=yield_callback
+                            )
+                        else:
+                            from rag_pipeline import ingest_website_logic
+                            res = ingest_website_logic(request.url, api_keys, target_lang=request.target_lang, session_id=request.session_id, yield_callback=yield_callback)
+                        result_container["result"] = res
+                    except Exception as e:
+                        result_container["error"] = str(e)
+                    finally:
+                        try:
+                            asyncio.run_coroutine_threadsafe(q.put(None), loop)
+                        except: pass
+                
+                thread = threading.Thread(target=run_logic, daemon=True)
+                thread.start()
+                
+                while True:
+                    item = await q.get()
+                    if item is None:
+                        break
+                    yield json.dumps(item) + "\n"
+                    
+                if "error" in result_container:
+                    yield json.dumps({"success": False, "error": result_container["error"]}) + "\n"
+                else:
+                    yield json.dumps(result_container.get("result", {})) + "\n"
+
+            return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+        # Synchronous execution if streaming is not requested
         if request.text_content:
             # Direct ingestion
             from rag_pipeline import ingest_text_logic

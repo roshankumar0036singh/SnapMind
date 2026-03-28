@@ -295,7 +295,13 @@ class ContextOptimizer:
             
             heading_info = f"\nHeading: {heading}" if heading else ""
             
-            part = f"Source: {source}{heading_info}{score_info}\nID: [db-block-{i+1}]\nContent:\n{content}"
+            # [FIX] Remap the chunk id to match what's written in the context string.
+            # Raw DB UUIDs were leaking into retrieved_blocks, causing the LLM to cite
+            # UUIDs (e.g. c82ce0dd-...) instead of structured IDs (db-block-N).
+            pseudo_id = f"db-block-{i+1}"
+            chunk['id'] = pseudo_id
+            
+            part = f"Source: {source}{heading_info}{score_info}\nID: [{pseudo_id}]\nContent:\n{content}"
             optimized_parts.append(part)
         
         optimized_content = '\n\n---\n\n'.join(optimized_parts)

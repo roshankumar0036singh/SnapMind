@@ -16,13 +16,13 @@ const PRICES = {
 export async function recordUsage(model, inputTokens, outputTokens) {
   const stats = await loadStats();
   const price = PRICES[model] || { input: 0, output: 0 };
-  
+
   const cost = ((inputTokens / 1000) * price.input) + ((outputTokens / 1000) * price.output);
-  
+
   stats.totalInputTokens += inputTokens;
   stats.totalOutputTokens += outputTokens;
   stats.totalCost += cost;
-  
+
   if (!stats.models[model]) stats.models[model] = { input: 0, output: 0, cost: 0 };
   stats.models[model].input += inputTokens;
   stats.models[model].output += outputTokens;

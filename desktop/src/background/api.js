@@ -152,9 +152,78 @@ export const apiClient = {
         const response = await fetch(`${baseUrl}/ingest`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...headers },
-            body: JSON.stringify({ url, text_content: text, session_id: sessionId })
+            body: JSON.stringify({ url, text_content: text, session_id: sessionId, stream: false })
         });
         return response.json();
+    },
+
+    /**
+     * Streams ingestion progress using NDJSON.
+     */
+    async streamIngest(url, text = null, sessionId = null, onProgress, mode = "single", maxPages = 50, maxDepth = 3) {
+        console.log('[API] Stream Ingest request...', url);
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+
+        try {
+            const bodyPayload = {
+                url,
+                session_id: sessionId,
+                stream: true,
+                crawl_mode: mode,
+                max_pages: maxPages,
+                max_depth: maxDepth
+            };
+            if (text) {
+                bodyPayload.text_content = text;
+            }
+            
+            const response = await fetch(`${baseUrl}/ingest`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...headers },
+                body: JSON.stringify(bodyPayload)
+            });
+
+            if (!response.ok) throw new Error(`Stream Ingest Error: ${response.status}`);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            let finalResult = null;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop(); // Keep incomplete line in buffer
+
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const data = JSON.parse(line);
+                        // Terminal state check (success or error payload)
+                        if (data.success !== undefined) {
+                            finalResult = data;
+                            // Also call onProgress once more with final result
+                            if (onProgress) onProgress({ status: data.success ? "completed" : "failed", message: data.message || data.error, progress: 100 });
+                        } else {
+                            // Progress event
+                            if (onProgress) onProgress(data);
+                        }
+                    } catch (e) {
+                        console.error("[Stream] Parse Error:", e, line);
+                    }
+                }
+            }
+            return finalResult || { success: true };
+        } catch (error) {
+            console.error("Stream Ingest Error:", error);
+            if (onProgress) onProgress({ status: "failed", message: error.message, progress: 0 });
+            return { success: false, error: error.message };
+        }
     },
 
     async ingestFile(file, sessionId = null) {
@@ -421,7 +490,7 @@ export const apiClient = {
         const response = await fetch(`${baseUrl}/ingest`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...headers },
-            body: JSON.stringify({ url, session_id: sessionId })
+            body: JSON.stringify({ url, session_id: sessionId, stream: false })
         });
         return response.json();
     }
