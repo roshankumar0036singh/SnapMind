@@ -10,11 +10,11 @@ import { toast, Toaster } from 'sonner';
 import { apiClient, chrome } from './background/api';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSkeleton from './components/LoadingSkeleton';
+import IngestModal from './components/IngestModal';
 import ShortcutsModal from './components/ShortcutsModal';
 import GraphMap from './components/GraphMap';
 import SpotlightModal from './components/SpotlightModal';
-import * as ReactWindow from 'react-window';
-const List = ReactWindow.FixedSizeList || (ReactWindow.default && ReactWindow.default.FixedSizeList);
+import { FixedSizeList as List } from 'react-window';
 import { motion, AnimatePresence } from 'framer-motion';
 import './styles/design-tokens.css';
 
@@ -271,6 +271,7 @@ function App() {
   const [isOffline, setIsOffline] = useState(false); // Offline detection
   const [lastFailedAction, setLastFailedAction] = useState(null); // For retry functionality
   const [showShortcuts, setShowShortcuts] = useState(false); // Keyboard shortcuts modal
+  const [isIngestModalOpen, setIsIngestModalOpen] = useState(false); // [NEW] Ingest Modal
   const [pendingFile, setPendingFile] = useState(null); // File dragged in by user
   const [isDragging, setIsDragging] = useState(false); // Drag overlay state
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
@@ -983,12 +984,11 @@ function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl+I: Index current page
+      // Ctrl+I: Index current page (Now shows Unified Ingest Modal)
       if (e.ctrlKey && e.key === 'i') {
         e.preventDefault();
-        if (!isLoading && currentUrl) {
-          handleIngest();
-          toast.success('Indexing page... (Ctrl+I)');
+        if (!isLoading) {
+          setIsIngestModalOpen(true);
         }
       }
       // Feature 22: Focus Mode Toggle
@@ -1328,44 +1328,13 @@ function App() {
     }
   };
 
-  const handleIngest = async (customUrl = null) => {
-    // Client-side validation
-    let urlToIngest = typeof customUrl === 'string' ? customUrl : null;
-
-    if (!urlToIngest) {
-      if (typeof chrome !== 'undefined' && chrome.tabs) {
-        try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tab?.url) urlToIngest = tab.url;
-        } catch(e) {}
-      }
-      
-      // If we still don't have a URL, rely on the global currentUrl state, or prompt the user
-      if (!urlToIngest) {
-        if (currentUrl) {
-            urlToIngest = currentUrl;
-        } else {
-            const promptedUrl = window.prompt("Enter the URL you want to index:");
-            if (promptedUrl && promptedUrl.trim()) {
-                urlToIngest = promptedUrl.trim();
-            } else {
-                toast.error('No URL provided');
-                return;
-            }
-        }
-      }
-    }
-
-    // Validate URL
+  const handleIngest = async (urlToIngest, crawlMode = null) => {
+    // Validate URL (just in case)
     let url;
     try {
       url = new URL(urlToIngest);
       if (!['http:', 'https:'].includes(url.protocol)) {
         toast.error('Can only index HTTP/HTTPS pages');
-        return;
-      }
-      if (url.hostname === 'chrome' || url.protocol === 'chrome-extension:') {
-        toast.error('Cannot index Chrome internal pages');
         return;
       }
     } catch (err) {
@@ -1387,111 +1356,19 @@ function App() {
     // YouTube and Twitter URLs don't need multi-page crawl
     const isYouTube = url.hostname.includes('youtube.com') || url.hostname.includes('youtu.be');
     const isTwitter = url.hostname.includes('twitter.com') || url.hostname.includes('x.com');
-    let crawlMode;
+    
+    let modeConfig = crawlMode;
 
     if (isYouTube || isTwitter) {
-      crawlMode = { mode: 'single', max_pages: 1, max_depth: 1 };
-    } else {
-      // Show crawl mode selection dialog
-      crawlMode = await showCrawlModeDialog();
-      if (!crawlMode) return; // User cancelled
+      modeConfig = { mode: 'single', max_pages: 1, max_depth: 1 };
+    } else if (!modeConfig) {
+        // If no crawl mode provided yet, we should have opened the modal instead.
+        // This is a safety fallback.
+        setIsIngestModalOpen(true);
+        return;
     }
 
-    await performIngest(urlToIngest, crawlMode);
-  };
-
-  const showCrawlModeDialog = () => {
-    return new Promise((resolve) => {
-      const dialog = document.createElement('div');
-      dialog.style.cssText = `
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.4);
-        backdrop-filter: blur(4px);
-        z-index: 50;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-        animation: fadeIn 0.2s ease-out forwards;
-      `;
-
-      dialog.innerHTML = `
-        <div style="background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 384px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); border: 1px solid #f1f5f9; transform: scale(1); transition: all 0.2s; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-          <div style="margin-bottom: 20px;">
-            <h3 style="font-size: 18px; font-weight: 600; color: #0f172a; margin: 0 0 4px 0;">Choose Crawl Mode</h3>
-            <p style="font-size: 14px; color: #64748b; margin: 0;">Select how you want to index this website</p>
-          </div>
-          
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <button id="single-page-btn" style="width: 100%; position: relative; padding: 16px; border-radius: 12px; border: 2px solid #f1f5f9; background: white; text-align: left; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#6366f1'; this.style.backgroundColor='#eef2ff'; this.querySelector('.icon-bg').style.backgroundColor='#4f46e5'; this.querySelector('.icon-bg').style.color='white';" onmouseout="this.style.borderColor='#f1f5f9'; this.style.backgroundColor='white'; this.querySelector('.icon-bg').style.backgroundColor='#e0e7ff'; this.querySelector('.icon-bg').style.color='#4f46e5';">
-              <div class="icon-bg" style="width: 40px; height: 40px; border-radius: 8px; background: #e0e7ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></polyline><polyline points="10 9 9 9 8 9"></polyline></svg>
-              </div>
-              <div>
-                <div style="font-weight: 600; color: #0f172a; margin-bottom: 2px; font-size: 14px;">Single Page</div>
-                <div style="font-size: 12px; color: #64748b;">Index only this exact URL (~10s)</div>
-              </div>
-            </button>
-            
-            <button id="multi-page-btn" style="width: 100%; position: relative; padding: 16px; border-radius: 12px; border: 2px solid #f1f5f9; background: white; text-align: left; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5'; this.querySelector('.icon-bg').style.backgroundColor='#059669'; this.querySelector('.icon-bg').style.color='white';" onmouseout="this.style.borderColor='#f1f5f9'; this.style.backgroundColor='white'; this.querySelector('.icon-bg').style.backgroundColor='#d1fae5'; this.querySelector('.icon-bg').style.color='#059669';">
-              <div class="icon-bg" style="width: 40px; height: 40px; border-radius: 8px; background: #d1fae5; color: #059669; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-              </div>
-              <div>
-                <div style="font-weight: 600; color: #0f172a; margin-bottom: 2px; font-size: 14px;">Website Crawl</div>
-                <div style="font-size: 12px; color: #64748b;">Find and index subpages (~60s)</div>
-              </div>
-            </button>
-          </div>
-          
-          <button id="cancel-btn" style="margin-top: 20px; width: 100%; padding: 10px; font-size: 14px; font-weight: 500; color: #64748b; background: #f8fafc; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.backgroundColor='#f1f5f9'; this.style.color='#1e293b';" onmouseout="this.style.backgroundColor='#f8fafc'; this.style.color='#64748b';">
-            Cancel
-          </button>
-        </div>
-      `;
-
-      document.body.appendChild(dialog);
-
-      const singleBtn = dialog.querySelector('#single-page-btn');
-      const multiBtn = dialog.querySelector('#multi-page-btn');
-      const cancelBtn = dialog.querySelector('#cancel-btn');
-
-      // Hover effects
-      [singleBtn, multiBtn].forEach(btn => {
-        btn.addEventListener('mouseenter', () => {
-          btn.style.transform = 'translateY(-1px)';
-          btn.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
-        });
-        btn.addEventListener('mouseleave', () => {
-          btn.style.transform = 'translateY(0)';
-          btn.style.boxShadow = 'none';
-        });
-      });
-
-      singleBtn.onclick = () => {
-        document.body.removeChild(dialog);
-        resolve({ mode: 'single' });
-      };
-
-      multiBtn.onclick = () => {
-        document.body.removeChild(dialog);
-        resolve({ mode: 'multi', max_pages: 10, max_depth: 3 });
-      };
-
-      cancelBtn.onclick = () => {
-        document.body.removeChild(dialog);
-        resolve(null);
-      };
-
-      // Close on backdrop click
-      dialog.onclick = (e) => {
-        if (e.target === dialog) {
-          document.body.removeChild(dialog);
-          resolve(null);
-        }
-      };
-    });
+    await performIngest(urlToIngest, modeConfig);
   };
 
   const performIngest = async (url, crawlOptions) => {
@@ -3019,6 +2896,12 @@ function App() {
             isOpen={isSpotlightOpen} 
             onClose={() => { setIsSpotlightOpen(false); setSpotlightVisionData(null); }}
             visionData={spotlightVisionData}
+          />
+          <IngestModal 
+            isOpen={isIngestModalOpen}
+            onClose={() => setIsIngestModalOpen(false)}
+            currentUrl={currentUrl}
+            onIngest={handleIngest}
           />
           <ClipboardBubble onAction={handleClipboardAction} />
         </div>

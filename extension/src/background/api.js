@@ -785,7 +785,7 @@ export const apiClient = {
     async queryBrowserMode(question, sessionId = null, options = {}) {
         console.log('[API] Sending Browser Query to Backend...', { question, ...options });
         const baseUrl = await this.getBaseUrl();
-        const endpoint = `${baseUrl}/browser/query`;
+        const endpoint = `${baseUrl}/browser/research`;
 
         try {
             const response = await fetch(endpoint, {

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Widget Test Mode</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background: #fff;
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+        main {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>My Awesome Development Blog</h1>
+        <p>A sample website containing interesting tech insights.</p>
+    </header>
+    <main>
+        <article>
+            <h2>Understanding the Widget Integration</h2>
+            <p>This is a sample website used to verify that the SnapMind AI web widget securely injects itself on a 3rd party host page and successfully fetches RAG responses from the snapmind backend.</p>
+            <p>If you look at the bottom right corner, you should see the floating chat button!</p>
+        </article>
+    </main>
+
+    <!-- Paste the SnapMind AI Web Widget Snippet Here -->
+    <!-- For testing, the site_id is "https://example.com" or the localhost test -->
+    <script src="/snapmind-widget.js" data-site-id="https://example.com" data-api-url="http://localhost:8000"></script>
+</body>
+</html>

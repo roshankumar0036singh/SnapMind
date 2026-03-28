@@ -128,17 +128,28 @@ def get_relevant_context(query: str, match_threshold: float = None, site_id: str
                 mode=search_mode
             )
         
-        # [NEW] Global Fallback: If no results for these sites, try global search
-        if not matches and site_ids:
-            print(f"[SEARCH] No matches for site_ids: {site_ids}. Falling back to global search...")
-            matches = searcher.search(
+        # [NEW] Global Fallback: If no results for these sites OR low relevance, try global search
+        top_score = matches[0].get('score', 0) if matches else 0
+        needs_fallback = not matches or (site_ids and top_score < 0.45)
+        
+        if needs_fallback and site_ids:
+            if not matches:
+                print(f"[SEARCH] No matches for site_ids: {site_ids}. Falling back to global search...")
+            else:
+                print(f"[SEARCH] Low relevance matches (top_score={top_score:.4f}) for site_ids: {site_ids}. Trying global fallback...")
+                
+            global_matches = searcher.search(
                 query=search_query,
                 site_id=None,
                 top_k=initial_count,
                 mode=search_mode
             )
-            if matches:
-                 print(f"[SEARCH] Global fallback found {len(matches)} candidates")
+            if global_matches:
+                 print(f"[SEARCH] Global fallback found {len(global_matches)} candidates")
+                 # If global matches are significantly better, use them
+                 global_top_score = global_matches[0].get('score', 0)
+                 if not matches or global_top_score > top_score:
+                     matches = global_matches
         
         print(f"[SEARCH] Retrieval results: {len(matches)} candidates")
         

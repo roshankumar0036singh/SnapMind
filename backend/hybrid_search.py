@@ -100,6 +100,11 @@ class HybridSearcher:
                 try:
                     with self.db_pool.connection() as conn:
                         with conn.cursor(row_factory=dict_row) as cur:
+                            # Pre-check: If embedding is missing, this method should return empty
+                            if not query_embedding or len(query_embedding) == 0:
+                                print(f"[VECTOR-SEARCH] Warning: Empty query_embedding passed to _vector_search.")
+                                return []
+
                             query_sql = """
                                 SELECT 
                                     id, content, source_url, metadata,
@@ -198,6 +203,18 @@ class HybridSearcher:
         
         try:
             from psycopg.rows import dict_row
+            
+            # [CRITICAL] Skip if embedding failed
+            if not query_embedding:
+                 print("[HYBRID] Skipping vector half of search due to missing embedding. Falling back to keyword search.")
+                 # Use a clean params dict for keyword search to avoid "missing parameter" errors
+                 keyword_params = {
+                     "query_text": query,
+                     "match_count": top_k,
+                     "filter_source_url": site_id
+                 }
+                 return self._keyword_search(query, site_id, top_k)
+
             with self.db_pool.connection() as conn:
                 with conn.cursor(row_factory=dict_row) as cur:
                     # In psycopg3 we can execute the function via SELECT FROM function_name(args...)
@@ -219,7 +236,7 @@ class HybridSearcher:
         except Exception as e:
             print(f"Hybrid search error: {e}")
             print("Falling back to vector search...")
-            # Fallback to vector search if hybrid search fails
+            # Fallback to vector search if hybrid search fails (will also check for empty embedding)
             return self._vector_search(query, query_embedding, site_id, top_k)
     
     def _embed_query(self, query: str) -> List[float]:
@@ -233,29 +250,41 @@ class HybridSearcher:
             # 1. Mistral Embedding Flow
             if "mistral" in model_name.lower():
                 from api_clients import get_mistral_client
-                mistral_client = get_mistral_client(self.api_keys)
-                if mistral_client:
-                    result = mistral_client.embeddings.create(
+                client = get_mistral_client(self.api_keys)
+                if client:
+                    result = client.embeddings.create(
                         model=model_name,
                         inputs=[query]
                     )
-                    return result.data[0].embedding
+                    embedding = result.data[0].embedding
+                else:
+                    embedding = None
+                
+            # 2. Gemini Embedding Flow
+            else:
+                from api_clients import get_gemini_client
+                client = get_gemini_client(self.api_keys)
+                result = client.models.embed_content(
+                    model="gemini-embedding-001" if "gemini" not in model_name.lower() else model_name,
+                    contents=query,
+                )
+                embedding = result.embeddings[0].values
             
-            # 2. Gemini Embedding Flow (Fallback or Default)
-            from api_clients import get_gemini_client
-            client = get_gemini_client(self.api_keys)
-            result = client.models.embed_content(
-                model="gemini-embedding-001" if "gemini" not in model_name.lower() else model_name,
-                contents=query,
-            )
-            return result.embeddings[0].values
+            # [CRITICAL PADDING FIX] Match DB dimension (3072)
+            if embedding and len(embedding) < 3072:
+                # print(f"[SEARCH-EMBED] Padding vector from {len(embedding)} to 3072")
+                embedding = list(embedding) + [0.0] * (3072 - len(embedding))
+            elif embedding and len(embedding) > 3072:
+                embedding = embedding[:3072]
+                
+            return embedding
         except Exception as e:
             error_msg = str(e)
             if "403" in error_msg and ("leaked" in error_msg.lower() or "permission_denied" in error_msg.lower()):
                 print(f"[SEARCH-EMBED] CRITICAL: API Key leaked/invalid! Using neutral vector.")
-                return [0.0] * 768
+                return [0.0] * 3072
             print(f"Embedding error: {e}")
-            return []
+            return None # Return None instead of []
     
     def _normalize_url(self, url: str) -> str:
         """

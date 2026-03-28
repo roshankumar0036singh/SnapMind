@@ -50,6 +50,10 @@ def get_db_pool():
                 def configure_connection(conn):
                     # Register the vector type on all new connections
                     register_vector(conn)
+                    # [FIX] Increase statement timeout to 60s to prevent QueryCanceled during indexing
+                    with conn.cursor() as cur:
+                        cur.execute("SET statement_timeout = '60s'")
+                    conn.commit() # [FIX] Prevent 'INTRANS' status error in pool
                 
                 # Check if we are running in local desktop mode
                 is_local = "localhost" in DATABASE_URL or "127.0.0.1" in DATABASE_URL
@@ -60,8 +64,8 @@ def get_db_pool():
                     "keepalives_idle": 20,
                     "keepalives_interval": 5,
                     "keepalives_count": 3,
-                    "tcp_user_timeout": 30000,
-                    "connect_timeout": 10
+                    "tcp_user_timeout": 60000,
+                    "connect_timeout": 20
                 }
                 
                 if not is_local:

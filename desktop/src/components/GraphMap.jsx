@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import ForceGraph2D from 'react-force-graph-2d';
+import ForceGraph2DImport from 'react-force-graph-2d';
+const ForceGraph2D = ForceGraph2DImport.default || ForceGraph2DImport;
 import { Loader2, ZoomIn, ZoomOut, Maximize2, Database, ShieldCheck, Zap, Activity, MousePointer2 } from 'lucide-react';
 
 const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {

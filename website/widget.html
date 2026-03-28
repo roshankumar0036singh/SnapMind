@@ -261,7 +261,40 @@ footer{background:var(--bg2);border-top:1px solid var(--border);padding:3rem 2re
   <a href="https://www.npmjs.com/package/snapmind-ai" target="_blank" class="nav-cta">npm install →</a>
   <div class="hamburger" onclick="toggleNav()"><span></span><span></span><span></span></div>
 </nav>
-<section style='margin-top:64px; min-height:60vh;'><div class='container' style='padding-top:40px;'><h1 style='color:var(--purple);font-family:var(--display);font-size:3rem;'>Web Widget</h1><p style='color:var(--text2);margin-top:1rem;font-size:1.1rem;'>Coming soon. Embed anywhere.</p></div></section>
+<section id="widget-generator" style='margin-top:64px; min-height:60vh;'>
+  <div class='container' style='padding-top:40px; max-width: 800px;'>
+    <h1 style='color:var(--text);font-family:var(--display);font-size:clamp(2.5rem, 5vw, 4rem);font-weight:700;letter-spacing:-0.02em;'>
+      Deploy SnapMind AI <span style="color:var(--purple)">Everywhere</span>
+    </h1>
+    <p style='color:var(--text2);margin-top:1rem;font-size:1.1rem;line-height:1.7;'>
+      Ingest your entire website into our vector database and generate a floating chatbot widget. Your users can ask questions directly on your site, powered solely by your content.
+    </p>
+    
+    <div style="margin-top: 3rem; background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 2rem;">
+      <h3 style="font-family: var(--display); font-size: 1.5rem; margin-bottom: 1.5rem;">1. Ingest Website</h3>
+      
+      <form id="ingest-form" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <input type="url" id="ingest-url" placeholder="https://yourwebsite.com" required style="flex: 1; min-width: 250px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 12px 16px; color: var(--text); font-family: var(--body); font-size: 1rem; outline: none;">
+        <button type="submit" class="btn-primary">Ingest Content →</button>
+      </form>
+      
+      <div id="ingest-status" style="margin-top: 1.5rem; display: none; padding: 1rem; background: rgba(124,58,237,0.05); border: 1px dashed var(--purple); border-radius: 4px; font-family: var(--mono); font-size: 0.85rem; color: var(--text2);">
+        Initializing ingestion process...
+      </div>
+      
+      <div id="snippet-container" style="margin-top: 3rem; display: none; animation: fadeUp 0.6s ease forwards;">
+        <h3 style="font-family: var(--display); font-size: 1.5rem; margin-bottom: 1rem;">2. Embed Snippet</h3>
+        <p style="color: var(--text2); margin-bottom: 1.5rem; font-size: 0.95rem;">Copy and paste this script tag into the <code>&lt;head&gt;</code> or just before the closing <code>&lt;/body&gt;</code> tag of your website.</p>
+        
+        <div style="position: relative;">
+          <pre style="background: var(--bg3); border: 1px solid var(--border); padding: 1.5rem; border-radius: 6px; overflow-x: auto;"><code id="embed-code" style="color: var(--purple); font-family: var(--mono); font-size: 0.85rem; white-space: pre-wrap;"></code></pre>
+          <button id="copy-snippet-btn" class="copy-btn" style="position: absolute; top: 1.5rem; right: 1.5rem;">Copy Code</button>
+        </div>
+      </div>
+      
+    </div>
+  </div>
+</section>
 <footer>
   <div class="footer-grid">
     <div class="footer-brand">
@@ -355,6 +388,69 @@ document.querySelectorAll('.hl-card, .step, .provider-card, .sec-card, .comm-car
   el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
   io.observe(el);
 });
+
+// JS Logic for Ingestion & Widget Generator
+const ingestForm = document.getElementById('ingest-form');
+if (ingestForm) {
+  ingestForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const url = document.getElementById('ingest-url').value;
+    const statusDiv = document.getElementById('ingest-status');
+    const snippetContainer = document.getElementById('snippet-container');
+    const embedCode = document.getElementById('embed-code');
+    
+    statusDiv.style.display = 'block';
+    statusDiv.innerHTML = 'Crawling and vectorizing website. This can take a few minutes for larger sites... <span class="cursor"></span>';
+    snippetContainer.style.display = 'none';
+    
+    try {
+      const response = await fetch('http://localhost:8000/ingest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: url,
+          crawl_mode: "multi",
+          max_pages: 10,
+          max_depth: 2
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success || result.status === 'success' || result.chunks_processed > 0) {
+        statusDiv.innerHTML = '<span style="color: var(--green)">✓ Website successfully ingested and vectorized!</span>';
+        
+        let widgetUrl = window.location.origin + '/snapmind-widget.js';
+        
+        const snippet = `<script src="${widgetUrl}" data-site-id="${url}" data-api-url="http://localhost:8000"></` + `script>`;
+        embedCode.textContent = snippet;
+        
+        snippetContainer.style.display = 'block';
+      } else {
+        statusDiv.innerHTML = `<span style="color: #ff5f57">Error: ${result.error || 'Ingestion failed.'}</span>`;
+      }
+    } catch (err) {
+      console.error(err);
+      statusDiv.innerHTML = `<span style="color: #ff5f57">Failed to connect to backend server. Make sure SnapMind AI backend is running locally on port 8000.</span>`;
+    }
+  });
+}
+
+const copyBtn = document.getElementById('copy-snippet-btn');
+if (copyBtn) {
+  copyBtn.addEventListener('click', (e) => {
+    const code = document.getElementById('embed-code').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      const btn = e.target;
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy Code', 2000);
+    });
+  });
+}
+
 </script>
 </body>
 </html>
