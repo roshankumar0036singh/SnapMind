@@ -33,7 +33,8 @@ program
   .option('--mount <path>', 'Mount and index a local directory recursively')
   .option('--pages <range>', 'Specific page range to index (e.g., 1-10)')
   .option('--persona <name>', 'Select persona directly (scholar, coder, analyst, writer)')
-  .option('--pipe', 'Read input from stdin (e.g., cat file.txt | snapmind-ai --pipe --persona scholar)');
+  .option('--pipe', 'Read input from stdin (e.g., cat file.txt | snapmind-ai --pipe --persona scholar)')
+  .option('--multilingual', 'Use multilingual embedding model (snowflake-arctic-embed / text-embedding-3-large)');
 
 
 program
@@ -187,6 +188,67 @@ program
       console.log(chalk.gray('  Usage: snapmind vault delete <provider>'));
     }
   });
+
+program
+  .command('schedule')
+  .description('Manage scheduled intelligence reports (Feature 17)')
+  .addCommand(
+    new Command('add')
+      .description('Schedule a recurring RAG report')
+      .requiredOption('-q, --query <query>', 'The RAG query to run')
+      .requiredOption('-c, --cron <expression>', 'Cron expression (e.g. "0 9 * * 1" = every Monday 9am)')
+      .option('-p, --persona <persona>', 'Persona to use', 'scholar')
+      .option('-n, --namespace <namespace>', 'Knowledge namespace to query', 'default')
+      .action(async (opts) => {
+        const { addSchedule } = await import('./utils/scheduler.js');
+        const id = await addSchedule(opts);
+        console.log(chalk.green(`\nSchedule added with ID: ${chalk.bold(id)}`));
+        console.log(chalk.gray(`  Query     : "${opts.query}"`));
+        console.log(chalk.gray(`  Cron      : ${opts.cron}`));
+        console.log(chalk.gray(`  Persona   : ${opts.persona}`));
+        console.log(chalk.gray(`\nReports will be saved to: ~/snapmind_reports/`));
+        console.log(chalk.gray(`Start with: snapmind-ai schedule run`));
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('List all scheduled reports')
+      .action(async () => {
+        const { loadSchedules } = await import('./utils/scheduler.js');
+        const schedules = await loadSchedules();
+        if (schedules.length === 0) {
+          console.log(chalk.yellow('\nNo schedules defined. Use: snapmind-ai schedule add'));
+          return;
+        }
+        console.log(chalk.bold.cyan(`\nScheduled Intelligence Reports (${schedules.length})\n`));
+        schedules.forEach(s => {
+          console.log(chalk.white(`  [${s.id}] ${s.query}`));
+          console.log(chalk.gray(`         Cron: ${s.cron}  |  Persona: ${s.persona}`));
+        });
+      })
+  )
+  .addCommand(
+    new Command('remove')
+      .description('Remove a schedule by ID')
+      .argument('<id>', 'Schedule ID to remove')
+      .action(async (id) => {
+        const { removeSchedule } = await import('./utils/scheduler.js');
+        const removed = await removeSchedule(id);
+        if (removed) {
+          console.log(chalk.green(`\nSchedule ${id} removed.`));
+        } else {
+          console.log(chalk.red(`\nSchedule ${id} not found.`));
+        }
+      })
+  )
+  .addCommand(
+    new Command('run')
+      .description('Start the cron scheduler (runs until Ctrl+C)')
+      .action(async () => {
+        const { startScheduler } = await import('./utils/scheduler.js');
+        await startScheduler();
+      })
+  );
 
 program
   .action(async (options) => {
