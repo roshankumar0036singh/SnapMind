@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Save, Key, ArrowLeft, Database, Upload, Download, Loader2, ShieldCheck, Globe, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { chrome } from '../background/api';
+import WatchedUrlsPanel from './WatchedUrlsPanel';
 
 export default function Settings({ onBack }) {
     const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -306,6 +307,13 @@ export default function Settings({ onBack }) {
                             />
                         </button>
                     </div>
+
+                    {/* Show Watchlist Panel when Monitoring is Enabled */}
+                    {webMonitorEnabled && (
+                        <div className="mt-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                            <WatchedUrlsPanel />
+                        </div>
+                    )}
                 </section>
 
                 {/* Section: Data Management */}

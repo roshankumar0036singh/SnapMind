@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SnapMind AI — Documentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg: #080c10;
+  --bg2: #0d1117;
+  --bg3: #111820;
+  --surface: #141c24;
+  --border: rgba(124,58,237,0.12);
+  --border2: rgba(124,58,237,0.25);
+  --purple: #7c3aed;
+  --green: #39ff14;
+  --text: #e8edf2;
+  --text2: #8a9ab0;
+  --text3: #4a5568;
+  --mono: 'JetBrains Mono', monospace;
+  --display: 'Outfit', sans-serif;
+  --body: 'Inter', sans-serif;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--body);overflow-x:hidden;line-height:1.7;letter-spacing:0.015em}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--purple);border-radius:2px}
+
+/* Nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,12,16,0.85);backdrop-filter:blur(12px);border-bottom:0.5px solid var(--border)}
+.nav-logo{font-family:var(--mono);font-weight:700;font-size:1rem;color:var(--purple);letter-spacing:0.05em;display:flex;align-items:center;gap:8px;text-decoration:none}
+.nav-logo span{color:var(--text2)}
+
+/* Layout */
+.docs-container { max-width: 800px; margin: 100px auto 40px; padding: 0 20px; }
+h1 { font-family:var(--display); font-size: 2.5rem; margin-bottom: 20px; color: var(--purple); }
+h2 { font-family:var(--display); font-size: 1.8rem; margin: 40px 0 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+h3 { font-family:var(--display); font-size: 1.2rem; margin: 20px 0 10px; }
+p { font-size: 0.95rem; color: var(--text2); margin-bottom: 15px; }
+ul, ol { margin-bottom: 15px; padding-left: 20px; color: var(--text2); font-size: 0.95rem; }
+li { margin-bottom: 8px; }
+code { font-family:var(--mono); font-size:0.8rem; padding:3px 6px; background:var(--bg2); border:1px solid var(--border); border-radius:4px; color:var(--purple); }
+pre { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:15px; margin-bottom:20px; overflow-x:auto; }
+pre code { background:none; border:none; padding:0; color:var(--text); }
+.note { background:rgba(124,58,237,0.05); border-left:4px solid var(--purple); padding:15px; margin-bottom:20px; font-size:0.9rem; color:var(--text2); }
+
+.step-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+.step-number { font-family: var(--mono); color: var(--purple); font-size: 0.8rem; font-weight: 700; margin-bottom: 10px; display: inline-block; border-bottom: 1px solid var(--purple); }
+
+footer{background:var(--bg2);border-top:1px solid var(--border);padding:2rem;text-align:center;margin-top:60px;}
+footer p{font-family:var(--mono);font-size:0.8rem;}
+
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="snapmind-landing.html" class="nav-logo">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="6" height="6" rx="1" fill="#7c3aed"/><rect x="10" y="2" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.5"/><rect x="2" y="10" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.5"/><rect x="10" y="10" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.3"/></svg>
+    snapmind<span>-ai</span>
+  </a>
+</nav>
+
+<div class="docs-container">
+  <h1>SnapMind Documentation</h1>
+  <p>Welcome to the official documentation for the SnapMind ecosystem. Select a platform to view its specific documentation.</p>
+
+  <style>
+    .platform-list { margin: 30px 0 50px; display: flex; flex-direction: column; gap: 15px; }
+    .platform-row {
+      display: flex; align-items: center; gap: 20px;
+      padding: 20px 25px; background: var(--bg2); border: 1px solid var(--border);
+      border-radius: 8px; text-decoration: none; color: var(--text);
+      transition: all 0.2s; position: relative; overflow: hidden;
+    }
+    .platform-row::before {
+      content: ''; position: absolute; left: 0; width: 4px; top: 0; bottom: 0;
+      background: var(--purple); opacity: 0; transition: opacity 0.2s;
+    }
+    .platform-row:hover { border-color: var(--purple); transform: translateX(4px); background: rgba(124,58,237,0.03); }
+    .platform-row:hover::before { opacity: 1; }
+    .p-icon { color: var(--purple); display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: rgba(124,58,237,0.1); border-radius: 8px; flex-shrink: 0; }
+    .p-icon svg { width: 24px; height: 24px; }
+    .p-text h3 { margin: 0 0 5px 0; font-size: 1.15rem; color: var(--text); }
+    .p-text p { margin: 0; font-size: 0.9rem; color: var(--text2); }
+  </style>
+
+  <div class="platform-list">
+    <a href="npm.html" class="platform-row">
+      <div class="p-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></div>
+      <div class="p-text">
+        <h3>CLI Documentation</h3>
+        <p>Terminal commands, RAG parameters, persona flags, and OS keychain vault management.</p>
+      </div>
+    </a>
+    <a href="desktop.html" class="platform-row">
+      <div class="p-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg></div>
+      <div class="p-text">
+        <h3>Desktop App Documentation</h3>
+        <p>Native client installation, UI setups, and visual session management.</p>
+      </div>
+    </a>
+    <a href="extension.html" class="platform-row">
+      <div class="p-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></div>
+      <div class="p-text">
+        <h3>Browser Extension Documentation</h3>
+        <p>Direct web site vector ingestion, browser sidebar integration, and setup guides.</p>
+      </div>
+    </a>
+  </div>
+  
+  <h2>Getting Started (CLI Quickstart)</h2>
+  
+  <div class="step-card">
+    <span class="step-number">STEP 1: Prerequisites</span>
+    <p>Before installing SnapMind AI, make sure you have the following installed on your machine:</p>
+    <ul>
+      <li><strong>Node.js:</strong> Version 18.x or above.</li>
+      <li><strong>npm:</strong> Normally comes with Node.js.</li>
+      <li><strong>Ollama (Optional):</strong> Required only if you want to run completely local/offline LLMs.</li>
+    </ul>
+  </div>
+
+  <div class="step-card">
+    <span class="step-number">STEP 2: Installation</span>
+    <p>SnapMind can be installed globally via npm. Open your terminal and run the following command:</p>
+    <pre><code>npm install -g snapmind-ai</code></pre>
+    <div class="note"><strong>Note:</strong> On Linux/macOS, you might need to use <code>sudo</code> depending on your npm setup.</div>
+  </div>
+
+  <div class="step-card">
+    <span class="step-number">STEP 3: Configuration</span>
+    <p>Once installed, you need to configure your LLM providers. Run the config wizard to set up your API keys and default models.</p>
+    <pre><code>snapmind-ai config</code></pre>
+    <p>Follow the interactive prompts to add your keys (e.g., OpenAI, Anthropic, Gemini). Your keys will be securely stored in your OS keychain, never as plaintext.</p>
+  </div>
+  
+  <div class="step-card">
+    <span class="step-number">STEP 4: Usage</span>
+    <p>You are now ready to start using SnapMind! Launch a persona directly from the terminal. For example, to use the <b>Coder</b> persona on a specific repository:</p>
+    <pre><code>snapmind-ai --persona coder --repo https://github.com/your/repo.git</code></pre>
+    <p>Or, use the <b>Scholar</b> persona on a local folder of PDFs:</p>
+    <pre><code>snapmind-ai --persona scholar --mount ./my_papers</code></pre>
+  </div>
+
+  <h2>Usage Details</h2>
+  
+  <h3>Available Personas</h3>
+  <ul>
+    <li><code>scholar</code>: Advanced RAG over PDFs with citation support.</li>
+    <li><code>coder</code>: AST-aware repository indexing and architecture planning.</li>
+    <li><code>analyst</code>: High-fidelity CSV mapping and markdown trend generation.</li>
+    <li><code>writer</code>: Prose synthesis taking context from other personas.</li>
+  </ul>
+  
+  <h3>Important Flags</h3>
+  <ul>
+    <li><code>--airgap</code>: Force offline mode using Ollama only.</li>
+    <li><code>--watch</code>: Sync vector index dynamically when files change.</li>
+  </ul>
+
+  <h3>Managing Data</h3>
+  <p>All embeddings and histories are stored safely inside the local <code>.snapmind_cache</code> folder in your current directory. To perform routine cleanup, run:</p>
+  <pre><code>snapmind-ai maintenance</code></pre>
+
+  <p>Enjoy using SnapMind AI and redefining your terminal intelligence!</p>
+</div>
+
+<footer>
+  <p>SnapMind AI — Production-Grade Local Intelligence</p>
+</footer>
+
+</body>
+</html>

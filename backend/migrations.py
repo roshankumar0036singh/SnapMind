@@ -394,6 +394,17 @@ MIGRATIONS = [
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         """
+    },
+    {
+        "version": 9,
+        "name": "background_sync_watchlist",
+        "sql": """
+            CREATE TABLE IF NOT EXISTS watched_urls (
+                id SERIAL PRIMARY KEY,
+                url TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        """
     }
 ]
 

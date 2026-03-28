@@ -48,17 +48,14 @@ async def check_for_updates():
 
         with pool.connection() as conn:
             with conn.cursor(row_factory=None) as cur:
-                # 1. Identify URLs that haven't been checked for a while or are due
-                # For this implementation, we check the 'documents' table's oldest entries
-                # and cross-reference with 'refresh_suggestions' to avoid duplicates.
+                # 1. Identify URLs that the user has explicitly added to the watchlist.
+                # Cross-reference with 'refresh_suggestions' to avoid duplicates.
                 cur.execute("""
-                    SELECT source_url 
-                    FROM documents 
-                    WHERE source_url LIKE 'http%' 
-                    AND source_url NOT IN (SELECT url FROM refresh_suggestions WHERE status = 'pending')
-                    GROUP BY source_url
-                    ORDER BY MIN(created_at) ASC 
-                    LIMIT 3
+                    SELECT url 
+                    FROM watched_urls 
+                    WHERE url NOT IN (SELECT url FROM refresh_suggestions WHERE status = 'pending')
+                    ORDER BY created_at ASC 
+                    LIMIT 5
                 """)
                 urls = cur.fetchall()
 

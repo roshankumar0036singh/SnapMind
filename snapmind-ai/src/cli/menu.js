@@ -34,6 +34,9 @@ export async function startMenu(options) {
     }
 
     if (persona === 'exit') break;
+    
+    // Normalize persona for case-insensitive lookup and handle common prefixes like '/'
+    const normalizedPersona = persona.toLowerCase().trim().replace(/^\//, '');
 
     const personaMap = {
       scholar: startScholar,
@@ -42,8 +45,8 @@ export async function startMenu(options) {
       writer: startWriter,
     };
 
-    if (personaMap[persona]) {
-      const handoff = await personaMap[persona](currentOptions);
+    if (personaMap[normalizedPersona]) {
+      const handoff = await personaMap[normalizedPersona](currentOptions);
       if (handoff && handoff.target) {
         persona = handoff.target;
         currentOptions = { ...currentOptions, history: handoff.history, mount: handoff.mount || currentOptions.mount };

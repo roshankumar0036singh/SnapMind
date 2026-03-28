@@ -426,6 +426,49 @@ export const apiClient = {
     },
 
     /**
+     * Background Sync Watchlist API
+     */
+    async getWatchedUrls() {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const response = await fetch(`${baseUrl}/monitor/watched_urls`);
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (e) {
+            console.error("Failed to fetch watched URLs:", e);
+            return [];
+        }
+    },
+
+    async addWatchedUrl(url) {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const response = await fetch(`${baseUrl}/monitor/watched_urls`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            return await response.json();
+        } catch (e) {
+            console.error("Failed to add watched URL:", e);
+            return { success: false, error: e.message };
+        }
+    },
+
+    async removeWatchedUrl(url) {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const response = await fetch(`${baseUrl}/monitor/watched_urls?url=${encodeURIComponent(url)}`, {
+                method: 'DELETE'
+            });
+            return await response.json();
+        } catch (e) {
+            console.error("Failed to remove watched URL:", e);
+            return { success: false, error: e.message };
+        }
+    },
+
+    /**
      * Queries the Multi-Agent Browser orchestrator.
      */
     async queryBrowserMode(question, sessionId = null, options = {}) {

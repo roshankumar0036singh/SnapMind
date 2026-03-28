@@ -33,6 +33,13 @@ def ingest_repository(repo_url: str, target_lang: str = "auto", api_keys: dict =
     comments/docs into the target language, and ingests them into the RAG system.
     Updates the job row (if job_id is provided) when finished.
     """
+    # [FIX] Quick sanity check to catch non-repo URLs before cloning
+    if "docs.github.com" in repo_url.lower() or "/site-policy/" in repo_url.lower():
+        msg = f"Rejected non-repository URL: {repo_url}. Only base GitHub repository URLs are supported for repo ingestion."
+        print(f"[REPO_INGEST] {msg}")
+        _update_job_status(job_id, "failed", msg)
+        return {"success": False, "message": msg}
+
     try:
         # 1. Clone repository
         with tempfile.TemporaryDirectory() as temp_dir:

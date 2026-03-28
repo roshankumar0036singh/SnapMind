@@ -1333,12 +1333,27 @@ function App() {
     let urlToIngest = typeof customUrl === 'string' ? customUrl : null;
 
     if (!urlToIngest) {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.url) {
-        toast.error('No active tab found');
-        return;
+      if (typeof chrome !== 'undefined' && chrome.tabs) {
+        try {
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab?.url) urlToIngest = tab.url;
+        } catch(e) {}
       }
-      urlToIngest = tab.url;
+      
+      // If we still don't have a URL, rely on the global currentUrl state, or prompt the user
+      if (!urlToIngest) {
+        if (currentUrl) {
+            urlToIngest = currentUrl;
+        } else {
+            const promptedUrl = window.prompt("Enter the URL you want to index:");
+            if (promptedUrl && promptedUrl.trim()) {
+                urlToIngest = promptedUrl.trim();
+            } else {
+                toast.error('No URL provided');
+                return;
+            }
+        }
+      }
     }
 
     // Validate URL
@@ -1480,84 +1495,46 @@ function App() {
   };
 
   const performIngest = async (url, crawlOptions) => {
-
     setIsLoading(true);
     const toastId = toast.loading(
       crawlOptions.mode === 'multi'
         ? "🌐 Starting multi-page crawl..."
         : "📄 Scraping page content..."
     );
-    setIngestStatus({ status: 'processing', message: 'Starting ingestion...', progress: 5 });
-
-    const timeoutIds = [];
+    setIngestStatus({ status: 'processing', message: 'Connecting to ingest backend...', progress: 5 });
 
     try {
-      // Update toast based on mode
-      if (crawlOptions.mode === 'multi') {
-        timeoutIds.push(setTimeout(() => toast.loading("🔍 Discovering pages...", { id: toastId }), 1000));
-        timeoutIds.push(setTimeout(() => toast.loading("🧠 Processing and embedding...", { id: toastId }), 3000));
-      } else {
-        timeoutIds.push(setTimeout(() => toast.loading("🧠 Creating embeddings...", { id: toastId }), 1000));
-      }
+      const response = await apiClient.streamIngest(
+        url,
+        null,
+        currentSessionId,
+        (progressEvent) => {
+          if (progressEvent.status === 'processing' || progressEvent.status === 'completed') {
+            setIngestStatus({
+              status: progressEvent.status,
+              message: progressEvent.message,
+              progress: progressEvent.progress || 50
+            });
+            // Update toast optionally
+            if (progressEvent.progress && progressEvent.progress % 20 === 0 && progressEvent.progress < 100) {
+               toast.loading(progressEvent.message, { id: toastId });
+            }
+          }
+        },
+        crawlOptions.mode,
+        crawlOptions.max_pages || 10,
+        crawlOptions.max_depth || 3
+      );
 
-      const response = await chrome.runtime.sendMessage({
-        type: 'INGEST_PAGE',
-        url: url,
-        crawl_mode: crawlOptions.mode,
-        max_pages: crawlOptions.max_pages || 10,
-        max_depth: crawlOptions.max_depth || 3,
-        target_lang: outputLang || 'auto',
-        sessionId: currentSessionId
-      });
-
-      // Clear all pending timeouts to prevent overwriting rapid responses
-      timeoutIds.forEach(clearTimeout);
-
-      if (response.success && response.status === 'processing') {
-        // [NEW] Background job accepted
-
-        // Build a short URL for the Toast notification
-        let displayUrl = url;
-        try {
-          const u = new URL(url);
-          let path = u.pathname;
-          if (path.length > 20) path = path.substring(0, 20) + '...';
-          displayUrl = u.hostname + (path === '/' ? '' : path);
-        } catch (e) { }
-
+      if (response.success && response.status !== 'failed') {
         const msg = crawlOptions.mode === 'multi'
-          ? `Website Crawl started for ${displayUrl}`
-          : `Indexing started for ${displayUrl}`;
-
+          ? `Crawled ${response.pages_indexed || response.pages_crawled || 'multiple'} pages, ${response.total_chunks || response.chunks_count || 0} chunks indexed`
+          : `Indexed chunks successfully`;
+        
         toast.success(msg, { id: toastId });
-        setExternalUrl(''); // clear input if it was used
+        setIngestStatus(null);
+        setExternalUrl('');
 
-        // [NEW] Dynamically switch active chat context to the external URL if it doesn't match the current tab
-        if (url !== currentUrl) {
-          setActiveContext({ type: 'url', id: url, name: displayUrl });
-        }
-
-        // Clear any failed action
-        setLastFailedAction(null);
-      } else if (response.success) {
-        // Legacy synchronous success
-        toast.loading("💾 Storing in database...", { id: toastId });
-
-        setTimeout(() => {
-          const message = crawlOptions.mode === 'multi'
-            ? `Crawled ${response.pages_indexed || response.pages_crawled || 0} pages, ${response.total_chunks || response.chunks_count || 0} chunks indexed`
-            : `Indexed ${response.chunks_count || 'page'} successfully`;
-          toast.success(message, { id: toastId });
-        }, 500);
-
-        // Phase 2: Heuristic Check
-        if (response.isLowQuality) {
-          setTimeout(() => {
-            toast.warning("Low content detected. Try Visual Scan mode.", { duration: 5000 });
-          }, 1500);
-        }
-
-        // [NEW] Dynamically switch active chat context to the external URL if it doesn't match the current tab
         if (url !== currentUrl) {
           let displayUrl = url;
           try {
@@ -1565,37 +1542,21 @@ function App() {
             displayUrl = u.hostname + (u.pathname === '/' ? '' : u.pathname.substring(0, 20));
           } catch (e) { }
           setActiveContext({ type: 'url', id: url, name: displayUrl });
-          setExternalUrl('');
         }
-
-        // Clear any failed action
         setLastFailedAction(null);
       } else {
-        // Store failed action for retry
-        setLastFailedAction({ type: 'ingest', url: url });
-        const errMsg = response.error || response.message || "Unknown error";
-        toast.error(`Indexing failed: ${errMsg}`, {
-          id: toastId,
-          action: {
-            label: 'Retry',
-            onClick: () => handleIngest(url)
-          },
-          actionButtonStyle: { backgroundColor: '#3b82f6', color: 'white' }
-        });
+        throw new Error(response.error || response.message || "Ingestion failed without explicit error");
       }
     } catch (err) {
       console.error(err);
+      setIngestStatus(null);
       setLastFailedAction({ type: 'ingest', url: url });
       toast.error(`Error: ${err.message}`, {
         id: toastId,
-        action: {
-          label: 'Retry',
-          onClick: () => handleIngest(url)
-        },
+        action: { label: 'Retry', onClick: () => handleIngest(url) },
         actionButtonStyle: { backgroundColor: '#3b82f6', color: 'white' }
       });
     } finally {
-      timeoutIds.forEach(clearTimeout);
       setIsLoading(false);
     }
   };

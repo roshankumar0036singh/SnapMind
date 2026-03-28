@@ -6,6 +6,8 @@ import uvicorn
 import os
 import asyncio # [NEW] Required for loops
 import json # [NEW] Required for JSON manipulation
+import re # [NEW] Required for URL validation
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # Import our pipeline logic
@@ -193,6 +195,57 @@ class BookmarkRequest(BaseModel):
     content: str
     source_url: str | None = None
     metadata: dict | None = None
+
+class WatchlistRequest(BaseModel):
+    url: str
+
+@app.get("/monitor/watched_urls")
+async def get_watched_urls():
+    from database import get_db_pool
+    from psycopg.rows import dict_row
+    pool = get_db_pool()
+    if not pool: return []
+    try:
+        with pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("SELECT id, url, created_at FROM watched_urls ORDER BY created_at DESC")
+                return cur.fetchall()
+    except Exception as e:
+        print(f"[API] Error fetching watched urls: {e}")
+        return []
+
+@app.post("/monitor/watched_urls")
+async def add_watched_url(req: WatchlistRequest):
+    from database import get_db_pool
+    pool = get_db_pool()
+    if not pool: raise HTTPException(status_code=500, detail="Database unavailable")
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO watched_urls (url) VALUES (%s) ON CONFLICT (url) DO NOTHING",
+                    (req.url,)
+                )
+                conn.commit()
+                return {"success": True, "message": "Added to watchlist"}
+    except Exception as e:
+        print(f"[API] Error adding watched url: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/monitor/watched_urls")
+async def delete_watched_url(url: str):
+    from database import get_db_pool
+    pool = get_db_pool()
+    if not pool: raise HTTPException(status_code=500, detail="Database unavailable")
+    try:
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM watched_urls WHERE url = %s", (url,))
+                conn.commit()
+                return {"success": True, "message": "Removed from watchlist"}
+    except Exception as e:
+        print(f"[API] Error deleting watched url: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/admin/analytics")
 async def get_analytics():
@@ -604,12 +657,58 @@ async def ingest_file_endpoint(
     
     return result
 
+def is_github_repo_url(url: str) -> bool:
+    """
+    Validates if a URL points to a GitHub repository base.
+    Rejects documentation, features, or specific file/blob/tree paths.
+    """
+    if not url or not isinstance(url, str):
+        return False
+        
+    try:
+        # Normalize: remove trailing slash and .git suffix
+        clean_url = url.strip().rstrip('/')
+        if clean_url.endswith('.git'):
+            clean_url = clean_url[:-4]
+            
+        parsed = urlparse(clean_url)
+        # Domain check
+        if parsed.netloc.lower() not in ['github.com', 'www.github.com']:
+            return False
+            
+        # Path check: /owner/repo
+        path_parts = [p for p in parsed.path.split('/') if p]
+        
+        # Must have exactly 2 parts: owner and repo
+        if len(path_parts) != 2:
+            return False
+            
+        # Reject reserved keywords that aren't real owners/repos
+        reserved = {
+            'features', 'marketplace', 'pricing', 'explore', 'trending', 
+            'docs', 'site-policy', 'organizations', 'settings', 'notifications'
+        }
+        if path_parts[0].lower() in reserved:
+            return False
+            
+        return True
+    except:
+        return False
+
 @app.post("/ingest/github")
 def ingest_github_endpoint(request: RepoIngestRequest, req: Request, background_tasks: BackgroundTasks):
     """
     Ingest a full GitHub repository in the background.
     Returns a job_id that can be polled via GET /ingest/status/{job_id}.
     """
+    # [FIX] Validate URL before starting background task
+    if not is_github_repo_url(request.repo_url):
+        print(f"[GITHUB_INGEST] Rejected invalid repository URL: {request.repo_url}")
+        raise HTTPException(
+            status_code=400, 
+            detail="URL is not a valid GitHub repository. Please provide a base repository URL (e.g., https://github.com/user/repo)."
+        )
+
     api_keys = {
         "gemini": req.headers.get("x-gemini-key"),
         "mistral": req.headers.get("x-mistral-key"),
