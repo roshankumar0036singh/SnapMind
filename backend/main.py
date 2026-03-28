@@ -417,11 +417,11 @@ def health_check_debug():
         }
     }
 class ResearchRequest(BaseModel):
-    session_id: str
+    session_id: str | None = None
     query: str
     output_lang: str = "auto"
     query_notebook: bool = False
-    image_data: str = None
+    image_data: str | None = None
     visible: bool = False # [NEW] For Desktop Browser Agent
 
 @app.post("/browser/research")

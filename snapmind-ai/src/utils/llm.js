@@ -10,10 +10,68 @@ import { SnapMindError } from './errors.js';
 import { routeModel } from './router.js';
 import { recordUsage } from './monitor.js';
 
+let overrideProvider = null;
+
+async function checkOllama(airgap) {
+  try {
+    const response = await fetch('http://localhost:11434/api/tags').catch(() => null);
+    if (!(response && response.status === 200)) {
+      if (airgap) throw new SnapMindError('Ollama not running! Airgap mode requires local Ollama.', 'LOCAL_OFFLINE');
+      
+      const inquirer = (await import('inquirer')).default;
+      console.log(chalk.yellow('\n⚠️ Local Ollama runs offline but is NOT detected on port 11434.'));
+      console.log(chalk.gray('  You can install it for free from https://ollama.com\n'));
+      
+      const { action } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'action',
+          message: 'How would you like to proceed?',
+          choices: [
+            { name: 'Use OpenAI (Requires API Key)', value: 'openai' },
+            { name: 'Use Google Gemini (Requires API Key)', value: 'gemini' },
+            { name: 'Use Anthropic / Claude (Requires API Key)', value: 'anthropic' },
+            { name: 'Use Mistral AI (Requires API Key)', value: 'mistral' },
+            { name: 'Let me start Ollama natively. Retry connection.', value: 'retry' },
+            { name: 'Exit', value: 'exit' }
+          ]
+        }
+      ]);
+
+      const validChoices = ['openai', 'gemini', 'anthropic', 'mistral', 'retry', 'exit'];
+      const normalizedAction = (action || '').toString().toLowerCase();
+
+      if (!validChoices.includes(normalizedAction)) {
+        console.log(chalk.red(`\n❌ Invalid choice: "${action}". You must type the exact name of the provider (e.g. "openai" or "mistral") if your terminal arrow keys are broken.`));
+        return checkOllama(airgap);
+      }
+
+      if (normalizedAction === 'exit') {
+        process.exit(1);
+      } else if (normalizedAction === 'retry') {
+        return checkOllama(airgap);
+      } else {
+        overrideProvider = normalizedAction;
+        console.log(chalk.cyan(`\nSwitching to ${normalizedAction.toUpperCase()}...`));
+        return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    if (airgap) throw e;
+    return false;
+  }
+}
+
 export async function getEmbeddings(options = {}) {
-  const provider = options.provider || config.get('provider');
+  let provider = overrideProvider || options.provider || config.get('provider');
   const airgap = options.airgap || false;
   const multilingual = options.multilingual || config.get('multilingual') || false;
+
+  if (!overrideProvider && (airgap || provider === 'ollama')) {
+    const overrode = await checkOllama(airgap);
+    if (overrode) provider = overrideProvider;
+  }
 
   if (airgap || provider === 'ollama') {
     // Use multilingual model if requested
@@ -33,24 +91,19 @@ export async function getEmbeddings(options = {}) {
 }
 
 export async function getLLM(options = {}) {
-  const provider = options.provider || config.get('provider');
+  let provider = overrideProvider || options.provider || config.get('provider');
   const airgap = options.airgap || false;
   const temperature = options.temperature || config.get('temperature');
   const model = options.model || config.get('model');
 
   // 1. Force Airgap (Local Only)
+  if (!overrideProvider && (airgap || provider === 'ollama')) {
+    const overrode = await checkOllama(airgap);
+    if (overrode) provider = overrideProvider;
+  }
+
   if (airgap || provider === 'ollama') {
-    try {
-      const response = await fetch('http://localhost:11434/api/tags').catch(() => null);
-      if (!(response && response.status === 200)) {
-        if (airgap) throw new SnapMindError('Ollama not running! Airgap mode requires local Ollama.', 'LOCAL_OFFLINE');
-        console.log(chalk.yellow('⚠️ Local Ollama not detected. Attempting cloud fallback...'));
-      } else {
-        return new ChatOllama({ baseUrl: 'http://localhost:11434', model, temperature });
-      }
-    } catch (e) {
-      if (airgap) throw e;
-    }
+    return new ChatOllama({ baseUrl: 'http://localhost:11434', model, temperature });
   }
 
   // 2. Cloud Providers

@@ -7,7 +7,7 @@ import figlet from 'figlet';
 import boxen from 'boxen';
 import { startMenu } from './cli/menu.js';
 import config from './utils/config.js';
-import { setKey } from './utils/credentials.js';
+import { setKey, deleteKey } from './utils/credentials.js';
 import { globalSearch } from './utils/vector_storage.js';
 import { getEmbeddings } from './utils/llm.js';
 
@@ -40,7 +40,7 @@ program
 program
   .command('config')
   .description('Manage SnapMind AI configuration')
-  .argument('[action]', 'Action to perform (set, get, list)', 'list')
+  .argument('[action]', 'Action to perform (set, get, list, reset)', 'list')
   .argument('[key]', 'The config key to manage')
   .argument('[value]', 'The value to set')
   .action(async (action, key, value) => {
@@ -55,6 +55,21 @@ program
       }
     } else if (action === 'get' && key) {
       console.log(config.get(key));
+    } else if (action === 'reset') {
+      const provider = key;
+      if (provider) {
+        await deleteKey(provider);
+        console.log(chalk.green(`✅ ${provider} API Key has been reset.`));
+      } else {
+        const answers = await inquirer.prompt([{
+          type: 'list',
+          name: 'provider',
+          message: 'Select AI model provider to reset key for:',
+          choices: ['openai', 'mistral', 'anthropic', 'gemini']
+        }]);
+        await deleteKey(answers.provider);
+        console.log(chalk.green(`✅ ${answers.provider} API Key has been reset.`));
+      }
     } else {
       // Interactive Wizard
       console.log(chalk.cyan('\n🛠️ SnapMind Setup Wizard'));
@@ -66,6 +81,7 @@ program
           choices: [
             { name: 'Change Default Provider', value: 'provider' },
             { name: 'Update API Keys (Secure Keychain)', value: 'keys' },
+            { name: 'Reset Expired API Key', value: 'reset' },
             { name: 'Adjust Temperature', value: 'temperature' },
             { name: 'View Current Config', value: 'show' },
             { name: 'Exit', value: 'exit' }
@@ -92,6 +108,15 @@ program
         const { key } = await inquirer.prompt([{ type: 'password', name: 'key', message: `Enter API key for ${provider}:`, mask: '*' }]);
         await setKey(provider, key);
         console.log(chalk.green('✅ Key securely stored.'));
+      } else if (choice === 'reset') {
+        const { provider } = await inquirer.prompt([{
+          type: 'list',
+          name: 'provider',
+          message: 'Select provider to reset the expired key for:',
+          choices: ['openai', 'mistral', 'anthropic', 'gemini']
+        }]);
+        await deleteKey(provider);
+        console.log(chalk.green(`✅ ${provider} API Key has been reset.`));
       } else if (choice === 'temperature') {
         const { temp } = await inquirer.prompt([{ type: 'number', name: 'temp', message: 'Enter temperature (0.0 - 1.0):', default: config.get('temperature') }]);
         config.set('temperature', temp);
@@ -100,6 +125,23 @@ program
         console.log(JSON.stringify(config.store, null, 2));
       }
     }
+  });
+
+program
+  .command('help')
+  .description('Display detailed help and overview of SnapMind AI')
+  .action(() => {
+    console.log(chalk.cyan.bold('\n🧠 SnapMind AI - Overview'));
+    console.log(chalk.white('An intelligent CLI tool that brings RAG capabilities and specialized AI personas directly to your terminal.'));
+    console.log(chalk.gray('\nAvailable Commands:'));
+    console.log(chalk.white('  snapmind-ai                 ') + chalk.gray('- Start interactive CLI with personas'));
+    console.log(chalk.white('  snapmind-ai config          ') + chalk.gray('- Manage settings and API keys'));
+    console.log(chalk.white('  snapmind-ai config reset    ') + chalk.gray('- Reset a saved API key (useful if expired)'));
+    console.log(chalk.white('  snapmind-ai search <query>  ') + chalk.gray('- Search across all indexed datasets'));
+    console.log(chalk.white('  snapmind-ai vault           ') + chalk.gray('- Manage secure credentials in OS Keychain'));
+    console.log(chalk.white('  snapmind-ai schedule        ') + chalk.gray('- Manage scheduled intelligence reports'));
+    console.log(chalk.white('  snapmind-ai maintenance     ') + chalk.gray('- Clean up system and stale caches\n'));
+    console.log(chalk.cyan('Run ' + chalk.bold('snapmind-ai --help') + ' for additional standard command options.\n'));
   });
 
 program

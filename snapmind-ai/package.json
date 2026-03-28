@@ -1,6 +1,6 @@
 {
   "name": "snapmind-ai",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Interactive CLI for persona-based local AI workflows",
   "keywords": [
     "ai",
@@ -63,7 +63,7 @@
     "ollama": "^0.6.3",
     "ora": "^9.3.0",
     "papaparse": "^5.5.3",
-    "pdf-parse": "^2.4.5",
+    "pdf-parse": "^1.1.1",
     "simple-git": "^3.33.0",
     "walk": "^2.3.15"
   },

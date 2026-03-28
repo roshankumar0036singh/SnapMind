@@ -14,7 +14,8 @@ import IngestModal from './components/IngestModal';
 import ShortcutsModal from './components/ShortcutsModal';
 import GraphMap from './components/GraphMap';
 import SpotlightModal from './components/SpotlightModal';
-import { FixedSizeList as List } from 'react-window';
+import * as ReactWindow from 'react-window';
+const List = ReactWindow.FixedSizeList || (ReactWindow.default && ReactWindow.default.FixedSizeList);
 import { motion, AnimatePresence } from 'framer-motion';
 import './styles/design-tokens.css';
 
