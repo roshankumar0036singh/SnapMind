@@ -73,7 +73,8 @@ async def check_for_updates():
                         from api_clients import get_firecrawl_key
                         from browser_agents import FirecrawlScraper
                         
-                        scraper = FirecrawlScraper(get_firecrawl_key(self.api_keys if hasattr(self, 'api_keys') else {}))
+                        scraper = FirecrawlScraper(get_firecrawl_key({}))
+
                         content = scraper.extract(url)
                         
                         if not content or "Error" in content or "Exception" in content:

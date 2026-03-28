@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # The MCP client (Antigravity/Cursor/etc.) provides these in the "env" section of the MCP config
-BACKEND_URL = os.environ.get("SNAPMIND_BACKEND_URL", "https://roshan123478-snapmind-backend.hf.space").rstrip("/")
+BACKEND_URL = os.environ.get("SNAPMIND_BACKEND_URL", "https://localhost:8000").rstrip("/")
 HF_TOKEN = os.environ.get("HF_TOKEN", "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")
 
 # Provider Keys (expected from client env)
