@@ -18,10 +18,10 @@ export const apiClient = {
      */
     async getBaseUrl() {
         console.log("[DEBUG] getBaseUrl() called");
-        
+
         // 1. Check if user activated Local Desktop Backend Mode
         const storage = await new Promise(r => chrome.storage.local.get(['backendUrl', 'useLocalBackend'], r));
-        
+
         if (storage.useLocalBackend) {
             console.log("[DEBUG] Sending traffic to LOCAL DESKTOP BACKEND: http://localhost:8000");
             return "http://localhost:8000";
@@ -30,7 +30,7 @@ export const apiClient = {
         // 2. Prioritize user-configured URL from storage
         if (storage.backendUrl) {
             console.log("[DEBUG] Found configured backendUrl in storage:", storage.backendUrl);
-            return storage.backendUrl.replace(/\/$/, ""); 
+            return storage.backendUrl.replace(/\/$/, "");
         }
 
         // 3. Fallback to Environment Variable (Vite)
@@ -54,13 +54,13 @@ export const apiClient = {
                 if (res.mistralApiKey) headers['x-mistral-key'] = res.mistralApiKey;
                 if (res.lingodevApiKey) headers['x-lingodev-key'] = res.lingodevApiKey;
                 if (res.firecrawlApiKey) headers['x-firecrawl-key'] = res.firecrawlApiKey;
-                
+
                 // HF token is now hardcoded as per user preference
                 if (DEFAULT_HF_TOKEN) {
                     headers['Authorization'] = `Bearer ${DEFAULT_HF_TOKEN}`;
                     headers['x-hf-token'] = DEFAULT_HF_TOKEN;
                 }
-                
+
                 if (res.groqApiKey) headers['x-groq-key'] = res.groqApiKey;
                 resolve(headers);
             });
@@ -148,7 +148,7 @@ export const apiClient = {
 
         try {
             console.log(`[API] analyzeImage calling: ${baseUrl}/analyze-image (Mode: ${mode})`);
-            
+
             const response = await fetch(`${baseUrl}/analyze-image`, {
                 method: "POST",
                 headers: {
@@ -309,7 +309,7 @@ export const apiClient = {
                 headers: await this.getApiKeysHeaders()
             });
             if (!response.ok) return [];
-            
+
             const contentType = response.headers.get("content-type");
             if (!contentType || !contentType.includes("application/json")) return [];
 
@@ -348,7 +348,7 @@ export const apiClient = {
                     site_id: siteId
                 })
             });
-            
+
             const contentType = response.headers.get("content-type");
             let data;
             try {
@@ -380,7 +380,7 @@ export const apiClient = {
             console.log(`[API-DEBUG] Ingest Endpoint: ${ingestEndpoint}`);
             console.log(`[API-DEBUG] Headers keys: ${Object.keys(apiKeysHeaders).join(", ")}`);
             console.log(`[API-DEBUG] Auth Header present: ${!!apiKeysHeaders['Authorization']}`);
-            
+
             console.log(`[API] Ingesting ${url} to ${ingestEndpoint} (mode: ${crawl_mode}, lang: ${target_lang})...`);
             const response = await fetch(ingestEndpoint, {
                 method: "POST",
@@ -450,7 +450,7 @@ export const apiClient = {
             if (text) {
                 bodyPayload.text_content = text;
             }
-            
+
             const response = await fetch(`${baseUrl}/ingest`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...headers },
@@ -676,7 +676,7 @@ export const apiClient = {
 
     async getGraphData(sessionId = null) {
         const baseUrl = await this.getBaseUrl();
-        const endpoint = sessionId 
+        const endpoint = sessionId
             ? `${baseUrl}/graph/session/${sessionId}`
             : `${baseUrl}/graph/data`;
 
@@ -718,7 +718,7 @@ export const apiClient = {
             const response = await fetch(endpoint, {
                 headers: await this.getApiKeysHeaders()
             });
-            
+
             const contentType = response.headers.get("content-type");
             let data;
             try {
@@ -923,7 +923,7 @@ export const apiClient = {
         const baseUrl = await this.getBaseUrl();
         try {
             const response = await fetch(`${baseUrl}/sites`);
-            
+
             const contentType = response.headers.get("content-type");
             let data;
             try {
@@ -997,7 +997,7 @@ export const apiClient = {
         const baseUrl = await this.getBaseUrl();
         try {
             const response = await fetch(`${baseUrl}/bookmarks`);
-            
+
             const contentType = response.headers.get("content-type");
             let data;
             try {
@@ -1107,6 +1107,31 @@ export const apiClient = {
         } catch (e) {
             console.error("[API] getIngestionStatus Error:", e);
             return { status: 'processing', message: e.message };
+        }
+    },
+
+    // --- Saved Pages Feature (Port 5001) ---
+    async savePageData(url, text, folderName = "General") {
+        try {
+            const response = await fetch("http://localhost:8000/api/save_page", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url, text, folder_name: folderName })
+            });
+            return await response.json();
+        } catch (e) {
+            console.error("Save Page Error:", e);
+            return { success: false, detail: e.message };
+        }
+    },
+
+    async getSavedPages() {
+        try {
+            const response = await fetch("http://localhost:8000/api/get_pages");
+            return await response.json();
+        } catch (e) {
+            console.error("Get Saved Pages Error:", e);
+            return { success: false, data: [] };
         }
     }
 };

@@ -9,6 +9,8 @@ import json # [NEW] Required for JSON manipulation
 import re # [NEW] Required for URL validation
 from urllib.parse import urlparse
 from dotenv import load_dotenv
+from supabase import create_client, Client
+from mistralai import Mistral
 
 # Import our pipeline logic
 from rag_pipeline import ingest_website_logic
@@ -83,6 +85,28 @@ async def lifespan(app: FastAPI):
         pool.close()
 
 app = FastAPI(title="Snapmind Backend", lifespan=lifespan)
+
+# Initialize Supabase (Global for Saved Pages)
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+
+# Fallback: Derive Supabase URL from DATABASE_URL if missing
+if not supabase_url:
+    db_url = os.getenv("DATABASE_URL", "")
+    if db_url and "supabase.com" in db_url:
+        try:
+            # Extract project ref from postgres.[ref] or similar
+            project_ref = db_url.split('@')[0].split('://')[-1].split(':')[0].split('.')[-1]
+            supabase_url = f"https://{project_ref}.supabase.co"
+            print(f"[Supabase] Derived URL from DATABASE_URL: {supabase_url}")
+        except Exception:
+            pass
+
+supabase: Client = create_client(supabase_url or "", supabase_key or "")
+
+# Initialize Mistral Client
+mistral_api_key = os.getenv("MISTRAL_API_KEY")
+mistral_client = Mistral(api_key=mistral_api_key)
 
 # Allow CORS for Chrome Extension
 app.add_middleware(
@@ -195,6 +219,11 @@ class BookmarkRequest(BaseModel):
     content: str
     source_url: str | None = None
     metadata: dict | None = None
+
+class SavePageRequest(BaseModel):
+    url: str
+    text: str
+    folder_name: str = "General"
 
 class WatchlistRequest(BaseModel):
     url: str
@@ -352,6 +381,92 @@ GUIDELINES:
 def read_root():
     return {"status": "ok", "service": "snapmind-rag"}
 
+@app.post("/api/save_page")
+async def save_page(data: SavePageRequest):
+    """
+    Analyzes and saves a web page to Supabase 'snapmind_saved_pages' table.
+    Used by the browser extension.
+    """
+    try:
+        import logging
+        logger = logging.getLogger("uvicorn.error")
+        
+        if not data.text or len(data.text.strip()) < 20:
+            raise HTTPException(status_code=400, detail="Text too short or empty")
+
+        logger.info(f"[EXTENSION] Analyzing content from {data.url}...")
+
+        # 1. Analyze with Mistral
+        system_prompt = """You are a highly capable content analyzer. Given text extracted from a webpage, return a perfectly formatted JSON object with these EXACT fields:
+- "title": A concise, descriptive title (max 80 chars) defining the subject.
+- "summary": A clear 2-3 sentence summary (max 250 chars) capturing the key insight.
+- "keywords": Array of 3-5 specific topic keywords.
+- "emotions": Array of 1-3 detected tones (e.g., "Informative", "Exciting", "Thoughtful", "Motivational").
+
+Respond ONLY with valid JSON. No markdown ticks, no explanation."""
+
+        # Truncate text if it's too huge (~8000 chars context)
+        text_truncated = data.text[:8000]
+
+        response = mistral_client.chat.complete(
+            model="mistral-large-latest",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text_truncated}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.3
+        )
+
+        raw_json = response.choices[0].message.content
+        
+        # 2. Parse Mistral output
+        try:
+            analysis = json.loads(raw_json)
+        except json.JSONDecodeError:
+            logger.error(f"[EXTENSION] Mistral return invalid JSON: {raw_json}")
+            raise HTTPException(status_code=500, detail="Mistral AI returned invalid JSON.")
+
+        # 3. Save to Supabase
+        db_record = {
+            "original_url": data.url,
+            "title": analysis.get("title", "Untitled Content"),
+            "summary": analysis.get("summary", "No summary generated."),
+            "keywords": analysis.get("keywords", []),
+            "emotions": analysis.get("emotions", []),
+            "source_text": text_truncated,
+            "folder_name": data.folder_name
+        }
+
+        logger.info("[EXTENSION] Saving to Supabase 'snapmind_saved_pages' table...")
+        insert_response = supabase.table("snapmind_saved_pages").insert(db_record).execute()
+        
+        if not insert_response.data:
+            logger.error(f"[EXTENSION] Supabase error: {insert_response}")
+            raise HTTPException(status_code=500, detail="Failed to insert record into Supabase")
+
+        return {"success": True, "data": insert_response.data[0]}
+
+    except Exception as e:
+        logger = logging.getLogger("uvicorn.error")
+        logger.error(f"[EXTENSION] Error in save_page: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/get_pages")
+def get_pages():
+    """
+    Fetch all saved pages from Supabase.
+    """
+    try:
+        # Fetch pages, order by created_at DESC
+        result = supabase.table("snapmind_saved_pages").select("*").order("created_at", desc=True).execute()
+        return {"success": True, "data": result.data}
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("uvicorn.error")
+        logger.error(f"[EXTENSION] Error fetching pages: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/mcp/manifest")
 def mcp_manifest():
     """Returns a manifest of available tools and resources for MCP integration."""
@@ -413,7 +528,7 @@ def health_check_debug():
             "python_version": sys.version,
             "mistralai": m_info,
             "local_shadows": shadows,
-            "supabase_url": "SET" if os.getenv("DATABASE_URL") else "MISSING"
+            "DATABASE_URL": "SET" if os.getenv("DATABASE_URL") else "MISSING"
         }
     }
 class ResearchRequest(BaseModel):

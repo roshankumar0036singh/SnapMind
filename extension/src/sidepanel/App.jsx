@@ -16,6 +16,7 @@ import './styles/design-tokens.css';
 // Lazy load heavy components for better initial load
 const Settings = lazy(() => import('./components/Settings'));
 const SessionList = lazy(() => import('./components/SessionList'));
+const SavedPagesView = lazy(() => import('./components/SavedPagesView')); // [NEW] Saved Pages View
 import MermaidChart from './components/MermaidChart';
 
 // Custom Markdown Components
@@ -420,8 +421,12 @@ const BookmarkList = ({ bookmarks, loading, onDelete }) => {
 };
 
 function App() {
-  const [view, setView] = useState('chat'); // 'chat' | 'settings'
-  const [mode, setMode] = useState('rag'); // 'rag' | 'visual'
+  const [view, setView] = useState('chat'); // 'chat' | 'settings' | 'history' | 'memory'
+  const [mode, setMode] = useState('rag'); // 'rag', 'visual', 'browser'
+  const [memoryTab, setMemoryTab] = useState('sites'); // 'sites', 'graph', 'bookmarks', 'saved'
+  const [isSaveFolderModalOpen, setIsSaveFolderModalOpen] = useState(false); // [NEW] Folder selection modal
+  const [saveFolderName, setSaveFolderName] = useState('General'); // [NEW] Default folder name
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [input, setInput] = useState('');
   const [externalUrl, setExternalUrl] = useState(''); // [NEW] Feature 2: External URL scraping
   const [twitterUrl, setTwitterUrl] = useState(''); // [NEW] Twitter scraping
@@ -449,7 +454,6 @@ function App() {
   const [ingestStatus, setIngestStatus] = useState(null);
   const [currentUrl, setCurrentUrl] = useState(''); // Current active tab URL
   const [currentTabTitle, setCurrentTabTitle] = useState(''); // [NEW] Current active tab title
-  const [isOffline, setIsOffline] = useState(false); // Offline detection
   const [lastFailedAction, setLastFailedAction] = useState(null); // For retry functionality
   const [showShortcuts, setShowShortcuts] = useState(false); // Keyboard shortcuts modal
   const [pendingFile, setPendingFile] = useState(null); // File dragged in by user
@@ -457,7 +461,6 @@ function App() {
   const [graphData, setGraphData] = useState({ nodes: [], edges: [] });
   const [graphSessions, setGraphSessions] = useState([]);
   const [selectedGraphSession, setSelectedGraphSession] = useState(null); // [NEW] Phase 13
-  const [memoryTab, setMemoryTab] = useState('sites'); // 'sites' | 'graph'
   const [queryNotebook, setQueryNotebook] = useState(false); // [NEW] Phase 20: Research Notebook Correlation
   const [bookmarks, setBookmarks] = useState([]); // [LIFTED] Phase 21: Real-time bookmark icons
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
@@ -1193,6 +1196,44 @@ function App() {
       console.error(err);
       toast.error(`❌ Error ingesting repo: ${err.message}`, { id: toastId });
       setGithubIngesting(false);
+    }
+  };
+  
+  const handleSaveWebPage = async (targetFolder = 'General') => {
+    try {
+      setIsLoading(true);
+      const toastId = toast.loading("Saving and summarizing page via AI...");
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.url) {
+        toast.error("No active tab to save", { id: toastId });
+        return;
+      }
+      
+      let textToSave = "";
+      try {
+        const extResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
+        if (extResponse && extResponse.data && extResponse.data.blocks) {
+          textToSave = extResponse.data.blocks.map(b => b.text).join('\n\n');
+        }
+      } catch (e) {
+        console.warn("Could not extract via content script, using fallback");
+      }
+
+      if (!textToSave || textToSave.trim().length < 20) {
+        textToSave = tab.title + " " + tab.url; // Minimal fallback
+      }
+
+      const response = await apiClient.savePageData(tab.url, textToSave, targetFolder);
+      if (response && response.success) {
+        toast.success("Page saved and organized successfully!", { id: toastId });
+      } else {
+        toast.error(`Save failed: ${response?.detail || "Unknown error"}`, { id: toastId });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(`Error saving page: ${err.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -1975,9 +2016,9 @@ function App() {
         top: 0,
         zIndex: 20
       }} className="px-4 py-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           {/* Left: Logo + Title */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 flex-shrink-0">
             <div style={{
               background: 'var(--primary-500)',
               borderRadius: 'var(--radius-md)',
@@ -2007,17 +2048,20 @@ function App() {
                 background: 'var(--bg-secondary)',
                 border: '1px solid var(--border-light)',
                 borderRadius: 'var(--radius-full)',
-                padding: '4px 12px',
-                fontSize: 'var(--text-xs)',
+                padding: '5px 14px',
+                fontSize: '11px',
                 color: 'var(--text-secondary)',
-                fontWeight: 'var(--font-medium)',
-                maxWidth: '200px',
+                fontWeight: '600',
+                maxWidth: '180px',
+                margin: '0 4px',
+                flexShrink: 1,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
                 textDecoration: 'none',
                 transition: 'var(--transition-fast)',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'block'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'var(--primary-50)';
@@ -2036,7 +2080,7 @@ function App() {
           )}
 
           {/* Right: Icon Navigation */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Index Button */}
             <button
               onClick={handleIngest}
@@ -2066,6 +2110,36 @@ function App() {
               }}
             >
               <Database className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => setIsSaveFolderModalOpen(true)}
+              disabled={isLoading || !currentUrl}
+              title="Save to Folder (Summarize via AI)"
+              style={{
+                padding: '8px',
+                borderRadius: 'var(--radius-md)',
+                transition: 'var(--transition-fast)',
+                color: isLoading ? 'var(--text-tertiary)' : 'var(--text-tertiary)',
+                background: 'transparent',
+                border: 'none',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                opacity: isLoading ? 0.5 : 1
+              }}
+              onMouseEnter={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.background = 'var(--primary-50)';
+                  e.currentTarget.style.color = 'var(--primary-600)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isLoading) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-tertiary)';
+                }
+              }}
+            >
+              <Bookmark className="w-4 h-4" />
             </button>
 
             <button
@@ -2331,6 +2405,13 @@ function App() {
             {/* Tab Switcher */}
             <div className="flex p-1 bg-slate-100 rounded-xl mb-4 border border-slate-200/60 shadow-inner">
               <button
+                onClick={() => setMemoryTab('saved')} // [NEW] Added 'saved' tab
+                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'saved' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
+              >
+                <Bookmark className="w-3.5 h-3.5" />
+                Saved
+              </button>
+              <button
                 onClick={() => setMemoryTab('sites')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'sites' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
               >
@@ -2367,13 +2448,15 @@ function App() {
                 color: 'var(--text-primary)',
                 marginBottom: '4px'
               }}>
-                {memoryTab === 'sites' ? 'Indexed Sites' : memoryTab === 'graph' ? 'Knowledge Map' : 'Research Notebook'}
+                {memoryTab === 'saved' ? 'Saved Websites' : memoryTab === 'sites' ? 'Indexed Sites' : memoryTab === 'graph' ? 'Knowledge Map' : 'Research Notebook'}
               </h2>
               <p style={{
                 fontSize: 'var(--text-sm)',
                 color: 'var(--text-secondary)'
               }}>
-                {memoryTab === 'sites'
+                {memoryTab === 'saved'
+                  ? "Your beautifully summarized saved pages"
+                  : memoryTab === 'sites'
                   ? "Pages you've indexed for intelligent search"
                   : memoryTab === 'graph'
                     ? "Semantic entities and relationships discovered across your knowledge base"
@@ -2382,7 +2465,9 @@ function App() {
             </div>
 
             {/* site list or graph */}
-            {memoryTab === 'sites' ? (
+            {memoryTab === 'saved' ? (
+              <SavedPagesView />
+            ) : memoryTab === 'sites' ? (
               <SiteList onBack={() => setView('chat')} />
             ) : memoryTab === 'graph' ? (
               selectedGraphSession ? (
@@ -3035,6 +3120,66 @@ function App() {
         </footer>
       )}
       <Toaster richColors position="top-center" />
+
+      {/* Save Folder Modal */}
+      {isSaveFolderModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-white/50 animate-in zoom-in-95 duration-300">
+            <h3 className="font-extrabold text-lg text-slate-800 mb-1 flex items-center gap-2">
+              <Bookmark className="w-5 h-5 text-indigo-500" />
+              Save to Folder
+            </h3>
+            <p className="text-xs text-slate-500 mb-5 font-medium ml-7">Group related websites together.</p>
+            
+            <input 
+              type="text"
+              autoFocus
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all font-semibold text-sm text-slate-800 placeholder:text-slate-400 mb-4"
+              placeholder="e.g. Research, Python Docs"
+              value={saveFolderName}
+              onChange={(e) => setSaveFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && saveFolderName.trim()) {
+                  setIsSaveFolderModalOpen(false);
+                  handleSaveWebPage(saveFolderName.trim());
+                }
+              }}
+            />
+
+            <div className="flex flex-wrap gap-2 mb-6">
+              {['General', 'Docs', 'Research', 'Tech'].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setSaveFolderName(f)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform hover:scale-105 ${saveFolderName === f ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button 
+                className="flex-1 py-2.5 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors"
+                onClick={() => setIsSaveFolderModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                className="flex-1 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all hover:scale-[1.02]"
+                onClick={() => {
+                  if (saveFolderName.trim()) {
+                    setIsSaveFolderModalOpen(false);
+                    handleSaveWebPage(saveFolderName.trim());
+                  }
+                }}
+              >
+                Save Page
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Keyboard Shortcuts Modal */}
       {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
