@@ -1,0 +1,29 @@
+:root {
+  --bg:         #080c10;
+  --bg2:        #0d1117;
+  --bg3:        #111820;
+  --surface:    #141c24;
+  --surface2:   #1a2330;
+  --purple:     #7c3aed;
+  --purple2:    #a855f7;
+  --purple-dim: #5b21b6;
+  --green:      #39ff14;
+  --green2:     #00e676;
+  --text:       #e8edf2;
+  --text2:      #8a9ab0;
+  --text3:      #4a5568;
+  --border:     rgba(124, 58, 237, 0.12);
+  --border2:    rgba(124, 58, 237, 0.25);
+  --mono:       'JetBrains Mono', monospace;
+  --display:    'Outfit', sans-serif;
+  --body:       'Inter', sans-serif;
+
+  /* Spacing Scale */
+  --sp-xs:   0.5rem;   /* 8px  */
+  --sp-sm:   1rem;     /* 16px */
+  --sp-md:   1.5rem;   /* 24px */
+  --sp-lg:   2rem;     /* 32px */
+  --sp-xl:   3rem;     /* 48px */
+  --sp-2xl:  5rem;     /* 80px */
+  --sp-3xl:  7rem;     /* 112px */
+}

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation & Blog — SnapMind AI</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/global.css">
+  <style>
+    .docs-grid {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 4rem;
+      margin-top: 2rem;
+      align-items: flex-start;
+    }
+
+    @media (max-width: 900px) {
+      .docs-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .sidebar-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      position: sticky;
+      top: 120px;
+    }
+
+    .sidebar-menu a {
+      display: block;
+      color: #a1a1aa;
+      font-family: var(--body);
+      font-weight: 500;
+      font-size: 0.95rem;
+      padding-left: 12px;
+      border-left: 2px solid rgba(255, 255, 255, 0.05);
+      transition: 0.2s;
+    }
+
+    .sidebar-menu a:hover {
+      color: #fff;
+      border-left-color: rgba(139, 92, 246, 0.5);
+    }
+
+    .sidebar-menu a.active {
+      color: #8b5cf6;
+      border-left-color: #8b5cf6;
+    }
+
+    .content-area h2 {
+      font-size: 2.2rem;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 1rem;
+    }
+
+    .content-area p {
+      margin-bottom: 1.5rem;
+      line-height: 1.8;
+    }
+
+    .post-card {
+      display: block;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 2rem 0;
+      transition: 0.2s;
+    }
+
+    .post-card:hover {
+      padding-left: 10px;
+    }
+
+    .post-tag {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: #8b5cf6;
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    .post-title {
+      font-family: var(--display);
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 0.8rem;
+    }
+
+    .post-excerpt {
+      color: #a1a1aa;
+      font-family: var(--body);
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+
+<body class="bg-grid">
+  <div class="glow-spotlight"></div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="url(#paint0_linear)" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M2 7L12 12V22" stroke="url(#paint1_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M12 12L22 7" stroke="url(#paint2_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <defs>
+            <linearGradient id="paint0_linear" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint1_linear" x1="7" y1="7" x2="7" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint2_linear" x1="17" y1="7" x2="17" y2="12" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+          </defs>
+        </svg>
+        SnapMind
+      </a>
+      <div class="nav-links">
+        <a href="npm.html">CLI (npm)</a>
+        <a href="desktop.html">Desktop App</a>
+        <a href="extension.html">Extension</a>
+        <a href="widget.html">Web Widget</a>
+      </div>
+      <div class="nav-right">
+        <a href="blog.html" class="nav-links" style="color:#fff;">Docs</a>
+        <button class="mobile-toggle">☰</button>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero-section" style="padding-top: 180px; padding-bottom: 2rem;">
+    <div class="container fade-up delay-1">
+      <h1 style="font-size: clamp(3rem, 6vw, 4.5rem);">Knowledge Base</h1>
+      <p class="hero-sub fade-up delay-2">Guides, architectural breakdowns, and release notes for the SnapMind
+        ecosystem.</p>
+    </div>
+  </section>
+
+  <section class="container fade-up delay-3" style="padding-top: 0; padding-bottom: 8rem;">
+    <div class="docs-grid">
+      <!-- Sidebar -->
+      <div class="sidebar-menu">
+        <div
+          style="font-family: var(--mono); font-size: 0.75rem; color: #a1a1aa; letter-spacing: 0.05em; margin-bottom: 0.5rem; padding-left: 12px; text-transform: uppercase;">
+          Category</div>
+        <a href="#" class="active">Engineering Blog</a>
+        <a href="#">Release Notes</a>
+        <a href="#">CLI Usage</a>
+        <a href="#">Vector Configs</a>
+      </div>
+
+      <!-- Content -->
+      <div class="content-area">
+
+        <a href="#" class="post-card">
+          <span class="post-tag">RELEASE · v2.1.0</span>
+          <div class="post-title">Moving away from cloud GPUs: The embedded LanceDB Architecture</div>
+          <p class="post-excerpt">How we re-architected SnapMind to run completely offline without sacrificing retrieval
+            accuracy. Why LanceDB scales better for developer local environments than spinning up Dockerized Postgres
+            instances.</p>
+        </a>
+
+        <a href="#" class="post-card">
+          <span class="post-tag">GUIDE · CONFIGURATION</span>
+          <div class="post-title">Injecting Custom MCP Plugins into the Inference Loop</div>
+          <p class="post-excerpt">Learn how to configure the Model Context Protocol to hook up custom SQL databases to
+            the terminal agent so you can query production data straight from your CLI.</p>
+        </a>
+
+        <a href="#" class="post-card">
+          <span class="post-tag">ANNOUNCEMENT</span>
+          <div class="post-title">Why we built SnapMind as a terminal-first ecosystem.</div>
+          <p class="post-excerpt">There are countless wrapper apps making API calls to ChatGPT. We wanted something that
+            intrinsically understands the file system it sits on.</p>
+        </a>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer Focus -->
+  <footer>
+    <div class="footer-grid">
+      <div class="footer-col" style="padding-right: 2rem;">
+        <div class="nav-logo" style="margin-bottom: 1rem;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" fill="#8B5CF6" fill-opacity="0.2" stroke="#8B5CF6"
+              stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <span style="color:#fff; font-weight:700;">SnapMind</span>
+        </div>
+        <p style="font-size:0.85rem; color:#71717a;">Building the local infrastructure for AI. No trackers, no data
+          egress.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Ecosystem</h4>
+        <a href="npm.html">CLI Package</a>
+        <a href="desktop.html">Desktop Interface</a>
+        <a href="extension.html">Browser Extension</a>
+        <a href="widget.html">Web Widget</a>
+      </div>
+      <div class="footer-col">
+        <h4>Developers</h4>
+        <a href="blog.html">Documentation</a>
+        <a href="https://github.com/roshankumar0036singh/SnapMind">GitHub Source</a>
+      </div>
+      <div class="footer-col">
+        <h4>Connect</h4>
+        <a href="https://discord.com">Discord</a>
+        <a href="https://x.com">Twitter</a>
+        <a href="contact.html">Contact Us</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="scripts/main.js"></script>
+</body>
+
+</html>

@@ -2,1921 +2,475 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SnapMind AI — Terminal Intelligence, Redefined</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap"
-        rel="stylesheet" />
-    <style>
-        :root {
-            --bg: #080c10;
-            --bg2: #0d1117;
-            --bg3: #111820;
-            --surface: #141c24;
-            --surface2: #1a2330;
-            --border: rgba(124, 58, 237, 0.12);
-            --border2: rgba(124, 58, 237, 0.25);
-            --purple: #7c3aed;
-            --purple2: #a855f7;
-            --green: #39ff14;
-            --green2: #00e676;
-            --purple: #7c3aed;
-            --text: #e8edf2;
-            --text2: #8a9ab0;
-            --text3: #4a5568;
-            --mono: 'JetBrains Mono', monospace;
-            --display: 'Outfit', sans-serif;
-            --body: 'Inter', sans-serif;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box
-        }
-
-        html {
-            scroll-behavior: smooth
-        }
-
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: var(--body);
-            overflow-x: hidden;
-            line-height: 1.7;
-            letter-spacing: 0.015em
-        }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 4px
-        }
-
-        ::-webkit-scrollbar-track {
-            background: var(--bg)
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: var(--purple);
-            border-radius: 2px
-        }
-
-        /* ── NAV ── */
-        nav {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 100;
-            padding: 0 2rem;
-            height: 64px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: rgba(8, 12, 16, 0.85);
-            backdrop-filter: blur(12px);
-            border-bottom: 0.5px solid var(--border)
-        }
-
-        .nav-logo {
-            font-family: var(--mono);
-            font-weight: 700;
-            font-size: 1rem;
-            color: var(--purple);
-            letter-spacing: 0.05em;
-            display: flex;
-            align-items: center;
-            gap: 8px
-        }
-
-        .nav-logo span {
-            color: var(--text2)
-        }
-
-        .nav-links {
-            display: flex;
-            align-items: center;
-            gap: 2.5rem
-        }
-
-        .nav-links a {
-            font-family: var(--mono);
-            font-size: 0.85rem;
-            color: var(--text2);
-            text-decoration: none;
-            letter-spacing: 0.05em;
-            transition: color 0.2s
-        }
-
-        .nav-links a:hover {
-            color: var(--purple)
-        }
-
-        .nav-cta {
-            font-family: var(--mono);
-            font-size: 0.78rem;
-            padding: 8px 20px;
-            background: transparent;
-            border: 1px solid var(--purple);
-            color: var(--purple);
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: all 0.2s;
-            letter-spacing: 0.05em
-        }
-
-        .nav-cta:hover {
-            background: rgba(124, 58, 237, 0.1);
-            box-shadow: 0 0 16px rgba(124, 58, 237, 0.2)
-        }
-
-        .hamburger {
-            display: none;
-            flex-direction: column;
-            gap: 4px;
-            cursor: pointer;
-            padding: 4px
-        }
-
-        .hamburger span {
-            display: block;
-            width: 22px;
-            height: 1.5px;
-            background: var(--text2)
-        }
-
-        /* ── HERO ── */
-        #hero {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 120px 2rem 6rem;
-            position: relative;
-            overflow: hidden;
-            text-align: center
-        }
-
-        .hero-bg {
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(124, 58, 237, 0.06) 0%, transparent 70%);
-            pointer-events: none
-        }
-
-        .hero-grid {
-            position: absolute;
-            inset: 0;
-            background-image: linear-gradient(rgba(124, 58, 237, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(124, 58, 237, 0.03) 1px, transparent 1px);
-            background-size: 40px 40px;
-            pointer-events: none
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-family: var(--mono);
-            font-size: 0.72rem;
-            padding: 5px 14px;
-            border: 1px solid rgba(57, 255, 20, 0.3);
-            border-radius: 20px;
-            color: var(--green2);
-            background: rgba(57, 255, 20, 0.05);
-            margin-bottom: 2rem;
-            letter-spacing: 0.06em
-        }
-
-        .badge-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--green);
-            animation: pulse 2s infinite
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-                transform: scale(1)
-            }
-
-            50% {
-                opacity: 0.5;
-                transform: scale(0.8)
-            }
-        }
-
-        .hero-title {
-            font-family: var(--display);
-            font-size: clamp(2.8rem, 6vw, 5rem);
-            font-weight: 800;
-            line-height: 1.05;
-            letter-spacing: -0.02em;
-            margin-bottom: 1.5rem;
-            max-width: 800px
-        }
-
-        .hero-title .line1 {
-            display: block;
-            color: var(--text)
-        }
-
-        .hero-title .accent {
-            color: var(--purple);
-            position: relative
-        }
-
-        .hero-title .accent::after {
-            content: '';
-            position: absolute;
-            bottom: -4px;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: var(--purple);
-            opacity: 0.5
-        }
-
-        .hero-sub {
-            font-size: 1.1rem;
-            color: var(--text2);
-            max-width: 560px;
-            margin: 0 auto 2.5rem;
-            line-height: 1.7;
-            font-weight: 300
-        }
-
-        .hero-ctas {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-bottom: 3rem
-        }
-
-        .btn-primary {
-            font-family: var(--mono);
-            font-size: 0.85rem;
-            padding: 13px 28px;
-            background: var(--purple);
-            color: #000;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            font-weight: 700;
-            letter-spacing: 0.04em;
-            transition: all 0.2s
-        }
-
-        .btn-primary:hover {
-            background: var(--purple2);
-            box-shadow: 0 0 24px rgba(124, 58, 237, 0.4);
-            transform: translateY(-1px)
-        }
-
-        .btn-secondary {
-            font-family: var(--mono);
-            font-size: 0.85rem;
-            padding: 13px 28px;
-            background: transparent;
-            color: var(--text);
-            border: 1px solid var(--border2);
-            border-radius: 4px;
-            cursor: pointer;
-            text-decoration: none;
-            letter-spacing: 0.04em;
-            transition: all 0.2s
-        }
-
-        .btn-secondary:hover {
-            border-color: var(--purple);
-            color: var(--purple);
-            background: rgba(124, 58, 237, 0.05)
-        }
-
-        .hero-badges {
-            display: flex;
-            gap: 1.5rem;
-            justify-content: center;
-            flex-wrap: wrap
-        }
-
-        .npm-badge {
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            color: var(--text3);
-            letter-spacing: 0.05em
-        }
-
-        .npm-badge span {
-            color: var(--purple)
-        }
-
-        /* Terminal block */
-        .terminal {
-            background: var(--bg2);
-            border: 1px solid var(--border2);
-            border-radius: 8px;
-            overflow: hidden;
-            max-width: 620px;
-            width: 100%;
-            margin: 3rem auto 0;
-            text-align: left;
-            box-shadow: 0 0 60px rgba(124, 58, 237, 0.06)
-        }
-
-        .terminal-bar {
-            background: var(--surface);
-            padding: 10px 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            border-bottom: 1px solid var(--border)
-        }
-
-        .dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%
-        }
-
-        .dot.r {
-            background: #ff5f57
-        }
-
-        .dot.y {
-            background: #febc2e
-        }
-
-        .dot.g {
-            background: #28c840
-        }
-
-        .terminal-title {
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            color: var(--text3);
-            margin-left: auto
-        }
-
-        .terminal-body {
-            padding: 1.5rem;
-            font-family: var(--mono);
-            font-size: 0.82rem;
-            line-height: 1.8
-        }
-
-        .t-prompt {
-            color: var(--purple)
-        }
-
-        .t-cmd {
-            color: var(--text)
-        }
-
-        .t-out {
-            color: var(--text2)
-        }
-
-        .t-green {
-            color: var(--green2)
-        }
-
-        .t-comment {
-            color: var(--text3)
-        }
-
-        .cursor {
-            display: inline-block;
-            width: 8px;
-            height: 14px;
-            background: var(--purple);
-            animation: blink 1s step-end infinite;
-            vertical-align: middle
-        }
-
-        @keyframes blink {
-
-            0%,
-            100% {
-                opacity: 1
-            }
-
-            50% {
-                opacity: 0
-            }
-        }
-
-        /* ── SECTION COMMON ── */
-        section {
-            padding: 7rem 2rem
-        }
-
-        .container {
-            max-width: 1100px;
-            margin: 0 auto
-        }
-
-        .section-label {
-            font-family: var(--mono);
-            font-size: 0.72rem;
-            color: var(--purple);
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 8px
-        }
-
-        .section-label::before {
-            content: '';
-            width: 24px;
-            height: 1px;
-            background: var(--purple)
-        }
-
-        .section-title {
-            font-family: var(--display);
-            font-size: clamp(1.8rem, 3.5vw, 2.8rem);
-            font-weight: 700;
-            line-height: 1.15;
-            margin-bottom: 1rem;
-            letter-spacing: -0.02em
-        }
-
-        .section-sub {
-            color: var(--text2);
-            font-size: 1rem;
-            max-width: 560px;
-            font-weight: 300
-        }
-
-        /* ── STATS ── */
-        #stats {
-            padding: 3rem 2rem;
-            background: var(--bg2);
-            border-top: 1px solid var(--border);
-            border-bottom: 1px solid var(--border)
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 0;
-            max-width: 900px;
-            margin: 0 auto
-        }
-
-        .stat-item {
-            padding: 1.5rem;
-            text-align: center;
-            border-right: 1px solid var(--border)
-        }
-
-        .stat-item:last-child {
-            border-right: none
-        }
-
-        .stat-num {
-            font-family: var(--display);
-            font-size: 2.2rem;
-            font-weight: 800;
-            color: var(--purple);
-            line-height: 1
-        }
-
-        .stat-label {
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            color: var(--text3);
-            letter-spacing: 0.08em;
-            margin-top: 4px
-        }
-
-        /* ── HIGHLIGHTS ── */
-        #highlights .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 1.5rem;
-            margin-top: 3rem
-        }
-
-        .hl-card {
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1.5rem;
-            transition: border-color 0.2s, transform 0.2s;
-            position: relative;
-            overflow: hidden
-        }
-
-        .hl-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--purple), transparent);
-            opacity: 0;
-            transition: opacity 0.3s
-        }
-
-        .hl-card:hover {
-            border-color: var(--border2);
-            transform: translateY(-2px)
-        }
-
-        .hl-card:hover::before {
-            opacity: 1
-        }
-
-        .hl-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 4px;
-            background: rgba(124, 58, 237, 0.08);
-            border: 1px solid var(--border2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1rem;
-            font-size: 16px
-        }
-
-        .hl-card h3 {
-            font-family: var(--display);
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--text)
-        }
-
-        .hl-card p {
-            font-size: 0.88rem;
-            color: var(--text2);
-            line-height: 1.6
-        }
-
-        /* ── PERSONAS ── */
-        #personas {
-            background: var(--bg2);
-            border-top: 1px solid var(--border)
-        }
-
-        .personas-tabs {
-            display: flex;
-            gap: 0;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            overflow: hidden;
-            margin-top: 2.5rem;
-            width: fit-content
-        }
-
-        .ptab {
-            font-family: var(--mono);
-            font-size: 0.78rem;
-            padding: 10px 24px;
-            background: transparent;
-            border: none;
-            color: var(--text3);
-            cursor: pointer;
-            letter-spacing: 0.05em;
-            transition: all 0.2s;
-            border-right: 1px solid var(--border)
-        }
-
-        .ptab:last-child {
-            border-right: none
-        }
-
-        .ptab.active {
-            background: rgba(124, 58, 237, 0.1);
-            color: var(--purple)
-        }
-
-        .persona-content {
-            display: none;
-            margin-top: 2rem
-        }
-
-        .persona-content.active {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3rem;
-            align-items: start
-        }
-
-        .persona-info h3 {
-            font-family: var(--display);
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem
-        }
-
-        .persona-info .desc {
-            color: var(--text2);
-            font-size: 0.93rem;
-            margin-bottom: 1.5rem
-        }
-
-        .cmd-list {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 8px
-        }
-
-        .cmd-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-family: var(--mono);
-            font-size: 0.8rem
-        }
-
-        .cmd-name {
-            color: var(--purple);
-            min-width: 80px
-        }
-
-        .cmd-desc {
-            color: var(--text2)
-        }
-
-        .persona-terminal {
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            overflow: hidden
-        }
-
-        .persona-terminal .terminal-bar {
-            background: var(--surface)
-        }
-
-        .persona-terminal .terminal-body {
-            font-size: 0.78rem;
-            line-height: 1.9
-        }
-
-        .flag-block {
-            margin-top: 1.5rem;
-            padding: 1rem;
-            background: rgba(124, 58, 237, 0.04);
-            border: 1px dashed var(--border);
-            border-radius: 4px
-        }
-
-        .flag-block p {
-            font-family: var(--mono);
-            font-size: 0.75rem;
-            color: var(--text2);
-            line-height: 1.9
-        }
-
-        .flag {
-            color: var(--purple)
-        }
-
-        /* ── HOW IT WORKS ── */
-        #how-it-works {
-            border-top: 1px solid var(--border)
-        }
-
-        .steps {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 2rem;
-            margin-top: 3rem;
-            position: relative
-        }
-
-        .step {
-            position: relative;
-            padding: 1.5rem;
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: 6px
-        }
-
-        .step-num {
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            color: var(--text3);
-            letter-spacing: 0.1em;
-            margin-bottom: 0.75rem
-        }
-
-        .step-badge {
-            display: inline-block;
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            padding: 3px 8px;
-            border-radius: 3px;
-            background: rgba(124, 58, 237, 0.08);
-            color: var(--purple);
-            border: 1px solid var(--border2);
-            margin-bottom: 0.75rem;
-            letter-spacing: 0.06em
-        }
-
-        .step h3 {
-            font-family: var(--display);
-            font-size: 1.05rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem
-        }
-
-        .step p {
-            font-size: 0.85rem;
-            color: var(--text2);
-            line-height: 1.6;
-            margin-bottom: 1rem
-        }
-
-        .step code {
-            display: block;
-            font-family: var(--mono);
-            font-size: 0.76rem;
-            padding: 10px 12px;
-            background: var(--bg3);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--purple);
-            word-break: break-all
-        }
-
-        /* ── CLI REFERENCE ── */
-        #cli {
-            background: var(--bg2);
-            border-top: 1px solid var(--border)
-        }
-
-        .cli-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3rem;
-            margin-top: 2.5rem
-        }
-
-        .cli-table-wrap {
-            overflow-x: auto
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-family: var(--mono);
-            font-size: 0.78rem
-        }
-
-        th {
-            color: var(--text3);
-            font-weight: 500;
-            letter-spacing: 0.08em;
-            text-align: left;
-            padding: 8px 12px;
-            border-bottom: 1px solid var(--border)
-        }
-
-        td {
-            padding: 8px 12px;
-            border-bottom: 1px solid var(--border);
-            vertical-align: top
-        }
-
-        td:first-child {
-            color: var(--purple)
-        }
-
-        td:last-child {
-            color: var(--text2)
-        }
-
-        tr:hover td {
-            background: rgba(124, 58, 237, 0.03)
-        }
-
-        /* ── PROVIDERS ── */
-        #providers {
-            border-top: 1px solid var(--border)
-        }
-
-        .providers-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 1rem;
-            margin-top: 2.5rem
-        }
-
-        .provider-card {
-            background: var(--bg2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1.25rem;
-            transition: border-color 0.2s
-        }
-
-        .provider-card:hover {
-            border-color: var(--border2)
-        }
-
-        .provider-name {
-            font-family: var(--display);
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem
-        }
-
-        .provider-models {
-            font-family: var(--mono);
-            font-size: 0.72rem;
-            color: var(--text2);
-            margin-bottom: 0.5rem
-        }
-
-        .local-tag {
-            display: inline-block;
-            font-family: var(--mono);
-            font-size: 0.6rem;
-            padding: 2px 7px;
-            border-radius: 3px;
-            letter-spacing: 0.05em
-        }
-
-        .tag-local {
-            background: rgba(57, 255, 20, 0.08);
-            color: var(--green2);
-            border: 1px solid rgba(57, 255, 20, 0.2)
-        }
-
-        .tag-cloud {
-            background: rgba(124, 58, 237, 0.06);
-            color: var(--purple);
-            border: 1px solid var(--border2)
-        }
-
-        /* ── SECURITY ── */
-        #security {
-            background: var(--bg2);
-            border-top: 1px solid var(--border)
-        }
-
-        .security-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1.5rem;
-            margin-top: 2.5rem
-        }
-
-        .sec-card {
-            padding: 1.5rem;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            background: var(--bg3)
-        }
-
-        .sec-icon {
-            font-size: 20px;
-            margin-bottom: 0.75rem
-        }
-
-        .sec-card h3 {
-            font-family: var(--display);
-            font-size: 0.95rem;
-            font-weight: 600;
-            margin-bottom: 0.4rem
-        }
-
-        .sec-card p {
-            font-size: 0.84rem;
-            color: var(--text2)
-        }
-
-        /* ── NLP TUNING ── */
-        #tuning {
-            border-top: 1px solid var(--border)
-        }
-
-        .tuning-table-wrap {
-            margin-top: 2.5rem;
-            overflow-x: auto;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            overflow: hidden
-        }
-
-        /* ── INSTALL ── */
-        #install {
-            background: radial-gradient(ellipse 60% 50% at 50% 100%, rgba(124, 58, 237, 0.06) 0%, transparent 70%);
-            border-top: 1px solid var(--border);
-            text-align: center
-        }
-
-        .install-box {
-            background: var(--bg2);
-            border: 1px solid var(--border2);
-            border-radius: 8px;
-            padding: 1.5rem 2rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 1rem;
-            margin: 2rem auto 1.5rem;
-            font-family: var(--mono);
-            font-size: 1rem
-        }
-
-        .install-cmd {
-            color: var(--text2)
-        }
-
-        .install-pkg {
-            color: var(--purple)
-        }
-
-        .copy-btn {
-            background: rgba(124, 58, 237, 0.1);
-            border: 1px solid var(--border2);
-            color: var(--purple);
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            padding: 6px 12px;
-            border-radius: 3px;
-            cursor: pointer;
-            transition: all 0.2s;
-            letter-spacing: 0.05em
-        }
-
-        .copy-btn:hover {
-            background: rgba(124, 58, 237, 0.2)
-        }
-
-        /* ── FAQ ── */
-        #faq {
-            background: var(--bg2);
-            border-top: 1px solid var(--border)
-        }
-
-        .faq-list {
-            margin-top: 2.5rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            overflow: hidden
-        }
-
-        .faq-item {
-            border-bottom: 1px solid var(--border)
-        }
-
-        .faq-item:last-child {
-            border-bottom: none
-        }
-
-        .faq-q {
-            width: 100%;
-            padding: 1.2rem 1.5rem;
-            background: transparent;
-            border: none;
-            color: var(--text);
-            font-family: var(--body);
-            font-size: 0.93rem;
-            text-align: left;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 1rem;
-            transition: background 0.2s
-        }
-
-        .faq-q:hover {
-            background: rgba(124, 58, 237, 0.03)
-        }
-
-        .faq-q .icon {
-            color: var(--purple);
-            font-family: var(--mono);
-            font-size: 1rem;
-            flex-shrink: 0;
-            transition: transform 0.2s
-        }
-
-        .faq-a {
-            display: none;
-            padding: 0 1.5rem 1.2rem;
-            font-size: 0.88rem;
-            color: var(--text2);
-            line-height: 1.7
-        }
-
-        .faq-item.open .faq-a {
-            display: block
-        }
-
-        .faq-item.open .icon {
-            transform: rotate(45deg)
-        }
-
-        /* ── COMMUNITY ── */
-        #community {
-            border-top: 1px solid var(--border)
-        }
-
-        .community-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1.5rem;
-            margin-top: 2.5rem
-        }
-
-        .comm-card {
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 1.5rem;
-            background: var(--bg2);
-            transition: border-color 0.2s
-        }
-
-        .comm-card:hover {
-            border-color: var(--border2)
-        }
-
-        .comm-card h3 {
-            font-family: var(--display);
-            font-size: 1rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem
-        }
-
-        .comm-card p {
-            font-size: 0.85rem;
-            color: var(--text2);
-            margin-bottom: 1rem
-        }
-
-        .comm-link {
-            font-family: var(--mono);
-            font-size: 0.75rem;
-            color: var(--purple);
-            text-decoration: none;
-            letter-spacing: 0.04em
-        }
-
-        .comm-link:hover {
-            text-decoration: underline
-        }
-
-        /* ── FOOTER ── */
-        footer {
-            background: var(--bg2);
-            border-top: 1px solid var(--border);
-            padding: 3rem 2rem 2rem
-        }
-
-        .footer-grid {
-            max-width: 1100px;
-            margin: 0 auto;
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr 1fr;
-            gap: 2rem;
-            margin-bottom: 2.5rem
-        }
-
-        .footer-brand .logo {
-            font-family: var(--mono);
-            font-weight: 700;
-            font-size: 1rem;
-            color: var(--purple);
-            margin-bottom: 0.75rem
-        }
-
-        .footer-brand p {
-            font-size: 0.84rem;
-            color: var(--text3);
-            line-height: 1.6
-        }
-
-        .footer-col h4 {
-            font-family: var(--mono);
-            font-size: 0.72rem;
-            color: var(--text3);
-            letter-spacing: 0.1em;
-            margin-bottom: 1rem
-        }
-
-        .footer-col a {
-            display: block;
-            font-size: 0.84rem;
-            color: var(--text2);
-            text-decoration: none;
-            margin-bottom: 0.5rem;
-            transition: color 0.2s
-        }
-
-        .footer-col a:hover {
-            color: var(--purple)
-        }
-
-        .footer-bottom {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding-top: 1.5rem;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: gap-1rem
-        }
-
-        .footer-bottom p {
-            font-family: var(--mono);
-            font-size: 0.72rem;
-            color: var(--text3);
-            letter-spacing: 0.05em
-        }
-
-        .footer-bottom .npm-badges {
-            display: flex;
-            gap: 0.75rem;
-            flex-wrap: wrap
-        }
-
-        .npm-pill {
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            padding: 3px 10px;
-            background: rgba(124, 58, 237, 0.06);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            color: var(--text3)
-        }
-
-        /* ANIMATIONS */
-        @keyframes fadeUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px)
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0)
-            }
-        }
-
-        .fade-up {
-            opacity: 0;
-            animation: fadeUp 0.6s ease forwards
-        }
-
-        .delay-1 {
-            animation-delay: 0.1s
-        }
-
-        .delay-2 {
-            animation-delay: 0.2s
-        }
-
-        .delay-3 {
-            animation-delay: 0.3s
-        }
-
-        .delay-4 {
-            animation-delay: 0.4s
-        }
-
-        .delay-5 {
-            animation-delay: 0.5s
-        }
-
-        /* RESPONSIVE */
-        @media(max-width:768px) {
-            .nav-links {
-                display: none
-            }
-
-            .hamburger {
-                display: flex
-            }
-
-            .persona-content.active {
-                grid-template-columns: 1fr
-            }
-
-            .cli-grid {
-                grid-template-columns: 1fr
-            }
-
-            .footer-grid {
-                grid-template-columns: 1fr 1fr
-            }
-
-            .stats-grid .stat-item {
-                border-right: none;
-                border-bottom: 1px solid var(--border)
-            }
-
-            .stats-grid .stat-item:last-child {
-                border-bottom: none
-            }
-
-            .install-box {
-                flex-wrap: wrap;
-                text-align: center;
-                justify-content: center
-            }
-        }
-
-        @media(max-width:480px) {
-            .footer-grid {
-                grid-template-columns: 1fr
-            }
-
-            .personas-tabs {
-                flex-wrap: wrap
-            }
-
-            .ptab {
-                flex: 1;
-                min-width: 80px;
-                text-align: center
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SnapMind AI — Redefined Intelligence</title>
+  <meta name="description"
+    content="A world class AI ecosystem for your terminal, desktop, and browser. Local. Fast. Zero telemetry.">
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/global.css">
+  <style>
+    /* Premium Hero Section */
+    .hero-section {
+      padding-top: 160px;
+      padding-bottom: 100px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .hero-badge-container {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 2rem;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* Vibrant Gradient Text for H1 */
+    .hero-h1-gradient {
+      background: linear-gradient(135deg, #fff 0%, #d8b4fe 50%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      color: transparent;
+      display: inline-block;
+    }
+
+    .hero-sub {
+      font-size: 1.25rem;
+      color: #a1a1aa;
+      max-width: 600px;
+      margin: 0 auto 3rem;
+      line-height: 1.6;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 1.2rem;
+      justify-content: center;
+      margin-bottom: 6rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* Redesigned Floating Terminal */
+    .hero-terminal-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      margin: 0 auto;
+      z-index: 10;
+      perspective: 1000px;
+    }
+
+    /* Subtle glowing backplate */
+    .hero-terminal-wrapper::before {
+      content: "";
+      position: absolute;
+      top: 10%;
+      left: 5%;
+      right: 5%;
+      bottom: -10%;
+      background: linear-gradient(180deg, rgba(139, 92, 246, 0.3) 0%, rgba(56, 189, 248, 0.1) 100%);
+      filter: blur(60px);
+      z-index: -1;
+      border-radius: 50%;
+    }
+
+    .hero-terminal-nav {
+      position: absolute;
+      top: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      background: rgba(20, 20, 25, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      padding: 4px;
+      z-index: 20;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .hero-tab-btn {
+      background: transparent;
+      border: none;
+      font-family: var(--body);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #a1a1aa;
+      padding: 8px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .hero-tab-btn:hover {
+      color: #fff;
+    }
+
+    .hero-tab-btn.active {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .hero-terminal-body {
+      text-align: left;
+      min-height: 300px;
+      padding: 2rem;
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      line-height: 1.7;
+    }
+
+    /* Syntax Highlighting Colors */
+    .syn-prompt {
+      color: #8b5cf6;
+      font-weight: bold;
+      margin-right: 12px;
+    }
+
+    .syn-cmd {
+      color: #e2e8f0;
+    }
+
+    .syn-comment {
+      color: #64748b;
+    }
+
+    .syn-str {
+      color: #34d399;
+    }
+
+    .syn-var {
+      color: #f472b6;
+    }
+
+    .cursor-blink {
+      display: inline-block;
+      width: 8px;
+      height: 16px;
+      background: #8b5cf6;
+      animation: blink 1s step-end infinite;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+
+    @keyframes blink {
+      50% {
+        opacity: 0;
+      }
+    }
+
+    /* Trust Strip Refined */
+    .trust-strip {
+      padding: 3rem 0;
+      text-align: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(0, 0, 0, 0.3);
+      position: relative;
+      z-index: 2;
+    }
+
+    .trust-label {
+      font-family: var(--body);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #71717a;
+      margin-bottom: 2rem;
+    }
+
+    .trust-logos {
+      display: flex;
+      justify-content: center;
+      gap: 4rem;
+      flex-wrap: wrap;
+      opacity: 0.4;
+      filter: contrast(0) brightness(2);
+      transition: 0.3s;
+    }
+
+    .trust-logos:hover {
+      opacity: 0.8;
+    }
+  </style>
 </head>
 
-<body>
+<body class="bg-grid">
+  <!-- Atmospheric Glows -->
+  <div class="glow-spotlight"></div>
+  <div class="glow-accent"></div>
 
-    <!-- NAV -->
-    <nav>
-        <a href="snapmind-landing.html" class="nav-logo" style="text-decoration:none">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <rect x="2" y="2" width="6" height="6" rx="1" fill="#7c3aed" />
-                <rect x="10" y="2" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.5" />
-                <rect x="2" y="10" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.5" />
-                <rect x="10" y="10" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.3" />
-            </svg>
-            snapmind<span>-ai</span>
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="url(#paint0_linear)" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M2 7L12 12V22" stroke="url(#paint1_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M12 12L22 7" stroke="url(#paint2_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <defs>
+            <linearGradient id="paint0_linear" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint1_linear" x1="7" y1="7" x2="7" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint2_linear" x1="17" y1="7" x2="17" y2="12" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+          </defs>
+        </svg>
+        SnapMind
+      </a>
+      <div class="nav-links">
+        <a href="npm.html">CLI (npm)</a>
+        <a href="desktop.html">Desktop App</a>
+        <a href="extension.html">Extension</a>
+        <a href="widget.html">Web Widget</a>
+      </div>
+      <div class="nav-right">
+        <a href="blog.html" class="nav-links">Docs</a>
+        <a href="https://github.com/roshankumar0036singh/SnapMind" target="_blank" aria-label="GitHub"
+          style="opacity: 0.7; transition: 0.2s;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path
+              d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+          </svg>
         </a>
-        <div class="nav-links">
-            <a href="npm.html">CLI (npm)</a>
-            <a href="desktop.html">Desktop App</a>
-            <a href="extension.html">Browser Extension</a>
-            <a href="widget.html">Web Widget</a>
-            <a href="docs.html" target="_blank">Docs</a>
-        </div>
-        <a href="https://www.npmjs.com/package/snapmind-ai" target="_blank" class="nav-cta">npm install →</a>
-        <div class="hamburger" onclick="toggleNav()"><span></span><span></span><span></span></div>
-    </nav>
+        <button class="mobile-toggle">☰</button>
+      </div>
+    </div>
+  </nav>
 
-    <!-- HERO -->
-    <section id="hero">
-        <div class="hero-bg"></div>
-        <div class="hero-grid"></div>
+  <!-- World Class Lingo-Style Hero -->
+  <section class="hero-section">
+    <div class="container fade-up delay-1">
+      <div class="hero-badge-container">
+        <div class="badge-pill">v2.1.0 Released</div>
+        <div class="badge-pill"><span class="pulse-dot"></span> NO CLOUD DATA</div>
+      </div>
 
-        <div class="badge fade-up">
-            <span class="badge-dot"></span>
-            Production-grade · Local-first · v1.0.0
-        </div>
+      <h1>Zero Telemetry.<br><span class="hero-h1-gradient">Infinite Context.</span></h1>
+      <p class="hero-sub fade-up delay-2">SnapMind is an elegant, multi-interface AI node running directly on your
+        hardware. Query codebases, PDFs, and web pages without ever sending your data to OpenAI.</p>
 
-        <h1 class="hero-title fade-up delay-1">
-            <span class="line1">Terminal Intelligence,</span>
-            <span class="accent">Redefined.</span>
-        </h1>
+      <div class="hero-ctas fade-up delay-3">
+        <a href="npm.html" class="btn-primary">Connect Your Code &rarr;</a>
+        <a href="blog.html" class="btn-secondary">Read The Docs</a>
+      </div>
 
-        <p class="hero-sub fade-up delay-2">
-            SnapMind AI brings specialized AI personas — Scholar, Coder, Analyst, Writer — directly into your terminal.
-            Hybrid
-            RAG, persistent memory, and local-first LLMs in a single <code
-                style="color:var(--purple);background:rgba(124,58,237,0.08);padding:1px 6px;border-radius:3px;font-family:var(--mono)">npm</code>
-            package.
-        </p>
+      <!-- Glassmorphic Terminal Showcase -->
+      <div class="hero-terminal-wrapper fade-up delay-4">
 
-        <style>
-            .platform-cards {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-                gap: 1.5rem;
-                width: 100%;
-                max-width: 900px;
-                margin: 2rem auto 3rem;
-            }
-
-            .platform-card {
-                background: var(--bg2);
-                border: 1px solid var(--border);
-                border-radius: 8px;
-                padding: 1.5rem 1rem;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                gap: 12px;
-                color: var(--text);
-                text-decoration: none;
-                font-family: var(--display);
-                font-size: 0.95rem;
-                font-weight: 600;
-                transition: all 0.2s;
-                position: relative;
-                overflow: hidden;
-            }
-
-            .platform-card::before {
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                height: 2px;
-                background: linear-gradient(90deg, transparent, var(--purple), transparent);
-                opacity: 0;
-                transition: opacity 0.3s;
-            }
-
-            .platform-card svg {
-                color: var(--purple);
-                transition: transform 0.2s;
-            }
-
-            .platform-card:hover {
-                border-color: var(--border2);
-                transform: translateY(-2px);
-                box-shadow: 0 8px 24px rgba(124, 58, 237, 0.1);
-            }
-
-            .platform-card:hover::before {
-                opacity: 1;
-            }
-
-            .platform-card:hover svg {
-                transform: scale(1.1);
-            }
-        </style>
-        <div class="hero-ctas fade-up delay-3"
-            style="display:flex; gap:1rem; justify-content:center; flex-wrap:wrap; margin-bottom:1rem;">
-            <a href="docs.html" class="btn-primary" style="display:flex;align-items:center;gap:8px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-                </svg> Read the Docs
-            </a>
-            <a href="https://github.com/roshankumar0036singh/SnapMind" target="_blank" class="btn-secondary"
-                style="display:flex;align-items:center;gap:8px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <polygon
-                        points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2">
-                    </polygon>
-                </svg> Star on GitHub
-            </a>
+        <div class="hero-terminal-nav">
+          <button class="hero-tab-btn active" data-target="hero-coder">CLI Coder</button>
+          <button class="hero-tab-btn" data-target="hero-scholar">API Engine</button>
+          <button class="hero-tab-btn" data-target="hero-desktop">Web Widget</button>
         </div>
 
-        <div class="platform-cards fade-up delay-3">
-            <a href="desktop.html" class="platform-card">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                    <line x1="8" y1="21" x2="16" y2="21"></line>
-                    <line x1="12" y1="17" x2="12" y2="21"></line>
-                </svg>
-                Desktop App
-            </a>
-            <a href="extension.html" class="platform-card">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="2" y1="12" x2="22" y2="12"></line>
-                    <path
-                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                    </path>
-                </svg>
-                Browser Extension
-            </a>
-            <a href="widget.html" class="platform-card">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="3" y1="9" x2="21" y2="9"></line>
-                    <line x1="9" y1="21" x2="9" y2="9"></line>
-                </svg>
-                Web Widget
-            </a>
-            <a href="npm.html" class="platform-card">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="4 17 10 11 4 5"></polyline>
-                    <line x1="12" y1="19" x2="20" y2="19"></line>
-                </svg>
-                CLI (npm)
-            </a>
-        </div>
+        <div class="terminal-block">
+          <div class="terminal-top">
+            <div class="mac-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span
+                class="dot-green"></span></div>
+            <div style="font-family: var(--mono); font-size: 0.75rem; color: #71717a;">~/projects/supernova/src</div>
+          </div>
 
-        <div class="hero-badges fade-up delay-4">
-            <span class="npm-badge"><span>npm</span> snapmind-ai</span>
-            <span class="npm-badge">Node.js <span>&gt;= 18.x</span></span>
-            <span class="npm-badge">ISC <span>Licensed</span></span>
-            <span class="npm-badge">Zero <span>Telemetry</span></span>
-        </div>
+          <div class="hero-terminal-body">
 
-        <div class="terminal fade-up delay-5">
-            <div class="terminal-bar">
-                <div class="dot r"></div>
-                <div class="dot y"></div>
-                <div class="dot g"></div>
-                <span class="terminal-title">snapmind-ai — zsh</span>
+            <div id="hero-coder" class="tab-content" style="display: block;">
+              <div class="syn-comment"># Inject an entire codebase into the embedded LanceDB instantly.</div>
+              <div style="margin-top:0.8rem;"><span class="syn-prompt">$</span><span class="syn-cmd">snapmind --mount
+                  ./src --model llama3</span></div>
+              <div class="syn-comment">Indexing 214 files... Done in 1.2s.</div>
+              <div style="margin-top:0.8rem;"><span class="syn-prompt">coder></span><span class="syn-cmd">Analyze the
+                  auth flow. Where is the token validation failing?</span></div>
+              <div class="syn-comment" style="margin-top: 1rem; color: #cbd5e1;">&gt; Searching nearest neighbors for
+                `<span class="syn-str">auth flow token validation</span>`
+                &gt; Found 3 relevant chunks in `middleware/verify.ts`.</div>
+              <div style="margin-top: 0.5rem; color: #e2e8f0; line-height: 1.8;">
+                The validation is failing at `line 42` because the JWT issuer is checked against a hardcoded string
+                `authUser` instead of `env.ISSUER_KEY`.
+                Would you like me to generate a patch? [Y/n]
+              </div>
+              <div style="margin-top: 1.5rem;"><span class="syn-prompt">coder></span><span class="cursor-blink"></span>
+              </div>
             </div>
-            <div class="terminal-body">
-                <div><span class="t-comment"># Install globally</span></div>
-                <div><span class="t-prompt">$ </span><span class="t-cmd">npm install -g snapmind-ai</span></div>
-                <div>&nbsp;</div>
-                <div><span class="t-prompt">$ </span><span class="t-cmd">snapmind-ai --persona scholar --mount
-                        ./papers</span>
-                </div>
-                <div><span class="t-green">✓ Indexing 24 PDFs with Hybrid RAG...</span></div>
-                <div><span class="t-green">✓ LanceDB vector store initialized</span></div>
-                <div><span class="t-green">✓ Session memory restored (snap_thesis_v2)</span></div>
-                <div>&nbsp;</div>
-                <div><span class="t-prompt">Scholar&gt; </span><span class="t-cmd">Summarize the key findings on
-                        transformer
-                        attention</span></div>
-                <div><span class="t-out">Retrieving from 8 sources via FTS + vector search...</span></div>
-                <div><span class="t-green">Based on your indexed corpus, transformer attention...</span><span
-                        class="cursor"></span></div>
-            </div>
-        </div>
-    </section>
 
-    <!-- STATS -->
-    <div id="stats">
-        <div class="stats-grid container">
-            <div class="stat-item">
-                <div class="stat-num">4</div>
-                <div class="stat-label">AI PERSONAS</div>
+            <div id="hero-scholar" class="tab-content" style="display: none;">
+              <div class="syn-comment"># Under the hood, SnapMind runs a blazing fast Python HTTP server</div>
+              <div style="margin-top:0.8rem;"><span class="syn-prompt">POST</span><span class="syn-cmd">
+                  http://127.0.0.1:8000/api/v1/query</span></div>
+              <div style="margin-top:1rem; color: #94a3b8; font-family:var(--mono);">
+                {<br>
+                &nbsp;&nbsp;<span class="syn-var">"collection"</span>: <span class="syn-str">"docs_main"</span>,<br>
+                &nbsp;&nbsp;<span class="syn-var">"query"</span>: <span class="syn-str">"How do I override the root
+                  password?"</span>,<br>
+                &nbsp;&nbsp;<span class="syn-var">"inference_engine"</span>: <span class="syn-str">"ollama"</span><br>
+                }
+              </div>
+              <div style="margin-top:1rem; color: #34d399;">HTTP 200 OK</div>
             </div>
-            <div class="stat-item">
-                <div class="stat-num">5</div>
-                <div class="stat-label">LLM PROVIDERS</div>
+
+            <div id="hero-desktop" class="tab-content" style="display: none;">
+              <div class="syn-comment"># Expose your knowledge base beautifully on any frontend</div>
+              <div style="margin-top:0.8rem; color: #cbd5e1; white-space:pre-wrap; font-family:var(--mono);">
+                &lt;<span class="syn-var">script</span> <span class="syn-prompt">src</span>=<span
+                  class="syn-str">"https://unpkg.com/snapmind-widget"</span>&gt;&lt;/<span
+                  class="syn-var">script</span>&gt;
+                &lt;<span class="syn-var">script</span>&gt;
+                SnapMind.<span class="syn-prompt">mount</span>({
+                server: <span class="syn-str">'http://localhost:8000'</span>,
+                theme: <span class="syn-str">'dark'</span>,
+                persona: <span class="syn-str">'support'</span>
+                });
+                &lt;/<span class="syn-var">script</span>&gt;
+              </div>
             </div>
-            <div class="stat-item">
-                <div class="stat-num">100%</div>
-                <div class="stat-label">LOCAL-FIRST</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-num">0</div>
-                <div class="stat-label">TELEMETRY</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-num">∞</div>
-                <div class="stat-label">SESSION MEMORY</div>
-            </div>
+
+          </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust Strip -->
+  <section class="trust-strip fade-up" style="padding-top: 0;">
+    <div class="container">
+      <div class="trust-label">BUILT ON MODERN OPEN SOURCE STACKS</div>
+      <div class="trust-logos">
+        <span style="font-family:var(--display);font-size:1.5rem;font-weight:700;">HuggingFace</span>
+        <span style="font-family:var(--display);font-size:1.5rem;font-weight:700;">LanceDB</span>
+        <span style="font-family:var(--display);font-size:1.5rem;font-weight:700;">Ollama</span>
+        <span style="font-family:var(--display);font-size:1.5rem;font-weight:700;">FastAPI</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Premium Bento Grid -->
+  <section class="container fade-up" style="padding: 6rem 0;">
+    <div style="text-align: center; margin-bottom: 4rem;">
+      <h2 style="font-size: clamp(2.5rem, 4vw, 3.5rem);">Seamless Interfaces.</h2>
+      <p style="max-width: 600px; margin: 0 auto; color: #a1a1aa;">One centralized vector store and inference layer,
+        served through four perfectly tailored UX paradigms to match your workflow.</p>
     </div>
 
-    <!-- HIGHLIGHTS / FEATURES -->
-    <section id="highlights">
-        <div class="container">
-            <div class="section-label">Features</div>
-            <h2 class="section-title">One package. Infinite intelligence.</h2>
-            <p class="section-sub">Every tool a power user needs — right inside the terminal. No cloud lock-in. No
-                telemetry.
-                Just results.</p>
-            <div class="grid">
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M9 12h.01" />
-                            <path d="M15 12h.01" />
-                            <path
-                                d="M12 2a7.5 7.5 0 0 0-7.5 7.5c0 1.5.5 3 1.5 4.5V17a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3c1-1.5 1.5-3 1.5-4.5A7.5 7.5 0 0 0 12 2Z" />
-                        </svg></div>
-                    <h3>4 Specialized Personas</h3>
-                    <p>Scholar, Coder, Analyst, and Writer — each with tailored tools, system prompts, and RAG
-                        configurations.</p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                        </svg></div>
-                    <h3>Hybrid RAG</h3>
-                    <p>LanceDB powers vector similarity search + Full-Text Search (FTS) for precision multi-modal
-                        retrieval.</p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                        </svg></div>
-                    <h3>Secure API Vault</h3>
-                    <p>Keys stored in your OS-native keychain via <code
-                            style="font-family:var(--mono);color:var(--purple)">keytar</code> — never in plaintext,
-                        never on disk.</p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <ellipse cx="12" cy="5" rx="9" ry="3" />
-                            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
-                            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
-                        </svg></div>
-                    <h3>Session Memory & Snapshots</h3>
-                    <p>Named session snapshots for branching research paths. Resume any conversation exactly where you
-                        left off.
-                    </p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="6" y1="3" x2="6" y2="15" />
-                            <circle cx="18" cy="6" r="3" />
-                            <circle cx="6" cy="18" r="3" />
-                            <path d="M18 9a9 9 0 0 1-9 9" />
-                        </svg></div>
-                    <h3>Multi-Agent Handoff</h3>
-                    <p>Switch personas mid-session with <code
-                            style="font-family:var(--mono);color:var(--purple)">/handoff</code>
-                        while preserving full conversation context and vector state.</p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="4" y="4" width="16" height="16" rx="2" ry="2" />
-                            <rect x="9" y="9" width="6" height="6" />
-                            <path d="M9 1v3" />
-                            <path d="M15 1v3" />
-                            <path d="M9 20v3" />
-                            <path d="M15 20v3" />
-                            <path d="M20 9h3" />
-                            <path d="M20 14h3" />
-                            <path d="M1 9h3" />
-                            <path d="M1 14h3" />
-                        </svg></div>
-                    <h3>Auto-Routing</h3>
-                    <p>Semantic intent detection automatically selects the best persona for your query. Complexity-based
-                        model
-                        routing.</p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="2" y1="12" x2="22" y2="12" />
-                            <path
-                                d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                        </svg></div>
-                    <h3>Global Cross-Persona Search</h3>
-                    <p>Query across ALL indexed datasets from any persona with <code
-                            style="font-family:var(--mono);color:var(--purple)">/global &lt;query&gt;</code> —
-                        Relational RAG.</p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="2" y1="2" x2="22" y2="22" />
-                            <path d="M8.5 8.5a5 5 0 0 1 7 0" />
-                            <path d="M12 15h.01" />
-                            <path d="M16 12a5 5 0 0 0-8 0" />
-                            <path d="M19.5 8.5a10 10 0 0 0-15 0" />
-                        </svg></div>
-                    <h3>Airgap Mode</h3>
-                    <p>Force 100% offline operation with <code
-                            style="font-family:var(--mono);color:var(--purple)">--airgap</code>. All processing stays on
-                        your machine
-                        via Ollama.</p>
-                </div>
-                <div class="hl-card">
-                    <div class="hl-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="13.5" cy="5.5" r="2.5" />
-                            <circle cx="18.5" cy="10.5" r="2.5" />
-                            <circle cx="8.5" cy="15.5" r="2.5" />
-                            <path d="M21 15c0-4.4-4.5-8-10-8S1 10.6 1 15s10 8 10 8 10-3.6 10-8z" />
-                        </svg></div>
-                    <h3>Theme Engine</h3>
-                    <p>Cyberpunk, Matrix, and Default terminal color schemes. Your terminal, your aesthetic.</p>
-                </div>
-            </div>
+    <div class="bento-grid">
+      <div class="card-premium bento-wide">
+        <div class="card-icon-box">
+          <svg viewBox="0 0 24 24">
+            <path d="M4 6h16v12H4z" fill="none" stroke="currentColor" stroke-width="2" />
+            <path d="M6 10l3 3-3 3M12 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
         </div>
-    </section>
+        <h3 style="font-size: 1.8rem; margin-bottom: 0.5rem; color:#fff;">The CLI Agent</h3>
+        <p style="font-size: 1rem; color: #a1a1aa; flex-grow: 1;">Invoke complex RAG pipelines right from your terminal.
+          Read local repositories, parse PDFs, or execute targeted refactors without opening an IDE.</p>
+        <a href="npm.html" class="btn-outline" style="align-self: flex-start; margin-top:2rem;">Explore NPM Package</a>
+      </div>
 
-    <!-- PROVIDERS -->
-    <section id="providers">
-        <div class="container">
-            <div class="section-label">Supported Providers</div>
-            <h2 class="section-title">Local or Cloud. Your choice.</h2>
-            <p class="section-sub">100% offline with Ollama, or seamlessly route to OpenAI, Mistral, Anthropic, and
-                Gemini.
-                Complexity-based auto-routing decides for you.</p>
-            <div class="providers-grid">
-                <div class="provider-card">
-                    <div class="provider-name">Ollama</div>
-                    <div class="provider-models">Llama 3, Mistral, and more</div>
-                    <span class="local-tag tag-local">LOCAL</span>
-                </div>
-                <div class="provider-card">
-                    <div class="provider-name">OpenAI</div>
-                    <div class="provider-models">GPT-4o, GPT-4o-mini</div>
-                    <span class="local-tag tag-cloud">CLOUD</span>
-                </div>
-                <div class="provider-card">
-                    <div class="provider-name">Anthropic</div>
-                    <div class="provider-models">Claude 3.5 Sonnet</div>
-                    <span class="local-tag tag-cloud">CLOUD</span>
-                </div>
-                <div class="provider-card">
-                    <div class="provider-name">Mistral</div>
-                    <div class="provider-models">Mistral Large</div>
-                    <span class="local-tag tag-cloud">CLOUD</span>
-                </div>
-                <div class="provider-card">
-                    <div class="provider-name">Gemini</div>
-                    <div class="provider-models">Gemini 1.5 Pro</div>
-                    <span class="local-tag tag-cloud">CLOUD</span>
-                </div>
-            </div>
+      <div class="card-premium">
+        <div class="card-icon-box">
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2" />
+            <path d="M3 9h18" stroke="currentColor" stroke-width="2" />
+          </svg>
         </div>
-    </section>
+        <h3 style="font-size: 1.4rem; color:#fff;">Desktop GUI</h3>
+        <p style="font-size: 0.95rem; color: #a1a1aa; flex-grow: 1;">A unified dashboard to visually construct databases
+          and view API logs.</p>
+        <a href="desktop.html" class="btn-outline" style="align-self: flex-start; margin-top:2rem;">View Desktop App</a>
+      </div>
 
-    <!-- SECURITY -->
-    <section id="security">
-        <div class="container">
-            <div class="section-label">Security</div>
-            <h2 class="section-title">Private by design.</h2>
-            <p class="section-sub">Your data never leaves your machine unless you explicitly choose a cloud provider.
-            </p>
-            <div class="security-grid">
-                <div class="sec-card">
-                    <div class="sec-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path
-                                d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" />
-                        </svg></div>
-                    <h3>OS Keychain Storage</h3>
-                    <p>API keys are never stored in plaintext. All credentials use the OS-native keychain via <code
-                            style="font-family:var(--mono);color:var(--purple)">keytar</code>.</p>
-                </div>
-                <div class="sec-card">
-                    <div class="sec-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="2" y1="2" x2="22" y2="22" />
-                            <path d="M8.5 8.5a5 5 0 0 1 7 0" />
-                            <path d="M12 15h.01" />
-                            <path d="M16 12a5 5 0 0 0-8 0" />
-                            <path d="M19.5 8.5a10 10 0 0 0-15 0" />
-                        </svg></div>
-                    <h3>Airgap Mode</h3>
-                    <p>The <code style="font-family:var(--mono);color:var(--purple)">--airgap</code> flag ensures zero
-                        network
-                        traffic. All LLM inference stays on your machine via Ollama.</p>
-                </div>
-                <div class="sec-card">
-                    <div class="sec-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18" />
-                            <path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg></div>
-                    <h3>Zero Telemetry</h3>
-                    <p>SnapMind does not phone home. No usage data, no analytics, no crash reports. What you do is yours
-                        alone.
-                    </p>
-                </div>
-                <div class="sec-card">
-                    <div class="sec-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path
-                                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                            <line x1="12" y1="22.08" x2="12" y2="12" />
-                        </svg></div>
-                    <h3>Local Vector Store</h3>
-                    <p>All indexed data is stored locally in <code
-                            style="font-family:var(--mono);color:var(--purple)">.snapmind_cache/lancedb/</code> —
-                        private, persistent,
-                        and portable.</p>
-                </div>
-            </div>
+      <div class="card-premium">
+        <div class="card-icon-box">
+          <svg viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+            <path d="M12 3c-3 0-5 4-5 9s2 9 5 9 5-4 5-9-2-9-5-9zM3.5 9h17M3.5 15h17" stroke="currentColor"
+              stroke-width="2" />
+          </svg>
         </div>
-    </section>
+        <h3 style="font-size: 1.4rem; color:#fff;">Web Extension</h3>
+        <p style="font-size: 0.95rem; color: #a1a1aa; flex-grow: 1;">Scrape, catalog, and query documentation pages
+          straight from the browser.</p>
+        <a href="extension.html" class="btn-outline" style="align-self: flex-start; margin-top:2rem;">Add to Chrome</a>
+      </div>
 
-    <!-- FAQ -->
-    <section id="faq">
-        <div class="container">
-            <div class="section-label">FAQ</div>
-            <h2 class="section-title">Common questions.</h2>
-            <div class="faq-list" id="faqList">
-                <div class="faq-item">
-                    <button class="faq-q">Are my API keys secure?<span class="icon">+</span></button>
-                    <div class="faq-a">All API keys are stored in your OS-native keychain via <code
-                            style="font-family:var(--mono);color:var(--purple)">keytar</code> — never in plaintext,
-                        environment
-                        variables, or config files that could be accidentally committed to version control.</div>
-                </div>
-                <div class="faq-item">
-                    <button class="faq-q">Does SnapMind read my entire codebase?<span class="icon">+</span></button>
-                    <div class="faq-a">Only the directory you explicitly mount with <code
-                            style="font-family:var(--mono);color:var(--purple)">--mount</code> or the repo you clone
-                        with <code style="font-family:var(--mono);color:var(--purple)">--repo</code> is indexed. Nothing
-                        outside those paths
-                        is ever touched.</div>
-                </div>
-                <div class="faq-item">
-                    <button class="faq-q">Can I use it completely offline?<span class="icon">+</span></button>
-                    <div class="faq-a">Yes. Use <code
-                            style="font-family:var(--mono);color:var(--purple)">--airgap</code> flag
-                        with Ollama installed locally. All LLM inference, embeddings, and vector search happen entirely
-                        on your
-                        machine with zero network calls.</div>
-                </div>
-                <div class="faq-item">
-                    <button class="faq-q">What is Multi-Agent Handoff?<span class="icon">+</span></button>
-                    <div class="faq-a">The <code style="font-family:var(--mono);color:var(--purple)">/handoff</code>
-                        command lets
-                        you transfer your full conversation context and session state to a different persona
-                        mid-session. For
-                        example, research in Scholar, then hand off to Writer to draft a report.</div>
-                </div>
-                <div class="faq-item">
-                    <button class="faq-q">How does the complexity-based model router work?<span
-                            class="icon">+</span></button>
-                    <div class="faq-a">The router in <code
-                            style="font-family:var(--mono);color:var(--purple)">src/utils/router.js</code> analyzes
-                        query complexity
-                        and routes to GPT-4o-mini for simpler tasks and GPT-4o for complex ones (when using OpenAI),
-                        minimizing
-                        costs without sacrificing quality.</div>
-                </div>
-                <div class="faq-item">
-                    <button class="faq-q">Where is my data stored?<span class="icon">+</span></button>
-                    <div class="faq-a">All persistent data is stored locally in <code
-                            style="font-family:var(--mono);color:var(--purple)">.snapmind_cache/</code> — vector tables
-                        in <code style="font-family:var(--mono);color:var(--purple)">lancedb/</code> and conversation
-                        history in <code style="font-family:var(--mono);color:var(--purple)">sessions/</code>. Use <code
-                            style="font-family:var(--mono);color:var(--purple)">snapmind-ai maintenance</code> to clean
-                        up stale data.
-                    </div>
-                </div>
-            </div>
+      <div class="card-premium bento-wide">
+        <div class="card-icon-box">
+          <svg viewBox="0 0 24 24">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="none" stroke="currentColor"
+              stroke-width="2" />
+          </svg>
         </div>
-    </section>
+        <h3 style="font-size: 1.8rem; margin-bottom: 0.5rem; color:#fff;">Floating Component</h3>
+        <p style="font-size: 1rem; color: #a1a1aa; flex-grow: 1;">A drop-in shadow-DOM web component that attaches a
+          world-class chat interface to your own SaaS applications, tethered to your local LanceDB instance.</p>
+        <a href="widget.html" class="btn-outline" style="align-self: flex-start; margin-top:2rem;">See Widget Docs</a>
+      </div>
+    </div>
+  </section>
 
-    <!-- COMMUNITY -->
-    <section id="community">
-        <div class="container">
-            <div class="section-label">Community</div>
-            <h2 class="section-title">Build with us.</h2>
-            <p class="section-sub">SnapMind is open source. Contribute code, report issues, or help shape where it goes
-                next.
-            </p>
-            <div class="community-grid">
-                <div class="comm-card">
-                    <h3>Contribute</h3>
-                    <p>Help improve SnapMind by contributing code, documentation, new persona tools, or new LLM provider
-                        integrations.</p>
-                    <a href="https://github.com/roshankumar0036singh/SnapMind" target="_blank" class="comm-link">View on
-                        GitHub
-                        →</a>
-                </div>
-                <div class="comm-card">
-                    <h3>Report Issues</h3>
-                    <p>Found a bug or have a feature request? Open an issue on GitHub. Every report helps make SnapMind
-                        better.
-                    </p>
-                    <a href="https://github.com/roshankumar0036singh/SnapMind/issues" target="_blank"
-                        class="comm-link">Open an
-                        Issue →</a>
-                </div>
-                <div class="comm-card">
-                    <h3>Discussions</h3>
-                    <p>Share workflows, ask questions, and connect with other researchers, developers, and analysts
-                        using
-                        SnapMind.</p>
-                    <a href="https://github.com/roshankumar0036singh/SnapMind/discussions" target="_blank"
-                        class="comm-link">Join
-                        Discussion →</a>
-                </div>
-            </div>
+  <!-- CTA Section -->
+  <section class="container fade-up" style="text-align: center; padding: 6rem 0 8rem;">
+    <h2 style="font-size: clamp(2rem, 5vw, 4rem); margin-bottom: 1.5rem;">Take control of your context.</h2>
+    <p style="color: #a1a1aa; margin-bottom: 3rem;">Ready to install SnapMind? Available instantly via NPM.</p>
+    <a href="blog.html" class="btn-primary" style="padding: 16px 36px; font-size: 1.1rem;">Get Started for Free
+      &rarr;</a>
+  </section>
+
+  <!-- Footer Focus -->
+  <footer>
+    <div class="footer-grid">
+      <div class="footer-col" style="padding-right: 2rem;">
+        <div class="nav-logo" style="margin-bottom: 1rem;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" fill="#8B5CF6" fill-opacity="0.2" stroke="#8B5CF6"
+              stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <span style="color:#fff; font-weight:700;">SnapMind</span>
         </div>
-    </section>
+        <p style="font-size:0.85rem; color:#71717a;">Building the local infrastructure for AI. No trackers, no data
+          egress.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Ecosystem</h4>
+        <a href="npm.html">CLI Package</a>
+        <a href="desktop.html">Desktop Interface</a>
+        <a href="extension.html">Browser Extension</a>
+        <a href="widget.html">Web Widget</a>
+      </div>
+      <div class="footer-col">
+        <h4>Developers</h4>
+        <a href="blog.html">Documentation</a>
+        <a href="https://github.com/roshankumar0036singh/SnapMind">GitHub Source</a>
+      </div>
+      <div class="footer-col">
+        <h4>Connect</h4>
+        <a href="https://discord.com">Discord</a>
+        <a href="https://x.com">Twitter</a>
+        <a href="contact.html">Contact Us</a>
+      </div>
+    </div>
+  </footer>
 
-    <!-- FOOTER -->
-    <footer>
-        <div class="footer-grid">
-            <div class="footer-brand">
-                <div class="logo">snapmind-ai</div>
-                <p>Production-grade, persona-based AI workflows — directly in your terminal. Local-first. Zero
-                    telemetry. Open
-                    source.</p>
-            </div>
-            <div class="footer-col">
-                <h4>PROJECT</h4>
-                <a href="https://github.com/roshankumar0036singh/SnapMind" target="_blank">GitHub Repo</a>
-                <a href="https://www.npmjs.com/package/snapmind-ai" target="_blank">npm Package</a>
-                <a href="docs.html" target="_blank">Docs / README</a>
-                <a href="https://github.com/roshankumar0036singh/SnapMind/releases" target="_blank">Changelog</a>
-            </div>
-            <div class="footer-col">
-                <h4>COMMUNITY</h4>
-                <a href="https://github.com/roshankumar0036singh/SnapMind#contributing" target="_blank">Contribute</a>
-                <a href="https://github.com/roshankumar0036singh/SnapMind/issues" target="_blank">Report Issues</a>
-                <a href="https://github.com/roshankumar0036singh/SnapMind/discussions" target="_blank">Discussions</a>
-            </div>
-            <div class="footer-col">
-                <h4>RESOURCES</h4>
-                <a href="#how-it-works">How it Works</a>
-                <a href="#personas">Personas</a>
-                <a href="#cli">CLI Flags</a>
-                <a href="#providers">Providers</a>
-                <a href="#security">Security</a>
-                <a href="#faq">FAQ</a>
-            </div>
-        </div>
-        <div class="footer-bottom">
-            <p>ISC © 2026 SnapMind AI. Built for terminal-first thinkers.</p>
-            <div class="npm-badges">
-                <span class="npm-pill">npm: snapmind-ai</span>
-                <span class="npm-pill">node &gt;= 18.x</span>
-                <span class="npm-pill">LanceDB + Ollama</span>
-            </div>
-        </div>
-    </footer>
-
-    <script>
-        function switchPersona(name, btn) {
-            document.querySelectorAll('.persona-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.ptab').forEach(el => el.classList.remove('active'));
-            document.getElementById('persona-' + name).classList.add('active');
-            btn.classList.add('active');
-        }
-
-        document.querySelectorAll('.faq-q').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const item = btn.parentElement;
-                const wasOpen = item.classList.contains('open');
-                document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
-                if (!wasOpen) item.classList.add('open');
-            });
-        });
-
-        function copyInstall(btn) {
-            navigator.clipboard.writeText('npm install -g snapmind-ai').then(() => {
-                const orig = btn.textContent;
-                btn.textContent = 'COPIED!';
-                setTimeout(() => btn.textContent = orig, 2000);
-            });
-        }
-
-        function toggleNav() {
-            const links = document.querySelector('.nav-links');
-            links.style.display = links.style.display === 'flex' ? 'none' : 'flex';
-            links.style.flexDirection = 'column';
-            links.style.position = 'absolute';
-            links.style.top = '64px';
-            links.style.left = '0';
-            links.style.right = '0';
-            links.style.background = 'var(--bg2)';
-            links.style.padding = '1rem 2rem';
-            links.style.borderBottom = '1px solid var(--border)';
-        }
-
-        // Intersection observer for fade-in on scroll
-        const io = new IntersectionObserver((entries) => {
-            entries.forEach(e => {
-                if (e.isIntersecting) {
-                    e.target.style.opacity = '1';
-                    e.target.style.transform = 'translateY(0)';
-                }
-            });
-        }, { threshold: 0.1 });
-
-        document.querySelectorAll('.hl-card, .step, .provider-card, .sec-card, .comm-card').forEach(el => {
-            el.style.opacity = '0';
-            el.style.transform = 'translateY(16px)';
-            el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-            io.observe(el);
-        });
-    </script>
-    <script src="http://localhost:3000/snapmind-widget.js" data-site-id="https://bachat-buddy-nu.vercel.app"
-        data-api-url="http://localhost:8000"></script>
+  <script src="scripts/main.js"></script>
 </body>
 
 </html>

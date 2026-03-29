@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact — SnapMind AI</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/global.css">
+  <style>
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      margin-top: 2rem;
+      align-items: flex-start;
+    }
+
+    @media (max-width: 900px) {
+      .contact-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .contact-options {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .option-card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #fff;
+    }
+
+    .option-card p {
+      color: #a1a1aa;
+      font-size: 0.95rem;
+    }
+
+    .contact-form-card {
+      background: linear-gradient(180deg, rgba(20, 20, 24, 0.7) 0%, rgba(10, 10, 12, 0.9) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 2.5rem;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .form-submit-btn {
+      width: 100%;
+      justify-content: center;
+      padding: 15px;
+      font-size: 0.95rem;
+    }
+
+    .form-note {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: #71717a;
+      text-align: center;
+      margin-top: 1.5rem;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 14px 20px;
+      color: #fff;
+      font-family: var(--body);
+      font-size: 1rem;
+      outline: none;
+      transition: 0.2s;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: rgba(139, 92, 246, 0.5);
+      background: rgba(139, 92, 246, 0.05);
+    }
+
+    input::placeholder,
+    textarea::placeholder {
+      color: #71717a;
+    }
+
+    label {
+      font-family: var(--body);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #e2e8f0;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .community-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-top: 4rem;
+      margin-bottom: 4rem;
+    }
+
+    .comm-stat {
+      font-family: var(--display);
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 1rem 0 0.5rem;
+    }
+
+    .comm-desc {
+      color: #a1a1aa;
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+    }
+  </style>
+</head>
+
+<body class="bg-grid">
+  <div class="glow-spotlight"></div>
+  <div class="glow-accent"
+    style="left: -20%; background: radial-gradient(circle, rgba(56, 189, 248, 0.05), transparent 60%);"></div>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="url(#paint0_linear)" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M2 7L12 12V22" stroke="url(#paint1_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M12 12L22 7" stroke="url(#paint2_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <defs>
+            <linearGradient id="paint0_linear" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint1_linear" x1="7" y1="7" x2="7" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint2_linear" x1="17" y1="7" x2="17" y2="12" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+          </defs>
+        </svg>
+        SnapMind
+      </a>
+      <div class="nav-links">
+        <a href="npm.html">CLI (npm)</a>
+        <a href="desktop.html">Desktop App</a>
+        <a href="extension.html">Extension</a>
+        <a href="widget.html">Web Widget</a>
+      </div>
+      <div class="nav-right">
+        <a href="blog.html" class="nav-links">Docs</a>
+        <button class="mobile-toggle">☰</button>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero-section" style="padding-top: 180px; padding-bottom: 2rem;">
+    <div class="container fade-up delay-1">
+      <h1 style="font-size: clamp(3rem, 6vw, 5rem);">Get in touch.</h1>
+      <p class="hero-sub fade-up delay-2">Have a question, found a bug, or want to contribute? SnapMind is entirely
+        open-source, and we'd love to hear from you.</p>
+    </div>
+  </section>
+
+  <section class="container fade-up delay-3">
+    <div class="contact-grid">
+      <!-- Left Column: Options -->
+      <div class="contact-options">
+        <a href="https://github.com/roshankumar0036singh/SnapMind/issues" class="card-premium option-card"
+          style="padding: 2rem;">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#a78bfa">
+              <path
+                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+            </svg>
+            GitHub Issues
+          </h3>
+          <p>The best place to report bugs, request features, or see what we are currently working on in the core
+            framework.</p>
+        </a>
+
+        <a href="https://github.com/roshankumar0036singh/SnapMind/discussions" class="card-premium option-card"
+          style="padding: 2rem;">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#a78bfa">
+              <path
+                d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z" />
+            </svg>
+            GitHub Discussions
+          </h3>
+          <p>For community help, configuration recipes, and sharing your custom vector ingestion plugins.</p>
+        </a>
+
+        <a href="blog.html" class="card-premium option-card" style="padding: 2rem;">
+          <h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#a78bfa">
+              <path
+                d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
+            </svg>
+            Documentation
+          </h3>
+          <p>Check the knowledge base first. We maintain thorough guides and deep-dives on the architecture.</p>
+        </a>
+      </div>
+
+      <!-- Right Column: Form -->
+      <div class="contact-form-card">
+        <form onsubmit="event.preventDefault();">
+          <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" placeholder="John Doe" required>
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" placeholder="john@example.com" required>
+          </div>
+          <div class="form-group">
+            <label for="subject">Subject</label>
+            <input type="text" id="subject" placeholder="Enterprise Licensing Inquiry" required>
+          </div>
+          <div class="form-group">
+            <label for="message">Message</label>
+            <textarea id="message" rows="5" placeholder="How can we help?" required></textarea>
+          </div>
+          <button type="submit" class="btn-primary form-submit-btn">Send Message &rarr;</button>
+          <div class="form-note">Response time: typically within 24 hours. For urgent issues, open a GitHub Issue.</div>
+        </form>
+      </div>
+    </div>
+  </section>
+  <div class="horizontal-divider"></div>
+
+  <!-- Community Links -->
+  <section class="container fade-up" style="padding: 6rem 0;">
+    <div class="community-row">
+      <div class="card-premium comm-card" style="text-align:center;">
+        <svg fill="#71717a" width="32" height="32" viewBox="0 0 24 24" style="margin: 0 auto;">
+          <path
+            d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+        </svg>
+        <div class="comm-stat">2,410+</div>
+        <div class="comm-desc">GitHub Stars</div>
+        <a href="https://github.com/roshankumar0036singh/SnapMind" class="btn-outline" style="margin-top:auto;">Star on
+          GitHub &rarr;</a>
+      </div>
+      <div class="card-premium comm-card" style="text-align:center;">
+        <svg fill="#71717a" width="32" height="32" viewBox="0 0 24 24" style="margin: 0 auto;">
+          <path
+            d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.46-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+        </svg>
+        <div class="comm-stat">12k+</div>
+        <div class="comm-desc">Discord Members</div>
+        <a href="https://discord.com" class="btn-outline" style="margin-top:auto;">Join Server &rarr;</a>
+      </div>
+      <div class="card-premium comm-card" style="text-align:center;">
+        <svg fill="#71717a" width="32" height="32" viewBox="0 0 24 24" style="margin: 0 auto;">
+          <path
+            d="M23.954 4.569a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.691 8.094 4.066 6.13 1.64 3.161a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.061a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.937 4.937 0 004.604 3.417 9.868 9.868 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.054 0 13.999-7.496 13.999-13.986 0-.209 0-.42-.015-.63a9.936 9.936 0 002.46-2.548l-.047-.02z" />
+        </svg>
+        <div class="comm-stat">~</div>
+        <div class="comm-desc">Twitter / X</div>
+        <a href="https://x.com" class="btn-outline" style="margin-top:auto;">Follow @snapmind &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer Focus -->
+  <footer>
+    <div class="footer-grid">
+      <div class="footer-col" style="padding-right: 2rem;">
+        <div class="nav-logo" style="margin-bottom: 1rem;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" fill="#8B5CF6" fill-opacity="0.2" stroke="#8B5CF6"
+              stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <span style="color:#fff; font-weight:700;">SnapMind</span>
+        </div>
+        <p style="font-size:0.85rem; color:#71717a;">Building the local infrastructure for AI. No trackers, no data
+          egress.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Ecosystem</h4>
+        <a href="npm.html">CLI Package</a>
+        <a href="desktop.html">Desktop Interface</a>
+        <a href="extension.html">Browser Extension</a>
+        <a href="widget.html">Web Widget</a>
+      </div>
+      <div class="footer-col">
+        <h4>Developers</h4>
+        <a href="blog.html">Documentation</a>
+        <a href="https://github.com/roshankumar0036singh/SnapMind">GitHub Source</a>
+      </div>
+      <div class="footer-col">
+        <h4>Connect</h4>
+        <a href="https://discord.com">Discord</a>
+        <a href="https://x.com">Twitter</a>
+        <a href="contact.html">Contact Us</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="scripts/main.js"></script>
+</body>
+
+</html>

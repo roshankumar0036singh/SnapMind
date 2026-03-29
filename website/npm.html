@@ -1,648 +1,141 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>SnapMind AI — CLI (npm)</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-<style>
-:root {
-  --bg: #080c10;
-  --bg2: #0d1117;
-  --bg3: #111820;
-  --surface: #141c24;
-  --surface2: #1a2330;
-  --border: rgba(124,58,237,0.12);
-  --border2: rgba(124,58,237,0.25);
-  --purple: #7c3aed;
-  --purple2: #a855f7;
-  --green: #39ff14;
-  --green2: #00e676;
-  --purple: #7c3aed;
-  --text: #e8edf2;
-  --text2: #8a9ab0;
-  --text3: #4a5568;
-  --mono: 'JetBrains Mono', monospace;
-  --display: 'Outfit', sans-serif;
-  --body: 'Inter', sans-serif;
-}
-
-*{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{background:var(--bg);color:var(--text);font-family:var(--body);overflow-x:hidden;line-height:1.7;letter-spacing:0.015em}
-
-/* Scrollbar */
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--purple);border-radius:2px}
-
-/* ── NAV ── */
-nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;background:rgba(8,12,16,0.85);backdrop-filter:blur(12px);border-bottom:0.5px solid var(--border)}
-.nav-logo{font-family:var(--mono);font-weight:700;font-size:1rem;color:var(--purple);letter-spacing:0.05em;display:flex;align-items:center;gap:8px}
-.nav-logo span{color:var(--text2)}
-.nav-links{display:flex;align-items:center;gap:2.5rem}
-.nav-links a{font-family:var(--mono);font-size:0.85rem;color:var(--text2);text-decoration:none;letter-spacing:0.05em;transition:color 0.2s}
-.nav-links a:hover{color:var(--purple)}
-.nav-cta{font-family:var(--mono);font-size:0.78rem;padding:8px 20px;background:transparent;border:1px solid var(--purple);color:var(--purple);border-radius:4px;cursor:pointer;text-decoration:none;transition:all 0.2s;letter-spacing:0.05em}
-.nav-cta:hover{background:rgba(124,58,237,0.1);box-shadow:0 0 16px rgba(124,58,237,0.2)}
-.hamburger{display:none;flex-direction:column;gap:4px;cursor:pointer;padding:4px}
-.hamburger span{display:block;width:22px;height:1.5px;background:var(--text2)}
-
-/* ── HERO ── */
-#hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:120px 2rem 6rem;position:relative;overflow:hidden;text-align:center}
-.hero-bg{position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(124,58,237,0.06) 0%,transparent 70%);pointer-events:none}
-.hero-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(124,58,237,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(124,58,237,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none}
-
-.badge{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:0.72rem;padding:5px 14px;border:1px solid rgba(57,255,20,0.3);border-radius:20px;color:var(--green2);background:rgba(57,255,20,0.05);margin-bottom:2rem;letter-spacing:0.06em}
-.badge-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)}}
-
-.hero-title{font-family:var(--display);font-size:clamp(2.8rem,6vw,5rem);font-weight:800;line-height:1.05;letter-spacing:-0.02em;margin-bottom:1.5rem;max-width:800px}
-.hero-title .line1{display:block;color:var(--text)}
-.hero-title .accent{color:var(--purple);position:relative}
-.hero-title .accent::after{content:'';position:absolute;bottom:-4px;left:0;right:0;height:2px;background:var(--purple);opacity:0.5}
-
-.hero-sub{font-size:1.1rem;color:var(--text2);max-width:560px;margin:0 auto 2.5rem;line-height:1.7;font-weight:300}
-
-.hero-ctas{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-bottom:3rem}
-.btn-primary{font-family:var(--mono);font-size:0.85rem;padding:13px 28px;background:var(--purple);color:#000;border:none;border-radius:4px;cursor:pointer;text-decoration:none;font-weight:700;letter-spacing:0.04em;transition:all 0.2s}
-.btn-primary:hover{background:var(--purple2);box-shadow:0 0 24px rgba(124,58,237,0.4);transform:translateY(-1px)}
-.btn-secondary{font-family:var(--mono);font-size:0.85rem;padding:13px 28px;background:transparent;color:var(--text);border:1px solid var(--border2);border-radius:4px;cursor:pointer;text-decoration:none;letter-spacing:0.04em;transition:all 0.2s}
-.btn-secondary:hover{border-color:var(--purple);color:var(--purple);background:rgba(124,58,237,0.05)}
-
-.hero-badges{display:flex;gap:1.5rem;justify-content:center;flex-wrap:wrap}
-.npm-badge{font-family:var(--mono);font-size:0.7rem;color:var(--text3);letter-spacing:0.05em}
-.npm-badge span{color:var(--purple)}
-
-/* Terminal block */
-.terminal{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;overflow:hidden;max-width:620px;width:100%;margin:3rem auto 0;text-align:left;box-shadow:0 0 60px rgba(124,58,237,0.06)}
-.terminal-bar{background:var(--surface);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
-.dot{width:10px;height:10px;border-radius:50%}
-.dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
-.terminal-title{font-family:var(--mono);font-size:0.7rem;color:var(--text3);margin-left:auto}
-.terminal-body{padding:1.5rem;font-family:var(--mono);font-size:0.82rem;line-height:1.8}
-.t-prompt{color:var(--purple)}.t-cmd{color:var(--text)}.t-out{color:var(--text2)}.t-green{color:var(--green2)}.t-comment{color:var(--text3)}
-.cursor{display:inline-block;width:8px;height:14px;background:var(--purple);animation:blink 1s step-end infinite;vertical-align:middle}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-
-/* ── SECTION COMMON ── */
-section{padding:7rem 2rem}
-.container{max-width:1100px;margin:0 auto}
-.section-label{font-family:var(--mono);font-size:0.72rem;color:var(--purple);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:1rem;display:flex;align-items:center;gap:8px}
-.section-label::before{content:'';width:24px;height:1px;background:var(--purple)}
-.section-title{font-family:var(--display);font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:700;line-height:1.15;margin-bottom:1rem;letter-spacing:-0.02em}
-.section-sub{color:var(--text2);font-size:1rem;max-width:560px;font-weight:300}
-
-/* ── STATS ── */
-#stats{padding:3rem 2rem;background:var(--bg2);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0;max-width:900px;margin:0 auto}
-.stat-item{padding:1.5rem;text-align:center;border-right:1px solid var(--border)}
-.stat-item:last-child{border-right:none}
-.stat-num{font-family:var(--display);font-size:2.2rem;font-weight:800;color:var(--purple);line-height:1}
-.stat-label{font-family:var(--mono);font-size:0.7rem;color:var(--text3);letter-spacing:0.08em;margin-top:4px}
-
-/* ── HIGHLIGHTS ── */
-#highlights .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem;margin-top:3rem}
-.hl-card{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:1.5rem;transition:border-color 0.2s,transform 0.2s;position:relative;overflow:hidden}
-.hl-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--purple),transparent);opacity:0;transition:opacity 0.3s}
-.hl-card:hover{border-color:var(--border2);transform:translateY(-2px)}
-.hl-card:hover::before{opacity:1}
-.hl-icon{width:36px;height:36px;border-radius:4px;background:rgba(124,58,237,0.08);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;margin-bottom:1rem;font-size:16px}
-.hl-card h3{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:0.5rem;color:var(--text)}
-.hl-card p{font-size:0.88rem;color:var(--text2);line-height:1.6}
-
-/* ── PERSONAS ── */
-#personas{background:var(--bg2);border-top:1px solid var(--border)}
-.personas-tabs{display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:2.5rem;width:fit-content}
-.ptab{font-family:var(--mono);font-size:0.78rem;padding:10px 24px;background:transparent;border:none;color:var(--text3);cursor:pointer;letter-spacing:0.05em;transition:all 0.2s;border-right:1px solid var(--border)}
-.ptab:last-child{border-right:none}
-.ptab.active{background:rgba(124,58,237,0.1);color:var(--purple)}
-.persona-content{display:none;margin-top:2rem}
-.persona-content.active{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start}
-.persona-info h3{font-family:var(--display);font-size:1.5rem;font-weight:700;margin-bottom:0.5rem}
-.persona-info .desc{color:var(--text2);font-size:0.93rem;margin-bottom:1.5rem}
-.cmd-list{list-style:none;display:flex;flex-direction:column;gap:8px}
-.cmd-item{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:0.8rem}
-.cmd-name{color:var(--purple);min-width:80px}
-.cmd-desc{color:var(--text2)}
-.persona-terminal{background:var(--bg3);border:1px solid var(--border);border-radius:6px;overflow:hidden}
-.persona-terminal .terminal-bar{background:var(--surface)}
-.persona-terminal .terminal-body{font-size:0.78rem;line-height:1.9}
-.flag-block{margin-top:1.5rem;padding:1rem;background:rgba(124,58,237,0.04);border:1px dashed var(--border);border-radius:4px}
-.flag-block p{font-family:var(--mono);font-size:0.75rem;color:var(--text2);line-height:1.9}
-.flag{color:var(--purple)}
-
-/* ── HOW IT WORKS ── */
-#how-it-works{border-top:1px solid var(--border)}
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2rem;margin-top:3rem;position:relative}
-.step{position:relative;padding:1.5rem;background:var(--bg2);border:1px solid var(--border);border-radius:6px}
-.step-num{font-family:var(--mono);font-size:0.7rem;color:var(--text3);letter-spacing:0.1em;margin-bottom:0.75rem}
-.step-badge{display:inline-block;font-family:var(--mono);font-size:0.65rem;padding:3px 8px;border-radius:3px;background:rgba(124,58,237,0.08);color:var(--purple);border:1px solid var(--border2);margin-bottom:0.75rem;letter-spacing:0.06em}
-.step h3{font-family:var(--display);font-size:1.05rem;font-weight:600;margin-bottom:0.5rem}
-.step p{font-size:0.85rem;color:var(--text2);line-height:1.6;margin-bottom:1rem}
-.step code{display:block;font-family:var(--mono);font-size:0.76rem;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--purple);word-break:break-all}
-
-/* ── CLI REFERENCE ── */
-#cli{background:var(--bg2);border-top:1px solid var(--border)}
-.cli-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;margin-top:2.5rem}
-.cli-table-wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:0.78rem}
-th{color:var(--text3);font-weight:500;letter-spacing:0.08em;text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)}
-td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top}
-td:first-child{color:var(--purple)}
-td:last-child{color:var(--text2)}
-tr:hover td{background:rgba(124,58,237,0.03)}
-
-/* ── PROVIDERS ── */
-#providers{border-top:1px solid var(--border)}
-.providers-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-top:2.5rem}
-.provider-card{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:1.25rem;transition:border-color 0.2s}
-.provider-card:hover{border-color:var(--border2)}
-.provider-name{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:0.25rem}
-.provider-models{font-family:var(--mono);font-size:0.72rem;color:var(--text2);margin-bottom:0.5rem}
-.local-tag{display:inline-block;font-family:var(--mono);font-size:0.6rem;padding:2px 7px;border-radius:3px;letter-spacing:0.05em}
-.tag-local{background:rgba(57,255,20,0.08);color:var(--green2);border:1px solid rgba(57,255,20,0.2)}
-.tag-cloud{background:rgba(124,58,237,0.06);color:var(--purple);border:1px solid var(--border2)}
-
-/* ── SECURITY ── */
-#security{background:var(--bg2);border-top:1px solid var(--border)}
-.security-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;margin-top:2.5rem}
-.sec-card{padding:1.5rem;border:1px solid var(--border);border-radius:6px;background:var(--bg3)}
-.sec-icon{font-size:20px;margin-bottom:0.75rem}
-.sec-card h3{font-family:var(--display);font-size:0.95rem;font-weight:600;margin-bottom:0.4rem}
-.sec-card p{font-size:0.84rem;color:var(--text2)}
-
-/* ── NLP TUNING ── */
-#tuning{border-top:1px solid var(--border)}
-.tuning-table-wrap{margin-top:2.5rem;overflow-x:auto;border:1px solid var(--border);border-radius:6px;overflow:hidden}
-
-/* ── INSTALL ── */
-#install{background:radial-gradient(ellipse 60% 50% at 50% 100%,rgba(124,58,237,0.06) 0%,transparent 70%);border-top:1px solid var(--border);text-align:center}
-.install-box{background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:1.5rem 2rem;display:inline-flex;align-items:center;gap:1rem;margin:2rem auto 1.5rem;font-family:var(--mono);font-size:1rem}
-.install-cmd{color:var(--text2)}
-.install-pkg{color:var(--purple)}
-.copy-btn{background:rgba(124,58,237,0.1);border:1px solid var(--border2);color:var(--purple);font-family:var(--mono);font-size:0.7rem;padding:6px 12px;border-radius:3px;cursor:pointer;transition:all 0.2s;letter-spacing:0.05em}
-.copy-btn:hover{background:rgba(124,58,237,0.2)}
-
-/* ── FAQ ── */
-#faq{background:var(--bg2);border-top:1px solid var(--border)}
-.faq-list{margin-top:2.5rem;display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden}
-.faq-item{border-bottom:1px solid var(--border)}
-.faq-item:last-child{border-bottom:none}
-.faq-q{width:100%;padding:1.2rem 1.5rem;background:transparent;border:none;color:var(--text);font-family:var(--body);font-size:0.93rem;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem;transition:background 0.2s}
-.faq-q:hover{background:rgba(124,58,237,0.03)}
-.faq-q .icon{color:var(--purple);font-family:var(--mono);font-size:1rem;flex-shrink:0;transition:transform 0.2s}
-.faq-a{display:none;padding:0 1.5rem 1.2rem;font-size:0.88rem;color:var(--text2);line-height:1.7}
-.faq-item.open .faq-a{display:block}
-.faq-item.open .icon{transform:rotate(45deg)}
-
-/* ── COMMUNITY ── */
-#community{border-top:1px solid var(--border)}
-.community-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1.5rem;margin-top:2.5rem}
-.comm-card{border:1px solid var(--border);border-radius:6px;padding:1.5rem;background:var(--bg2);transition:border-color 0.2s}
-.comm-card:hover{border-color:var(--border2)}
-.comm-card h3{font-family:var(--display);font-size:1rem;font-weight:600;margin-bottom:0.5rem}
-.comm-card p{font-size:0.85rem;color:var(--text2);margin-bottom:1rem}
-.comm-link{font-family:var(--mono);font-size:0.75rem;color:var(--purple);text-decoration:none;letter-spacing:0.04em}
-.comm-link:hover{text-decoration:underline}
-
-/* ── FOOTER ── */
-footer{background:var(--bg2);border-top:1px solid var(--border);padding:3rem 2rem 2rem}
-.footer-grid{max-width:1100px;margin:0 auto;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:2rem;margin-bottom:2.5rem}
-.footer-brand .logo{font-family:var(--mono);font-weight:700;font-size:1rem;color:var(--purple);margin-bottom:0.75rem}
-.footer-brand p{font-size:0.84rem;color:var(--text3);line-height:1.6}
-.footer-col h4{font-family:var(--mono);font-size:0.72rem;color:var(--text3);letter-spacing:0.1em;margin-bottom:1rem}
-.footer-col a{display:block;font-size:0.84rem;color:var(--text2);text-decoration:none;margin-bottom:0.5rem;transition:color 0.2s}
-.footer-col a:hover{color:var(--purple)}
-.footer-bottom{max-width:1100px;margin:0 auto;padding-top:1.5rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:gap-1rem}
-.footer-bottom p{font-family:var(--mono);font-size:0.72rem;color:var(--text3);letter-spacing:0.05em}
-.footer-bottom .npm-badges{display:flex;gap:0.75rem;flex-wrap:wrap}
-.npm-pill{font-family:var(--mono);font-size:0.65rem;padding:3px 10px;background:rgba(124,58,237,0.06);border:1px solid var(--border);border-radius:20px;color:var(--text3)}
-
-/* ANIMATIONS */
-@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-.fade-up{opacity:0;animation:fadeUp 0.6s ease forwards}
-.delay-1{animation-delay:0.1s}.delay-2{animation-delay:0.2s}.delay-3{animation-delay:0.3s}.delay-4{animation-delay:0.4s}.delay-5{animation-delay:0.5s}
-
-/* RESPONSIVE */
-@media(max-width:768px){
-  .nav-links{display:none}
-  .hamburger{display:flex}
-  .persona-content.active{grid-template-columns:1fr}
-  .cli-grid{grid-template-columns:1fr}
-  .footer-grid{grid-template-columns:1fr 1fr}
-  .stats-grid .stat-item{border-right:none;border-bottom:1px solid var(--border)}
-  .stats-grid .stat-item:last-child{border-bottom:none}
-  .install-box{flex-wrap:wrap;text-align:center;justify-content:center}
-}
-@media(max-width:480px){
-  .footer-grid{grid-template-columns:1fr}
-  .personas-tabs{flex-wrap:wrap}
-  .ptab{flex:1;min-width:80px;text-align:center}
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLI Module — SnapMind AI</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/global.css">
 </head>
-<body>
 
-<!-- NAV -->
-<nav>
-  <a href="snapmind-landing.html" class="nav-logo" style="text-decoration:none">
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="6" height="6" rx="1" fill="#7c3aed"/><rect x="10" y="2" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.5"/><rect x="2" y="10" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.5"/><rect x="10" y="10" width="6" height="6" rx="1" fill="#7c3aed" opacity="0.3"/></svg>
-    snapmind<span>-ai</span>
-  </a>
-  <div class="nav-links">
-    <a href="npm.html">CLI (npm)</a>
-    <a href="desktop.html">Desktop App</a>
-    <a href="extension.html">Browser Extension</a>
-    <a href="widget.html">Web Widget</a>
-    <a href="docs.html" target="_blank">Docs</a>
-  </div>
-  <a href="https://www.npmjs.com/package/snapmind-ai" target="_blank" class="nav-cta">npm install →</a>
-  <div class="hamburger" onclick="toggleNav()"><span></span><span></span><span></span></div>
-</nav>
-<section style='margin-top:64px; min-height:60vh;'><div class='container' style='padding-top:40px;'><h1 style='color:var(--purple);font-family:var(--display);margin-bottom:1rem;font-size:3rem;'>CLI (npm)</h1><p style='color:var(--text2);margin-bottom:3rem;font-size:1.1rem;'>The full power of SnapMind in your terminal.</p></div><!-- PERSONAS -->
-<section id="personas">
-  <div class="container">
-    <div class="section-label">Intelligence Architectures</div>
-    <h2 class="section-title">Four personas. One terminal.</h2>
-    <p class="section-sub">Each persona is a fully-tuned Intelligence Architecture with its own tools, RAG parameters, and system prompt.</p>
+<body class="bg-grid">
+  <!-- Atmospheric Glows -->
+  <div class="glow-spotlight"></div>
+  <div class="glow-accent"></div>
 
-    <div class="personas-tabs">
-      <button class="ptab active" onclick="switchPersona('scholar', this)">Scholar</button>
-      <button class="ptab" onclick="switchPersona('coder', this)">Coder</button>
-      <button class="ptab" onclick="switchPersona('analyst', this)">Analyst</button>
-      <button class="ptab" onclick="switchPersona('writer', this)">Writer</button>
-    </div>
-
-    <!-- Scholar -->
-    <div id="persona-scholar" class="persona-content active">
-      <div class="persona-info">
-        <h3>Scholar</h3>
-        <p class="desc">Deep research, semantic PDF indexing, and academic citation. Index entire paper corpora and query them with academic precision.</p>
-        <ul class="cmd-list">
-          <li class="cmd-item"><span class="cmd-name">/cite</span><span class="cmd-desc">Generate inline citations from indexed documents</span></li>
-          <li class="cmd-item"><span class="cmd-name">/bibtex</span><span class="cmd-desc">Export a full BibTeX bibliography from your session</span></li>
-          <li class="cmd-item"><span class="cmd-name">/global</span><span class="cmd-desc">Search across ALL indexed datasets (Relational RAG)</span></li>
-          <li class="cmd-item"><span class="cmd-name">/snapshot</span><span class="cmd-desc">Save a named checkpoint of your session state</span></li>
-          <li class="cmd-item"><span class="cmd-name">/handoff</span><span class="cmd-desc">Transfer context to another persona</span></li>
-          <li class="cmd-item"><span class="cmd-name">/export</span><span class="cmd-desc">Save session history to a Markdown file</span></li>
-          <li class="cmd-item"><span class="cmd-name">/stats</span><span class="cmd-desc">View token usage and system health</span></li>
-        </ul>
-        <div class="flag-block">
-          <p><span class="flag">--mount &lt;dir&gt;</span> &nbsp; Mount a folder of PDFs for indexing</p>
-          <p><span class="flag">--pages &lt;range&gt;</span> &nbsp; Index specific pages, e.g. <span class="flag">1-10</span></p>
-        </div>
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z" stroke="url(#paint0_linear)" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M2 7L12 12V22" stroke="url(#paint1_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M12 12L22 7" stroke="url(#paint2_linear)" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <defs>
+            <linearGradient id="paint0_linear" x1="12" y1="2" x2="12" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint1_linear" x1="7" y1="7" x2="7" y2="22" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+            <linearGradient id="paint2_linear" x1="17" y1="7" x2="17" y2="12" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#8B5CF6" />
+              <stop offset="1" stop-color="#3B82F6" />
+            </linearGradient>
+          </defs>
+        </svg>
+        SnapMind
+      </a>
+      <div class="nav-links">
+        <a href="npm.html" style="color:#fff;">CLI (npm)</a>
+        <a href="desktop.html">Desktop App</a>
+        <a href="extension.html">Extension</a>
+        <a href="widget.html">Web Widget</a>
       </div>
-      <div class="persona-terminal">
-        <div class="terminal-bar"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="terminal-title">scholar session</span></div>
-        <div class="terminal-body">
-          <div><span class="t-prompt">$ </span><span class="t-cmd">snapmind-ai --persona scholar --mount ./papers --pages 1-50</span></div>
-          <div><span class="t-green">✓ 12 PDFs indexed (pages 1-50 each)</span></div>
-          <div><span class="t-green">✓ Chunk size: 1000 | Overlap: 200 | K: 5</span></div>
-          <div>&nbsp;</div>
-          <div><span class="t-prompt">Scholar&gt; </span><span class="t-cmd">/cite attention mechanisms</span></div>
-          <div><span class="t-out">Found 7 relevant passages across 4 papers</span></div>
-          <div><span class="t-green">[1] Vaswani et al., 2017 — "Attention is All You Need"</span></div>
-          <div><span class="t-green">[2] Devlin et al., 2019 — "BERT: Pre-training..."</span></div>
-          <div>&nbsp;</div>
-          <div><span class="t-prompt">Scholar&gt; </span><span class="t-cmd">/snapshot thesis_chapter2</span></div>
-          <div><span class="t-green">✓ Snapshot saved → .snapmind_cache/sessions/</span></div>
-        </div>
+      <div class="nav-right">
+        <a href="blog.html" class="nav-links">Docs</a>
+        <button class="mobile-toggle">☰</button>
       </div>
     </div>
+  </nav>
 
-    <!-- Coder -->
-    <div id="persona-coder" class="persona-content">
-      <div class="persona-info">
-        <h3>Coder</h3>
-        <p class="desc">Elite software architecture companion with AST-aware indexing. Auto-detects tech stack and injects framework-specific context.</p>
-        <ul class="cmd-list">
-          <li class="cmd-item"><span class="cmd-name">/diagram</span><span class="cmd-desc">Generate a Mermaid.js architecture diagram</span></li>
-          <li class="cmd-item"><span class="cmd-name">/skill</span><span class="cmd-desc">Execute an npm script (e.g. /skill test, /skill lint)</span></li>
-          <li class="cmd-item"><span class="cmd-name">/global</span><span class="cmd-desc">Cross-repo Relational RAG search</span></li>
-          <li class="cmd-item"><span class="cmd-name">/snapshot</span><span class="cmd-desc">Save named session checkpoint</span></li>
-          <li class="cmd-item"><span class="cmd-name">/handoff</span><span class="cmd-desc">Transfer context to another persona</span></li>
-          <li class="cmd-item"><span class="cmd-name">/export</span><span class="cmd-desc">Save session to Markdown</span></li>
-          <li class="cmd-item"><span class="cmd-name">/stats</span><span class="cmd-desc">View token usage</span></li>
-        </ul>
-        <div class="flag-block">
-          <p><span class="flag">--repo &lt;url&gt;</span> &nbsp; Clone and index a GitHub repository</p>
-          <p><span class="flag">--mount &lt;dir&gt;</span> &nbsp; Mount a local project directory</p>
-          <p><span class="flag">--watch</span> &nbsp; Live-sync index on file changes</p>
-        </div>
+  <section class="hero-section" style="padding-top: 180px;">
+    <div class="container fade-up delay-1">
+      <div class="hero-badge-container">
+        <div class="badge-pill">NPM PACKAGE</div>
       </div>
-      <div class="persona-terminal">
-        <div class="terminal-bar"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="terminal-title">coder session</span></div>
-        <div class="terminal-body">
-          <div><span class="t-prompt">$ </span><span class="t-cmd">snapmind-ai --persona coder --repo https://github.com/user/api.git --watch</span></div>
-          <div><span class="t-green">✓ Cloned → /tmp/snapmind_repo_xyz</span></div>
-          <div><span class="t-green">✓ Tech stack detected: Node.js, Express, Prisma</span></div>
-          <div><span class="t-green">✓ AST-indexed 847 functions | Chunk: 2000</span></div>
-          <div><span class="t-green">✓ File watcher active</span></div>
-          <div>&nbsp;</div>
-          <div><span class="t-prompt">Coder&gt; </span><span class="t-cmd">/diagram auth flow</span></div>
-          <div><span class="t-out">Generating Mermaid.js architecture diagram...</span></div>
-          <div><span class="t-green">sequenceDiagram</span></div>
-          <div><span class="t-out">&nbsp;&nbsp;Client->>+AuthMiddleware: POST /login</span></div>
-          <div><span class="t-out">&nbsp;&nbsp;AuthMiddleware->>+UserService: validateCredentials()</span></div>
+      <h1>Your Terminal <br><span class="hero-h1-gradient">Just Got Smart.</span></h1>
+      <p class="hero-sub fade-up delay-2" style="max-width: 660px; margin: 2rem auto 4rem; font-size: 1.15rem;">The
+        heart of SnapMind is the CLI. Type `snapmind` from anywhere in your root directory to invoke an AI powered by
+        your local codebase, reading hundreds of files directly via LanceDB.</p>
+    </div>
+
+    <div class="hero-terminal-wrapper fade-up delay-3">
+      <div class="terminal-block" style="text-align:left;">
+        <div class="terminal-top">
+          <div class="mac-dots"><span class="dot-red"></span><span class="dot-yellow"></span><span
+              class="dot-green"></span></div>
+          <div style="font-family: var(--mono); font-size: 0.75rem; color: #71717a;">~/projects/acme-corp</div>
+        </div>
+        <div class="hero-terminal-body" style="padding: 3rem;">
+          <div class="syn-comment"># Start the CLI with the 'coder' persona mapped to your folder</div>
+          <div><span class="syn-prompt">$</span><span class="syn-cmd">snapmind --persona coder --mount .</span></div>
+          <div class="syn-comment" style="margin-top:0.8rem;">[SnapMind v2.1.0]</div>
+          <div class="syn-comment">Index found. 450 documents loaded. Model: llama3-7b-instruct</div>
+          <div style="margin-top: 1.2rem;"><span class="syn-prompt">coder></span><span class="syn-cmd">/search "user
+              authentication flow"</span></div>
+          <div style="color:#cbd5e1; margin-top:1rem; white-space:pre-wrap; font-family:var(--mono);">Found 3 relevant
+            files:
+            - src/auth/jwt.ts (Score: 0.94)
+            - src/middleware/verify.ts (Score: 0.88)
+            - routes/api.ts (Score: 0.85)
+
+            <span style="color:#e2e8f0; line-height: 1.8;">Summary: The current auth flow expects a Bearer token. I see
+              a potential race condition in verify.ts line 42 when validating expired tokens...</span>
+          </div>
+          <div style="margin-top: 1.5rem;"><span class="syn-prompt">coder></span><span class="cursor-blink"></span>
+          </div>
         </div>
       </div>
     </div>
+  </section>
 
-    <!-- Analyst -->
-    <div id="persona-analyst" class="persona-content">
-      <div class="persona-info">
-        <h3>Analyst</h3>
-        <p class="desc">High-fidelity data querying, trend analysis, and ASCII visualization. Mount CSV folders and start asking questions.</p>
-        <ul class="cmd-list">
-          <li class="cmd-item"><span class="cmd-name">/chart</span><span class="cmd-desc">Render an ASCII line chart from numerical trends</span></li>
-          <li class="cmd-item"><span class="cmd-name">/table</span><span class="cmd-desc">Format data snippets into a clean Markdown table</span></li>
-          <li class="cmd-item"><span class="cmd-name">/global</span><span class="cmd-desc">Cross-dataset Relational RAG search</span></li>
-          <li class="cmd-item"><span class="cmd-name">/snapshot</span><span class="cmd-desc">Save named session checkpoint</span></li>
-          <li class="cmd-item"><span class="cmd-name">/handoff</span><span class="cmd-desc">Transfer context to another persona</span></li>
-          <li class="cmd-item"><span class="cmd-name">/stats</span><span class="cmd-desc">View token usage</span></li>
-        </ul>
-        <div class="flag-block">
-          <p><span class="flag">--mount &lt;dir&gt;</span> &nbsp; Mount a folder of CSV files for indexing</p>
+  <section class="container fade-up" style="padding-top: 2rem; padding-bottom: 8rem;">
+    <h2 style="text-align: center; margin-bottom: 3rem;">Commands & Personas</h2>
+    <div class="bento-grid">
+      <div class="card-premium">
+        <h3 style="color:#fff;">Coder</h3>
+        <p style="flex-grow:1;">Your programming buddy. Understands TypeScript, Python, Go. Can generate patches,
+          explain complex architectures, and review git diffs.</p>
+        <code
+          style="display:block; margin-top:2rem; padding:12px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.05); border-radius:8px; font-family:var(--mono); font-size:0.85rem; color:#a1a1aa;">$ snapmind --persona coder</code>
+      </div>
+      <div class="card-premium">
+        <h3 style="color:#fff;">Scholar</h3>
+        <p style="flex-grow:1;">Built for reading papers. Automatically parses local `.pdf` files, indexing chapters.
+          Extract conclusions and cross-reference citations.</p>
+        <code
+          style="display:block; margin-top:2rem; padding:12px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.05); border-radius:8px; font-family:var(--mono); font-size:0.85rem; color:#a1a1aa;">$ snapmind --persona scholar</code>
+      </div>
+      <div class="card-premium">
+        <h3 style="color:#fff;">Analyst</h3>
+        <p style="flex-grow:1;">Consumes CSV, JSON, and log files. Can write python scripts in a sandbox to plot graphs
+          directly from the terminal or aggregate datasets.</p>
+        <code
+          style="display:block; margin-top:2rem; padding:12px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.05); border-radius:8px; font-family:var(--mono); font-size:0.85rem; color:#a1a1aa;">$ snapmind --persona analyst</code>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-grid">
+      <div class="footer-col" style="padding-right: 2rem;">
+        <div class="nav-logo" style="margin-bottom: 1rem;"><span style="color:#fff; font-weight:700;">SnapMind</span>
         </div>
-      </div>
-      <div class="persona-terminal">
-        <div class="terminal-bar"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="terminal-title">analyst session</span></div>
-        <div class="terminal-body">
-          <div><span class="t-prompt">$ </span><span class="t-cmd">snapmind-ai --persona analyst --mount ./sales_data</span></div>
-          <div><span class="t-green">✓ 6 CSV files indexed | Chunk: 1000 | Overlap: 100</span></div>
-          <div>&nbsp;</div>
-          <div><span class="t-prompt">Analyst&gt; </span><span class="t-cmd">Show monthly revenue trend Q1-Q4</span></div>
-          <div><span class="t-out">Querying sales_data.csv across 4 namespaces...</span></div>
-          <div>&nbsp;</div>
-          <div><span class="t-prompt">Analyst&gt; </span><span class="t-cmd">/chart revenue</span></div>
-          <div><span class="t-green">  120 ┤ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;╭──</span></div>
-          <div><span class="t-green">   90 ┤ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;╭───╯</span></div>
-          <div><span class="t-green">   60 ┤ &nbsp;&nbsp;&nbsp;╭───────╯</span></div>
-          <div><span class="t-green">   30 ┤ ╭─╯</span></div>
-        </div>
+        <p style="font-size:0.85rem; color:#71717a;">Terminal Intelligence, Redefined.</p>
       </div>
     </div>
-
-    <!-- Writer -->
-    <div id="persona-writer" class="persona-content">
-      <div class="persona-info">
-        <h3>Writer</h3>
-        <p class="desc">Web-to-draft synthesis with tone control and collaborative memory. Import context from other personas to write with full intelligence.</p>
-        <ul class="cmd-list">
-          <li class="cmd-item"><span class="cmd-name">/import</span><span class="cmd-desc">Import context from another persona's indexed data</span></li>
-          <li class="cmd-item"><span class="cmd-name">/global</span><span class="cmd-desc">Cross-dataset Relational RAG search</span></li>
-          <li class="cmd-item"><span class="cmd-name">/snapshot</span><span class="cmd-desc">Save named session checkpoint</span></li>
-          <li class="cmd-item"><span class="cmd-name">/handoff</span><span class="cmd-desc">Transfer context to another persona</span></li>
-          <li class="cmd-item"><span class="cmd-name">/export</span><span class="cmd-desc">Save synthesized drafts to Markdown</span></li>
-          <li class="cmd-item"><span class="cmd-name">/stats</span><span class="cmd-desc">View token usage</span></li>
-        </ul>
-        <div class="flag-block">
-          <p><span style="color:var(--text2)">Tone options:</span> &nbsp;<span class="flag">Professional</span> · <span class="flag">Creative</span> · <span class="flag">Technical</span> · <span class="flag">Academic</span> · <span class="flag">Concise</span></p>
-        </div>
-      </div>
-      <div class="persona-terminal">
-        <div class="terminal-bar"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div><span class="terminal-title">writer session</span></div>
-        <div class="terminal-body">
-          <div><span class="t-prompt">$ </span><span class="t-cmd">snapmind-ai --persona writer</span></div>
-          <div><span class="t-green">✓ Writer persona active | Tone: Professional</span></div>
-          <div>&nbsp;</div>
-          <div><span class="t-prompt">Writer&gt; </span><span class="t-cmd">/import scholar</span></div>
-          <div><span class="t-green">✓ Imported 12 docs from Scholar namespace</span></div>
-          <div>&nbsp;</div>
-          <div><span class="t-prompt">Writer&gt; </span><span class="t-cmd">Write an executive summary of the research findings</span></div>
-          <div><span class="t-out">Drawing from 12 indexed sources...</span></div>
-          <div><span class="t-green">## Executive Summary</span></div>
-          <div><span class="t-out">The synthesis of transformer-based architectures...</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- HOW IT WORKS -->
-<section id="how-it-works">
-  <div class="container">
-    <div class="section-label">How it Works</div>
-    <h2 class="section-title">Up and running in 4 steps.</h2>
-    <p class="section-sub">From installation to AI-powered terminal sessions — get started in under 2 minutes.</p>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">STEP 01</div>
-        <div class="step-badge">Easy Setup</div>
-        <h3>Install</h3>
-        <p>Install globally via npm. Node.js 18+ required. Optionally install Ollama for local-first mode.</p>
-        <code>npm install -g snapmind-ai</code>
-      </div>
-      <div class="step">
-        <div class="step-num">STEP 02</div>
-        <div class="step-badge">Secure Config</div>
-        <h3>Configure</h3>
-        <p>Set your default provider and API keys. Keys are stored in your OS-native keychain — never in plaintext.</p>
-        <code>snapmind-ai config</code>
-      </div>
-      <div class="step">
-        <div class="step-num">STEP 03</div>
-        <div class="step-badge">Pick Persona</div>
-        <h3>Launch Persona</h3>
-        <p>Choose a persona and mount your data. SnapMind indexes files and starts the vector store automatically.</p>
-        <code>snapmind-ai --persona coder --repo &lt;url&gt;</code>
-      </div>
-      <div class="step">
-        <div class="step-num">STEP 04</div>
-        <div class="step-badge">AI-Powered</div>
-        <h3>Query & Create</h3>
-        <p>Chat naturally with your data. Use persona commands, export results, or hand off to another AI architecture.</p>
-        <code>snapmind-ai "Summarize findings"</code>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- CLI REFERENCE -->
-<section id="cli">
-  <div class="container">
-    <div class="section-label">CLI Reference</div>
-    <h2 class="section-title">Every command. Every flag.</h2>
-    <p class="section-sub">Full reference for the SnapMind AI CLI — commands, flags, and vault management.</p>
-    <div class="cli-grid">
-      <div>
-        <p style="font-family:var(--mono);font-size:0.75rem;color:var(--text3);letter-spacing:0.08em;margin-bottom:0.75rem">COMMANDS</p>
-        <div class="cli-table-wrap">
-          <table>
-            <thead><tr><th>Command</th><th>Description</th></tr></thead>
-            <tbody>
-              <tr><td>snapmind-ai</td><td>Launch interactive persona selector</td></tr>
-              <tr><td>snapmind-ai config</td><td>Open the configuration wizard</td></tr>
-              <tr><td>snapmind-ai config set &lt;key&gt; &lt;value&gt;</td><td>Set a config value directly</td></tr>
-              <tr><td>snapmind-ai search &lt;query&gt;</td><td>Global search across all indexed datasets</td></tr>
-              <tr><td>snapmind-ai maintenance</td><td>Clean up orphan sessions and stale caches</td></tr>
-              <tr><td>snapmind-ai vault set &lt;provider&gt;</td><td>Securely store an API key in OS Keychain</td></tr>
-              <tr><td>snapmind-ai vault delete &lt;provider&gt;</td><td>Remove an API key from the Keychain</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div>
-        <p style="font-family:var(--mono);font-size:0.75rem;color:var(--text3);letter-spacing:0.08em;margin-bottom:0.75rem">FLAGS</p>
-        <div class="cli-table-wrap">
-          <table>
-            <thead><tr><th>Flag</th><th>Description</th></tr></thead>
-            <tbody>
-              <tr><td>--airgap</td><td>Force 100% offline mode (requires Ollama)</td></tr>
-              <tr><td>--persona &lt;name&gt;</td><td>Launch directly into a persona</td></tr>
-              <tr><td>--mount &lt;path&gt;</td><td>Mount a local directory for indexing</td></tr>
-              <tr><td>--repo &lt;url&gt;</td><td>Clone and index a GitHub repository</td></tr>
-              <tr><td>--watch</td><td>Auto-sync vector index on file changes</td></tr>
-              <tr><td>--pages &lt;range&gt;</td><td>Index specific PDF pages (Scholar only)</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- NLP TUNING -->
-<section id="tuning">
-  <div class="container">
-    <div class="section-label">NLP Tuning</div>
-    <h2 class="section-title">Precision-tuned per persona.</h2>
-    <p class="section-sub">Each persona's retrieval parameters are optimized for its use case — configurable in <code style="font-family:var(--mono);color:var(--purple)">src/utils/constants.js</code>.</p>
-    <div class="tuning-table-wrap">
-      <table>
-        <thead><tr><th>Persona</th><th>Chunk Size</th><th>Chunk Overlap</th><th>Similarity K</th><th>Optimized For</th></tr></thead>
-        <tbody>
-          <tr><td>Scholar</td><td>1000</td><td>200</td><td>5</td><td style="color:var(--text2)">Dense academic text, citation precision</td></tr>
-          <tr><td>Coder</td><td>2000</td><td>200</td><td>4</td><td style="color:var(--text2)">Larger code blocks, AST context</td></tr>
-          <tr><td>Analyst</td><td>1000</td><td>100</td><td>5</td><td style="color:var(--text2)">Tabular data, numerical proximity</td></tr>
-          <tr><td>Writer</td><td>1500</td><td>200</td><td>6</td><td style="color:var(--text2)">Broad context recall, prose synthesis</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
-
-
-<!-- INSTALL CTA -->
-<section id="install">
-  <div class="container">
-    <div class="section-label" style="justify-content:center">Get Started</div>
-    <h2 class="section-title" style="text-align:center">Install in one command.</h2>
-    <p class="section-sub" style="margin:0 auto">No accounts. No setup wizard. Just npm and a terminal.</p>
-    <div style="text-align:center">
-      <div class="install-box">
-        <span class="install-cmd">$</span>
-        <span class="install-pkg">npm install -g snapmind-ai</span>
-        <button class="copy-btn" onclick="copyInstall(this)">COPY</button>
-      </div>
-      <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
-        <a href="https://www.npmjs.com/package/snapmind-ai" target="_blank" class="btn-primary">View on npm</a>
-        <a href="https://github.com/roshankumar0036singh/SnapMind" target="_blank" class="btn-secondary">GitHub Repo</a>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-</section>
-<footer>
-  <div class="footer-grid">
-    <div class="footer-brand">
-      <div class="logo">snapmind-ai</div>
-      <p>Production-grade, persona-based AI workflows — directly in your terminal. Local-first. Zero telemetry. Open source.</p>
-    </div>
-    <div class="footer-col">
-      <h4>PROJECT</h4>
-      <a href="https://github.com/roshankumar0036singh/SnapMind" target="_blank">GitHub Repo</a>
-      <a href="https://www.npmjs.com/package/snapmind-ai" target="_blank">npm Package</a>
-      <a href="docs.html" target="_blank">Docs / README</a>
-      <a href="https://github.com/roshankumar0036singh/SnapMind/releases" target="_blank">Changelog</a>
-    </div>
-    <div class="footer-col">
-      <h4>COMMUNITY</h4>
-      <a href="https://github.com/roshankumar0036singh/SnapMind#contributing" target="_blank">Contribute</a>
-      <a href="https://github.com/roshankumar0036singh/SnapMind/issues" target="_blank">Report Issues</a>
-      <a href="https://github.com/roshankumar0036singh/SnapMind/discussions" target="_blank">Discussions</a>
-    </div>
-    <div class="footer-col">
-      <h4>RESOURCES</h4>
-      <a href="#how-it-works">How it Works</a>
-      <a href="#personas">Personas</a>
-      <a href="#cli">CLI Flags</a>
-      <a href="#providers">Providers</a>
-      <a href="#security">Security</a>
-      <a href="#faq">FAQ</a>
-    </div>
-  </div>
-  <div class="footer-bottom">
-    <p>ISC © 2026 SnapMind AI. Built for terminal-first thinkers.</p>
-    <div class="npm-badges">
-      <span class="npm-pill">npm: snapmind-ai</span>
-      <span class="npm-pill">node &gt;= 18.x</span>
-      <span class="npm-pill">LanceDB + Ollama</span>
-    </div>
-  </div>
-</footer>
-
-<script>
-function switchPersona(name, btn) {
-  document.querySelectorAll('.persona-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.ptab').forEach(el => el.classList.remove('active'));
-  document.getElementById('persona-' + name).classList.add('active');
-  btn.classList.add('active');
-}
-
-document.querySelectorAll('.faq-q').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const item = btn.parentElement;
-    const wasOpen = item.classList.contains('open');
-    document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
-    if (!wasOpen) item.classList.add('open');
-  });
-});
-
-function copyInstall(btn) {
-  navigator.clipboard.writeText('npm install -g snapmind-ai').then(() => {
-    const orig = btn.textContent;
-    btn.textContent = 'COPIED!';
-    setTimeout(() => btn.textContent = orig, 2000);
-  });
-}
-
-function toggleNav() {
-  const links = document.querySelector('.nav-links');
-  links.style.display = links.style.display === 'flex' ? 'none' : 'flex';
-  links.style.flexDirection = 'column';
-  links.style.position = 'absolute';
-  links.style.top = '64px';
-  links.style.left = '0';
-  links.style.right = '0';
-  links.style.background = 'var(--bg2)';
-  links.style.padding = '1rem 2rem';
-  links.style.borderBottom = '1px solid var(--border)';
-}
-
-// Intersection observer for fade-in on scroll
-const io = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if (e.isIntersecting) {
-      e.target.style.opacity = '1';
-      e.target.style.transform = 'translateY(0)';
-    }
-  });
-}, { threshold: 0.1 });
-
-document.querySelectorAll('.hl-card, .step, .provider-card, .sec-card, .comm-card').forEach(el => {
-  el.style.opacity = '0';
-  el.style.transform = 'translateY(16px)';
-  el.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-  io.observe(el);
-});
-</script>
+  </footer>
+  <script src="scripts/main.js"></script>
 </body>
+
 </html>
