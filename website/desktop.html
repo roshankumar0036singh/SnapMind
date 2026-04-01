@@ -10,6 +10,67 @@
     rel="stylesheet" />
   <link rel="stylesheet" href="styles/tokens.css">
   <link rel="stylesheet" href="styles/global.css">
+  <style>
+    /* Premium Hero Section */
+    .hero-section {
+      padding-top: 160px;
+      padding-bottom: 100px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .hero-badge-container {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 2rem;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-h1-gradient {
+      background: linear-gradient(135deg, #fff 0%, #d8b4fe 50%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      color: transparent;
+      display: inline-block;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 1.2rem;
+      justify-content: center;
+      margin-bottom: 4rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-terminal-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      margin: 0 auto;
+      z-index: 10;
+      perspective: 1000px;
+    }
+
+    .hero-terminal-wrapper::before {
+      content: "";
+      position: absolute;
+      top: 10%;
+      left: 5%;
+      right: 5%;
+      bottom: -10%;
+      background: linear-gradient(180deg, rgba(139, 92, 246, 0.3) 0%, rgba(56, 189, 248, 0.1) 100%);
+      filter: blur(60px);
+      z-index: -1;
+      border-radius: 50%;
+    }
+  </style>
 </head>
 
 <body class="bg-grid">

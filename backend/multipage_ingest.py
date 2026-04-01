@@ -46,7 +46,7 @@ async def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int =
                     chunks = [{'content': content[i:i+chunk_size]} for i in range(0, len(content), chunk_size)]
                 
                 # Embed chunks
-                embedded_chunks = await parallel_embed_chunks(
+                embedded_chunks = parallel_embed_chunks(
                     chunks,
                     max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
                     source_url=page_url

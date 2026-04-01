@@ -1,5 +1,4 @@
-
-from typing import List, Dict
+from typing import List, Dict, Optional
 import requests
 
 def extract_links_from_page(url: str, max_links: int = 10) -> List[str]:
@@ -31,26 +30,45 @@ def extract_links_from_page(url: str, max_links: int = 10) -> List[str]:
         return []
 
 
-def crawl_multiple_pages_custom(url: str, max_pages: int = 10) -> List[Dict[str, str]]:
-    """Custom multi-page crawler using link extraction."""
-    print(f"[CUSTOM_CRAWL] Starting custom crawl for {url}")
+def crawl_website_firecrawl(url: str, max_pages: int = 10, max_depth: int = 2, api_keys: dict = None) -> List[Dict[str, str]]:
+    """
+    Standard multi-page crawler entry point.
+    Satisfies imports in widget_logic.py.
+    """
+    from rag_pipeline import scrape_website_firecrawl # Local import to avoid circular dependency
+    print(f"[CRAWL] Starting multi-page crawl for {url}")
     
     urls_to_crawl = [url]
+    # Simple one-level link extraction for now, can be expanded if max_depth > 1
     additional_links = extract_links_from_page(url, max_pages - 1)
     urls_to_crawl.extend(additional_links[:max_pages - 1])
     
-    print(f"[CUSTOM_CRAWL] Found {len(urls_to_crawl)} URLs to crawl")
+    print(f"[CRAWL] Found {len(urls_to_crawl)} target URLs")
     
     results = []
     for idx, page_url in enumerate(urls_to_crawl[:max_pages], 1):
-        print(f"[CUSTOM_CRAWL] Crawling {idx}/{min(len(urls_to_crawl), max_pages)}: {page_url}")
+        print(f"[CRAWL] Processing {idx}/{len(urls_to_crawl)}: {page_url}")
         
         try:
-            content = scrape_website_firecrawl(page_url)
-            if content and len(content) > 200:
-                results.append({'url': page_url, 'content': content})
-        except:
+            # scrape_website_firecrawl returns (content: str, title: Optional[str])
+            content, title = scrape_website_firecrawl(page_url, api_keys=api_keys)
+            if content and len(content) > 100:
+                results.append({
+                    'url': page_url, 
+                    'content': content,
+                    'title': title or "Untitled Page"
+                })
+        except Exception as e:
+            print(f"[CRAWL] Error scraping {page_url}: {e}")
             continue
     
-    print(f"[CUSTOM_CRAWL] Completed: {len(results)} pages")
+    print(f"[CRAWL] Complete. Collected {len(results)} pages.")
     return results
+
+# Alias for legacy or internal imports to resolve circular dependencies in rag_pipeline
+crawl_multiple_pages_custom = crawl_website_firecrawl
+
+def normalize_url(url: str) -> str:
+    """Wrapper that late-imports to avoid circular dependency."""
+    from rag_pipeline import normalize_url as norm
+    return norm(url)

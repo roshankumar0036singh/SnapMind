@@ -14,6 +14,7 @@
   
   const apiUrl = scriptTag.getAttribute('data-api-url') || 'http://localhost:8000';
   const themeColor = scriptTag.getAttribute('data-color') || '#7c3aed';
+  const apiKey = scriptTag.getAttribute('data-api-key');
   
   // Inject styles
   const style = document.createElement('style');
@@ -353,12 +354,14 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          ...(apiKey ? { 'x-gemini-key': apiKey, 'x-mistral-key': apiKey } : {})
         },
         body: JSON.stringify({
           query: query,
           widget_id: siteId,
-          session_id: sessionId
+          session_id: sessionId,
+          api_key: apiKey
         })
       });
       

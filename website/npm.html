@@ -10,6 +10,105 @@
     rel="stylesheet" />
   <link rel="stylesheet" href="styles/tokens.css">
   <link rel="stylesheet" href="styles/global.css">
+  <style>
+    /* Premium Hero Section */
+    .hero-section {
+      padding-top: 160px;
+      padding-bottom: 100px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .hero-badge-container {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 2rem;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-h1-gradient {
+      background: linear-gradient(135deg, #fff 0%, #d8b4fe 50%, #8b5cf6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      color: transparent;
+      display: inline-block;
+    }
+
+    .hero-sub {
+      font-size: 1.25rem;
+      color: #a1a1aa;
+      max-width: 600px;
+      margin: 0 auto 3rem;
+      line-height: 1.6;
+      position: relative;
+      z-index: 2;
+    }
+
+    .hero-terminal-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 960px;
+      margin: 0 auto;
+      z-index: 10;
+      perspective: 1000px;
+    }
+
+    .hero-terminal-wrapper::before {
+      content: "";
+      position: absolute;
+      top: 10%;
+      left: 5%;
+      right: 5%;
+      bottom: -10%;
+      background: linear-gradient(180deg, rgba(139, 92, 246, 0.3) 0%, rgba(56, 189, 248, 0.1) 100%);
+      filter: blur(60px);
+      z-index: -1;
+      border-radius: 50%;
+    }
+
+    /* Syntax Highlighting Colors */
+    .syn-prompt {
+      color: #8b5cf6;
+      font-weight: bold;
+      margin-right: 12px;
+    }
+
+    .syn-cmd {
+      color: #e2e8f0;
+    }
+
+    .syn-comment {
+      color: #64748b;
+    }
+
+    .syn-str {
+      color: #34d399;
+    }
+
+    .syn-var {
+      color: #f472b6;
+    }
+
+    .cursor-blink {
+      display: inline-block;
+      width: 8px;
+      height: 16px;
+      background: #8b5cf6;
+      animation: blink 1s step-end infinite;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
+  </style>
 </head>
 
 <body class="bg-grid">
@@ -76,7 +175,7 @@
               class="dot-green"></span></div>
           <div style="font-family: var(--mono); font-size: 0.75rem; color: #71717a;">~/projects/acme-corp</div>
         </div>
-        <div class="hero-terminal-body" style="padding: 3rem;">
+        <div class="hero-terminal-body" style="padding: 2rem; font-size: 0.85rem; line-height: 1.6;">
           <div class="syn-comment"># Start the CLI with the 'coder' persona mapped to your folder</div>
           <div><span class="syn-prompt">$</span><span class="syn-cmd">snapmind --persona coder --mount .</span></div>
           <div class="syn-comment" style="margin-top:0.8rem;">[SnapMind v2.1.0]</div>

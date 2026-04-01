@@ -575,29 +575,39 @@ def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_ur
         print(f"[EMBED] Failed to initialize client: {e}")
         # Will attempt to use api_keys directly in embed_single_chunk
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks sharing the same client
-        future_to_chunk = {
-            executor.submit(embed_single_chunk, chunk.get('content', ''), api_keys, client): chunk
-            for chunk in chunks
-        }
-        
-        for future in concurrent.futures.as_completed(future_to_chunk):
-            try:
-                content, embedding = future.result()
-                original_chunk = future_to_chunk[future]
-                metadata = original_chunk.get('metadata', {})
-                if page_title: metadata['title'] = page_title
-                
-                data_list.append({
-                    "content": content,
-                    "embedding": embedding,
-                    "source_url": source_url,
-                    "metadata": metadata
-                })
-            except Exception as e:
-                failed_count += 1
-                print(f"[EMBED] Failed to embed chunk {failed_count}: {type(e).__name__}: {e}")
+    # [NEW] Rate-limit protection for Gemini free-tier (100 rpm).
+    # Process in batches of 30 for large ingestions; pause 65s between batches.
+    is_gemini = "gemini" in EmbeddingConfig.EMBEDDING_MODEL.lower()
+    BATCH_SIZE = 30 if (is_gemini and len(chunks) > 30) else len(chunks)
+    BATCH_DELAY = 65  # seconds — just over the 60s quota window
+
+    for batch_start in range(0, len(chunks), BATCH_SIZE):
+        batch = chunks[batch_start : batch_start + BATCH_SIZE]
+        if batch_start > 0 and is_gemini:
+            print(f"[EMBED] Rate-limit pause {BATCH_DELAY}s before batch {batch_start//BATCH_SIZE + 1}...")
+            import time as _embed_time
+            _embed_time.sleep(BATCH_DELAY)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_chunk = {
+                executor.submit(embed_single_chunk, chunk.get('content', ''), api_keys, client): chunk
+                for chunk in batch
+            }
+            for future in concurrent.futures.as_completed(future_to_chunk):
+                try:
+                    content, embedding = future.result()
+                    original_chunk = future_to_chunk[future]
+                    metadata = original_chunk.get('metadata', {})
+                    if page_title: metadata['title'] = page_title
+                    data_list.append({
+                        "content": content,
+                        "embedding": embedding,
+                        "source_url": source_url,
+                        "metadata": metadata
+                    })
+                except Exception as e:
+                    failed_count += 1
+                    print(f"[EMBED] Failed to embed chunk {failed_count}: {type(e).__name__}: {e}")
     
     if failed_count > 0:
         print(f"[EMBED] WARNING: {failed_count}/{len(chunks)} chunks failed to embed. Success rate: {100*len(data_list)/len(chunks):.1f}%")
@@ -665,13 +675,27 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
                 print(f"[INGEST] Warning: Could not update job status: {e}")
     if "youtube.com" in url.lower() or "youtu.be" in url.lower():
         print(f"[INGEST] YouTube URL detected. Routing to transcript parser...")
-        from youtube_parser import get_youtube_transcript
+        from youtube_parser import get_youtube_transcript, extract_video_id
         success, text_content, error_msg, yt_title = get_youtube_transcript(url)
         
         if success:
-            # Pass the requested language so Lingo.dev translates the transcript
-            print(f"[INGEST] Passing YouTube transcript to ingest_text_logic (target_lang={target_lang}, session={session_id})")
-            res = ingest_text_logic(normalized_url, text_content, target_lang=target_lang, api_keys=api_keys, session_id=session_id, page_title=yt_title, yield_callback=yield_callback)
+            # Extract video_id for timestamped citation deep-links
+            yt_video_id = extract_video_id(url)
+            print(f"[INGEST] Passing YouTube transcript to ingest_text_logic (target_lang={target_lang}, session={session_id}, video_id={yt_video_id})")
+            res = ingest_text_logic(
+                normalized_url,
+                text_content,
+                target_lang=target_lang,
+                api_keys=api_keys,
+                session_id=session_id,
+                page_title=yt_title,
+                extra_metadata={
+                    "source_type": "youtube",
+                    "video_id": yt_video_id,
+                    "title": yt_title or "YouTube Video"
+                },
+                yield_callback=yield_callback
+            )
             if res.get("success"):
                 update_job_status("completed", res.get("message", "Success"), res.get("chunks_count", 0))
             else:
@@ -961,9 +985,20 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
             if session_id:
                 chunk["metadata"]["session_id"] = session_id
             
-            # [NEW] Phase 14: Merge extra metadata (e.g. source_type: image)
+            # [NEW] Phase 14: Merge extra metadata (e.g. source_type: image / youtube)
             if extra_metadata:
                 chunk["metadata"].update(extra_metadata)
+            
+            # [NEW] YouTube Timestamp Extraction
+            # Transcripts contain [MM:SS] markers — capture the first one per chunk
+            # as timestamp_seconds so the citation layer can build deep-link URLs.
+            if chunk["metadata"].get("source_type") == "youtube":
+                import re as _re
+                ts_match = _re.search(r'\[(\d{2}):(\d{2})\]', chunk.get("content", ""))
+                if ts_match:
+                    mins_ts = int(ts_match.group(1))
+                    secs_ts = int(ts_match.group(2))
+                    chunk["metadata"]["timestamp_seconds"] = mins_ts * 60 + secs_ts
             
         data_list = parallel_embed_chunks(
             chunks,

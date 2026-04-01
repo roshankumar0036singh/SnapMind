@@ -9,7 +9,7 @@ from api_clients import get_mistral_client, get_openai_client, get_gemini_client
 
 # Import hybrid search, reranking, and configuration
 from hybrid_search import HybridSearcher
-from config import SearchConfig, FeatureFlags, RerankingConfig, CacheConfig, ContextConfig, LLMProviderConfig, ModelRegistry
+from config import EmbeddingConfig, SearchConfig, FeatureFlags, RerankingConfig, CacheConfig, ContextConfig, LLMProviderConfig, ModelRegistry
 from cache import cache_query, store_in_cache
 from context_optimizer import optimize_context
 from query_processor import enhance_query, get_best_query_for_search
@@ -37,6 +37,49 @@ def get_reranker():
             print(f"[RERANK] Failed to initialize: {e}")
             _reranker_instance = None
     return _reranker_instance
+
+# --- Embedding Utilities ---
+async def get_embedding_standalone(query: str, api_keys: dict = None) -> list[float]:
+    """
+    Generate embedding for query text using identical logic to ingestion.
+    Pads to 3072 dimensions for DB compatibility.
+    """
+    model_name = EmbeddingConfig.EMBEDDING_MODEL
+    try:
+        # 1. Mistral Embedding Flow
+        if "mistral" in model_name.lower():
+            from api_clients import get_mistral_client
+            client = get_mistral_client(api_keys)
+            if client:
+                result = client.embeddings.create(
+                    model=model_name,
+                    inputs=[query]
+                )
+                embedding = result.data[0].embedding
+            else:
+                embedding = None
+                
+        # 2. Gemini Embedding Flow
+        else:
+            from api_clients import get_gemini_client
+            client = get_gemini_client(api_keys)
+            # Use client.models.embed_content for the new SDK
+            result = client.models.embed_content(
+                model="gemini-embedding-001" if "gemini" not in model_name.lower() else model_name,
+                contents=query,
+            )
+            embedding = result.embeddings[0].values
+        
+        # [CRITICAL PADDING FIX] Match DB dimension (3072)
+        if embedding and len(embedding) < 3072:
+            embedding = list(embedding) + [0.0] * (3072 - len(embedding))
+        elif embedding and len(embedding) > 3072:
+            embedding = embedding[:3072]
+            
+        return embedding
+    except Exception as e:
+        print(f"[SEARCH-EMBED-STANDALONE] Error: {e}")
+        return [0.0] * 3072
 
 GENERATION_MODEL = ModelRegistry.MISTRAL_SMALL
 
@@ -692,7 +735,6 @@ The user wants to compare distinct websites/pages in different languages. You ha
                      except: pass
              # Re-generate db_context if we added live blocks
              if len(retrieved_raw_blocks) > 0:
-                 from search import optimize_context
                  # Need to convert retrieved_raw_blocks to expected format for optimize_context
                  optimized = optimize_context(retrieved_raw_blocks, query=search_query)
                  db_context = optimized.content
@@ -767,7 +809,6 @@ Question: {query}
 
     # 1. System Message (Instructions + RAG Context)
     if output_lang and output_lang not in ["auto", "en", "unknown"]:
-        from search import LANG_MAP
         lang_name = LANG_MAP.get(output_lang, output_lang)
         system_instruction += f"\n\nCRITICAL LANGUAGE RULE: The user requested the response in {lang_name}. You MUST output your ENTIRE response in {lang_name}."
 
@@ -871,6 +912,20 @@ Question: {query}
             final_answer = translated_answer
             print(f"[CHAT] Translation applied (was_translated={was_translated}, len={len(final_answer)})")
             
+    # [NEW] YouTube Block Enrichment
+    # Enrich any YouTube chunks in retrieved_raw_blocks with deep-link URLs
+    # so the frontend CitationHoverCard can render timestamped citations.
+    for _block in (retrieved_raw_blocks or []):
+        _meta = _block.get("metadata") or {}
+        if _meta.get("source_type") == "youtube":
+            _vid = _meta.get("video_id") or ""
+            _ts = _meta.get("timestamp_seconds", 0)
+            _block["source_type"] = "youtube"
+            _block["timestamp_seconds"] = _ts
+            _block["title"] = _meta.get("title") or ""
+            if _vid:
+                _block["youtubeUrl"] = f"https://www.youtube.com/watch?v={_vid}&t={_ts}s"
+
     result = {
         "answer": final_answer,
         "citations": citations_list,
@@ -1217,11 +1272,23 @@ The user wants to compare distinct websites/pages in different languages. You ha
             url_hash = hashlib.md5(source_url.encode()).hexdigest()[:6] if source_url else 'unknown'
             block_id = doc.get('id', f"db-block-{url_hash}-{i+1}")
             context_str += f"SOURCE: {source_url}\nID: [{block_id}]\nCONTENT: {c_text}\n\n---\n\n"
+            # [NEW] YouTube Block Enrichment
+            _meta = doc.get("metadata") or {}
+            yt_url_field = None
+            if _meta.get("source_type") == "youtube":
+                _vid = _meta.get("video_id") or ""
+                _ts  = _meta.get("timestamp_seconds", 0)
+                if _vid:
+                    yt_url_field = f"https://www.youtube.com/watch?v={_vid}&t={_ts}s"
             content_blocks.append({
                 "id": block_id,
                 "text": c_text,
                 "highlight_snippet": h_snippet,
-                "url": source_url
+                "url": yt_url_field or source_url,
+                "source_type": _meta.get("source_type", "web"),
+                "timestamp_seconds": _meta.get("timestamp_seconds", 0),
+                "title": _meta.get("title") or "",
+                "youtubeUrl": yt_url_field  # None for non-YouTube blocks
             })
         print(f"[CHAT-STREAM] Embedded {len(retrieved_raw_blocks)} database blocks with IDs and source URLs")
     elif db_context:
@@ -1312,7 +1379,6 @@ Question: {query}
         
         # 1. System Message (Instructions + RAG Context)
         if output_lang and output_lang not in ["auto", "en", "unknown"]:
-            from search import LANG_MAP
             lang_name = LANG_MAP.get(output_lang, output_lang)
             system_instruction += f"\n\nCRITICAL LANGUAGE RULE: The user requested the response in {lang_name}. You MUST output your ENTIRE response in {lang_name} from the very first token."
             

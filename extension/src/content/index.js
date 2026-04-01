@@ -74,4 +74,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: false, error: 'No video element found' });
         }
     }
+    else if (request.type === 'INJECT_WIDGET_SCRIPT') {
+        try {
+            console.log('[Content] Injecting Chatbot Widget...');
+            
+            // Check if already exists
+            if (document.querySelector(`script[src="${request.scriptUrl}"]`)) {
+                console.log('[Content] Widget script already present.');
+                sendResponse({ success: true, message: 'Already present' });
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = request.scriptUrl;
+            script.dataset.siteId = request.siteId;
+            script.dataset.color = request.color;
+            script.async = true;
+            
+            document.body.appendChild(script);
+            sendResponse({ success: true });
+        } catch (err) {
+            console.error('[Content] Injection failed:', err);
+            sendResponse({ success: false, error: err.message });
+        }
+    }
 });

@@ -9,13 +9,13 @@ export default function Settings({ onBack }) {
     const [groqApiKey, setGroqApiKey] = useState('');
     const [backendUrl, setBackendUrl] = useState('');
     const [useLocalBackend, setUseLocalBackend] = useState(false);
-    const [localConnectionStatus, setLocalConnectionStatus] = useState(null); // 'testing', 'success', 'failed'
+    const [autoSuggest, setAutoSuggest] = useState(false);
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
         // Load existing keys
         if (chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl', 'useLocalBackend'], (result) => {
+            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl', 'useLocalBackend', 'autoSuggest'], (result) => {
                 if (result.geminiApiKey) setGeminiApiKey(result.geminiApiKey);
                 if (result.mistralApiKey) setMistralApiKey(result.mistralApiKey);
                 if (result.lingodevApiKey) setLingodevApiKey(result.lingodevApiKey);
@@ -23,6 +23,7 @@ export default function Settings({ onBack }) {
                 if (result.groqApiKey) setGroqApiKey(result.groqApiKey);
                 if (result.backendUrl) setBackendUrl(result.backendUrl);
                 if (result.useLocalBackend !== undefined) setUseLocalBackend(result.useLocalBackend);
+                if (result.autoSuggest !== undefined) setAutoSuggest(result.autoSuggest);
             });
         }
     }, []);
@@ -32,11 +33,12 @@ export default function Settings({ onBack }) {
             chrome.storage.local.set({
                 geminiApiKey: geminiApiKey.trim(),
                 mistralApiKey: mistralApiKey.trim(),
-                lingodevApiKey: lingodevApiKey.trim(),
+                lingodevApiKey: mistralApiKey.trim(), // [FIX] Sync to mistral for now
                 firecrawlApiKey: firecrawlApiKey.trim(),
                 groqApiKey: groqApiKey.trim(),
                 backendUrl: backendUrl.trim(),
-                useLocalBackend: useLocalBackend
+                useLocalBackend: useLocalBackend,
+                autoSuggest: autoSuggest // [NEW] Save autoSuggest
             }, () => {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 2000);
@@ -118,7 +120,7 @@ export default function Settings({ onBack }) {
 
                     <div className="p-4 bg-indigo-50/40 rounded-xl border border-indigo-100/50">
                         <div className="flex items-center justify-between mb-2">
-                            <div className="space-y-0.5">
+                             <div className="space-y-0.5">
                                 <label className="text-xs font-bold text-gray-900">
                                     Local Fusion Mode
                                 </label>
@@ -133,23 +135,26 @@ export default function Settings({ onBack }) {
                                 <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${useLocalBackend ? 'translate-x-5' : 'translate-x-0'}`} />
                             </button>
                         </div>
+                   </div>
 
-                        {useLocalBackend && (
-                            <div className="pt-2 border-t border-indigo-100 mt-2 flex items-center justify-between">
-                                <button
-                                    onClick={testLocalConnection}
-                                    disabled={localConnectionStatus === 'testing'}
-                                    className="px-2 py-1 bg-white border border-indigo-200 text-[10px] font-bold text-indigo-700 rounded-lg hover:bg-indigo-50 transition-colors disabled:opacity-50"
-                                >
-                                    {localConnectionStatus === 'testing' ? 'Testing...' : 'Test Sync'}
-                                </button>
-                                {localConnectionStatus === 'success' && (
-                                    <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 italic">
-                                        ✓ Bridge Active
-                                    </span>
-                                )}
+                    {/* [NEW] AUTO SUGGEST TOGGLE */}
+                    <div className="p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <label className="text-xs font-bold text-gray-900">
+                                    Auto-Suggest Summaries
+                                </label>
+                                <p className="text-[10px] text-gray-500 italic">
+                                    Saves API quota when disabled
+                                </p>
                             </div>
-                        )}
+                            <button
+                                onClick={() => setAutoSuggest(!autoSuggest)}
+                                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${autoSuggest ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                            >
+                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${autoSuggest ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </button>
+                        </div>
                     </div>
 
                     {!useLocalBackend && (

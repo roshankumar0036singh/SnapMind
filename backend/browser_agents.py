@@ -295,6 +295,66 @@ class BrowserOrchestrator:
                 
             for idx, url in enumerate(top_urls):
                 print(f"[BrowserOrchestrator] Scraping {url}...")
+
+                # [NEW] YouTube-aware path: use transcript parser instead of scraper
+                is_yt = 'youtube.com/watch' in url or 'youtu.be/' in url
+                if is_yt:
+                    try:
+                        from youtube_parser import get_youtube_transcript, extract_video_id
+                        yt_ok, yt_text, yt_err, yt_title = get_youtube_transcript(url)
+                        yt_vid_id = extract_video_id(url)
+                        if yt_ok and yt_text and len(yt_text) > 200:
+                            import urllib.parse
+                            yt_chunks = chunk_at_word_boundary(yt_text[:30000], 2000)
+                            for c_text in yt_chunks:
+                                if len(c_text) < 50:
+                                    continue
+                                sub_block_id = f"br-block-{run_id}-{global_chunk_counter}"
+                                global_chunk_counter += 1
+
+                                # Extract first [MM:SS] timestamp from this chunk
+                                import re as _re2
+                                ts_match = _re2.search(r'\[(\d{2}):(\d{2})\]', c_text)
+                                ts_secs = 0
+                                if ts_match:
+                                    ts_secs = int(ts_match.group(1)) * 60 + int(ts_match.group(2))
+                                yt_deep_link = f"https://www.youtube.com/watch?v={yt_vid_id}&t={ts_secs}s" if yt_vid_id else url
+
+                                scraped_contexts.append(f"[{sub_block_id}] Source URL: {url}\n{c_text}")
+                                h_snippet = extract_highlight_snippet(c_text)
+                                citations.append({"blockId": sub_block_id, "snippet": url, "highlightUrl": yt_deep_link})
+                                blocks.append({
+                                    "id": sub_block_id,
+                                    "text": c_text,
+                                    "highlight_snippet": h_snippet,
+                                    "url": yt_deep_link,
+                                    "source_type": "youtube",
+                                    "youtubeUrl": yt_deep_link,
+                                    "timestamp_seconds": ts_secs,
+                                    "title": yt_title or "YouTube Video"
+                                })
+                            # Background ingest
+                            threading.Thread(
+                                target=ingest_text_logic,
+                                args=(url, yt_text),
+                                kwargs={
+                                    "api_keys": self.api_keys,
+                                    "session_id": self.session_id,
+                                    "page_title": yt_title,
+                                    "extra_metadata": {
+                                        "source_type": "youtube",
+                                        "video_id": yt_vid_id,
+                                        "title": yt_title or "YouTube Video"
+                                    }
+                                },
+                                daemon=True
+                            ).start()
+                        else:
+                            print(f"[BrowserOrchestrator] YouTube transcript failed for {url}: {yt_err}")
+                    except Exception as _yt_e:
+                        print(f"[BrowserOrchestrator] YouTube route error for {url}: {_yt_e}")
+                    continue  # Skip Firecrawl for YouTube URLs
+
                 data = self.scraper.extract(url)
                 
                 # [NEW] Check for scraping errors (including 502/504 Bad Gateway)
@@ -325,7 +385,13 @@ class BrowserOrchestrator:
                         highlight_url = f"{url}#:~:text={safe_h_snippet}"
  
                         citations.append({"blockId": sub_block_id, "snippet": url, "highlightUrl": highlight_url})
-                        blocks.append({"id": sub_block_id, "text": c_text, "highlight_snippet": h_snippet, "url": highlight_url})
+                        blocks.append({
+                            "id": sub_block_id,
+                            "text": c_text,
+                            "highlight_snippet": h_snippet,
+                            "url": highlight_url,
+                            "source_type": "web"
+                        })
                     
                     # Background ingest into vector DB
                     threading.Thread(

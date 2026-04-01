@@ -1,6 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin, X, ChevronRight } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -31,15 +31,25 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
   const text = block ? block.text : "Content not available.";
   const preview = text.length > 200 ? text.substring(0, 200) + "..." : text;
 
-  // [NEW] YouTube Parsing
-  const isYouTube = block?.url?.includes('youtube.com') || block?.url?.includes('youtu.be');
+  // [NEW] YouTube Parsing — prefer pre-computed metadata from backend, fall back to regex
+  const isYouTube = block?.source_type === 'youtube' || block?.url?.includes('youtube.com') || block?.url?.includes('youtu.be');
   let youtubeTimestamp = null;
   let youtubeSeconds = 0;
+  let youtubeUrl = block?.youtubeUrl || null;
   if (isYouTube) {
-    const tsMatch = text.match(/\[(\d{2}):(\d{2})\]/);
-    if (tsMatch) {
-      youtubeTimestamp = tsMatch[0]; // "[MM:SS]"
-      youtubeSeconds = parseInt(tsMatch[1], 10) * 60 + parseInt(tsMatch[2], 10);
+    // Use backend-provided timestamp if present
+    if (block?.timestamp_seconds != null && block.timestamp_seconds >= 0) {
+      youtubeSeconds = block.timestamp_seconds;
+      const m = Math.floor(youtubeSeconds / 60);
+      const s = youtubeSeconds % 60;
+      youtubeTimestamp = `[${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`;
+    } else {
+      // Fallback: parse [MM:SS] from text
+      const tsMatch = text.match(/\[(\d{2}):(\d{2})\]/);
+      if (tsMatch) {
+        youtubeTimestamp = tsMatch[0];
+        youtubeSeconds = parseInt(tsMatch[1], 10) * 60 + parseInt(tsMatch[2], 10);
+      }
     }
   }
 
@@ -51,7 +61,9 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
             console.log("Clicked citation:", citation.blockId);
             const targetUrl = block?.url || block?.sourceURL;
 
-            if (isYouTube && youtubeTimestamp) {
+            if (isYouTube && (youtubeTimestamp || youtubeUrl)) {
+              // Prefer pre-computed deep-link URL from backend
+              const targetYtUrl = youtubeUrl || (block?.url ? `${block.url.split('?')[0]}?t=${youtubeSeconds}s` : null);
               chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 const activeTabUrl = tabs[0]?.url || "";
                 if (activeTabUrl.includes('youtube.com/watch') || activeTabUrl.includes('youtu.be/')) {
@@ -61,8 +73,8 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                       seconds: youtubeSeconds
                     });
                   }
-                } else if (targetUrl) {
-                  chrome.tabs.create({ url: `${targetUrl}&t=${youtubeSeconds}s` });
+                } else if (targetYtUrl) {
+                  chrome.tabs.create({ url: targetYtUrl });
                 } else {
                   const vIdMatch = block?.url?.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
                   const videoId = vIdMatch ? vIdMatch[1] : '';
@@ -132,10 +144,10 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
             }
           }}
           className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition-all cursor-pointer ${isYouTube
-              ? 'bg-rose-50/90 text-rose-700 border-rose-200 hover:bg-rose-100 shadow-sm'
-              : isBookmarked
-                ? 'bg-amber-100/80 text-amber-800 border-amber-300 shadow-sm'
-                : 'bg-amber-50/50 text-amber-700 hover:bg-amber-100 border-amber-200/60'
+            ? 'bg-rose-50/90 text-rose-700 border-rose-200 hover:bg-rose-100 shadow-sm'
+            : isBookmarked
+              ? 'bg-amber-100/80 text-amber-800 border-amber-300 shadow-sm'
+              : 'bg-amber-50/50 text-amber-700 hover:bg-amber-100 border-amber-200/60'
             }`}
         >
           {isYouTube ? (
@@ -143,7 +155,12 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
           ) : (
             <span className={`w-1.5 h-1.5 rounded-full transition-colors ${isBookmarked ? 'bg-amber-600' : 'bg-amber-400 group-hover:bg-amber-500'}`}></span>
           )}
-          {isYouTube ? youtubeTimestamp : (
+          {isYouTube ? (
+            <span className="flex items-center gap-1">
+              <span className="font-semibold truncate max-w-[80px]">{block?.title || 'YouTube'}</span>
+              {youtubeTimestamp && <span className="opacity-75 font-mono">{youtubeTimestamp}</span>}
+            </span>
+          ) : (
             (isBookmarked ? 'Saved' :
               (citation.blockId?.startsWith?.('pin-') ? 'Source' : 'Source'))
           )} {!isYouTube ? (citation.blockId?.match?.(/\d+$/)?.[0] || citation.blockId?.replace?.(/^(bi-block-|nb-block-|db-block-|pin-[a-zA-Z0-9-]+-)/i, '') || 'Link') : ''}
@@ -362,6 +379,41 @@ const SiteList = ({ onContextSelect }) => {
           >
             ✕
           </button>
+
+          {/* Create Chatbot Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onWidgetCreate(site);
+            }}
+            style={{
+              position: 'absolute',
+              bottom: '16px',
+              right: '16px',
+              padding: '6px 12px',
+              background: 'var(--primary-50)',
+              border: '1px solid var(--primary-200)',
+              borderRadius: 'var(--radius-md)',
+              fontSize: '11px',
+              fontWeight: '700',
+              color: 'var(--primary-600)',
+              transition: 'var(--transition-fast)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--primary-600)';
+              e.currentTarget.style.color = 'white';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--primary-50)';
+              e.currentTarget.style.color = 'var(--primary-600)';
+            }}
+          >
+            <Bot className="w-3 h-3" />
+            Create Chatbot
+          </button>
         </div>
       ))}
     </div>
@@ -437,6 +489,7 @@ function App() {
   const [outputLang, setOutputLang] = useState('auto'); // [NEW] Feature 5: Seamless Polyglot
   const [suggestions, setSuggestions] = useState([]); // Feature 4: Smart Suggestions
   const [isSuggesting, setIsSuggesting] = useState(false);
+  const [autoSuggest, setAutoSuggest] = useState(false); // [NEW] Limit backend requests
   const [cropPreview, setCropPreview] = useState(null); // Data URL of crop
   const [contentBlocks, setContentBlocks] = useState([]); // Store blocks for hover lookups
 
@@ -466,6 +519,14 @@ function App() {
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
   const [githubIngesting, setGithubIngesting] = useState(false); // [NEW] Phase 23: GitHub ingestion status
   const [githubJobId, setGithubJobId] = useState(null); // [NEW] Phase 23: Job polling
+
+  // [NEW] Chatbot Widget Generator State
+  const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
+  const [activeWidgetSite, setActiveWidgetSite] = useState(null);
+  const [widgetColor, setWidgetColor] = useState('#6366f1');
+  const [widgetMaxPages, setWidgetMaxPages] = useState(50);
+  const [widgetScript, setWidgetScript] = useState('');
+  const [isWidgetIngesting, setIsWidgetIngesting] = useState(false);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // For Ctrl+K focus
@@ -602,10 +663,10 @@ function App() {
           ...(contentBlocks || []),
           ...pinnedTabs.flatMap(t => t.blocks || [])
         ];
-        
+
         // [FIX] Find the block by its ID (including namespaced IDs)
         const block = allBlocks.find(b => b.id === blockId);
-        
+
         if (block) {
           const pageNum = block?.metadata?.page || block?.page;
           handleCitationHighlight(blockId, block.url || block.sourceURL, block.highlight_snippet || "", pageNum);
@@ -613,7 +674,7 @@ function App() {
           // Fallback: Check if it's a source-URL block which might not have a full content block but has metadata in citations
           const msgWithCites = messages.findLast(m => m.citations?.some(c => c.blockId === blockId));
           const citeData = msgWithCites?.citations?.find(c => c.blockId === blockId);
-          
+
           if (citeData?.url) {
             handleCitationHighlight(blockId, citeData.url, "");
           } else if (blockId.startsWith('source-')) {
@@ -808,9 +869,10 @@ function App() {
   // Load conversation history on mount
   useEffect(() => {
     const loadHistory = async () => {
-      const result = await chrome.storage.local.get(['chatSessions', 'currentSessionId']);
+      const result = await chrome.storage.local.get(['chatSessions', 'currentSessionId', 'autoSuggest']);
       const savedSessions = result.chatSessions || [];
       const savedSessionId = result.currentSessionId;
+      if (result.autoSuggest !== undefined) setAutoSuggest(result.autoSuggest);
 
       if (savedSessions.length > 0) {
         setSessions(savedSessions);
@@ -860,34 +922,40 @@ function App() {
     }
   };
 
-  // [NEW] Feature 4: Zero-Click Smart Suggestions
-  useEffect(() => {
-    // Only fetch suggestions if we are at the beginning of a fresh chat, and not in Visual mode
-    if (view === 'chat' && mode === 'rag' && messages.length <= 1 && !isLoading && (activeContext?.type === 'url' || currentUrl)) {
-      const fetchSuggestions = async () => {
-        setIsSuggesting(true);
-        // If we are on the live page, use the blocks we have
-        const pageContent = contentBlocks.map(b => b.text).join('\n\n').substring(0, 3000);
-        const targetUrl = activeContext?.id || currentUrl;
+  // [NEW] Feature 4: Zero-Click Smart Suggestions (Now with Manual Option)
+  const fetchSuggestions = async () => {
+    if (isSuggesting || isLoading) return;
+    setIsSuggesting(true);
+    // If we are on the live page, use the blocks we have
+    const pageContent = contentBlocks.map(b => b.text).join('\n\n').substring(0, 3000);
+    const targetUrl = activeContext?.id || currentUrl;
 
-        try {
-          const fetchedSuggestions = await apiClient.getSuggestions(pageContent, targetUrl, targetUrl);
-          if (fetchedSuggestions && fetchedSuggestions.length > 0) {
-            setSuggestions(fetchedSuggestions);
-          }
-        } catch (e) {
-          console.error("Failed to load suggestions:", e);
-        } finally {
-          setIsSuggesting(false);
-        }
-      };
-      // Adding a tiny delay to ensure page blocks have been extracted first
-      const timeout = setTimeout(fetchSuggestions, 500);
+    try {
+      console.log(`[Suggestions] Fetching for ${targetUrl}...`);
+      const fetchedSuggestions = await apiClient.getSuggestions(pageContent, targetUrl, targetUrl);
+      if (fetchedSuggestions && fetchedSuggestions.length > 0) {
+        setSuggestions(fetchedSuggestions);
+      } else {
+        // Fallback for empty results
+        setSuggestions(["Summarize this page", "Key takeaways", "Explain technical details"]);
+      }
+    } catch (e) {
+      console.error("Failed to load suggestions:", e);
+      toast.error("Could not fetch suggestions. Backend might be busy.");
+    } finally {
+      setIsSuggesting(false);
+    }
+  };
+
+  useEffect(() => {
+    // Only fetch suggestions automatically if autoSuggest is ENABLED, at beginning of chat
+    if (autoSuggest && view === 'chat' && mode === 'rag' && messages.length <= 1 && !isLoading && (activeContext?.type === 'url' || currentUrl)) {
+      const timeout = setTimeout(fetchSuggestions, 800);
       return () => clearTimeout(timeout);
-    } else {
+    } else if (messages.length > 1) {
       setSuggestions([]); // Clear suggestions if chat progresses
     }
-  }, [view, mode, messages.length, activeContext, currentUrl, contentBlocks, isLoading]);
+  }, [view, mode, messages.length, activeContext, currentUrl, contentBlocks, isLoading, autoSuggest]);
 
   // [NEW] Ingestion Status Polling (Optimized for Browser Mode)
   useEffect(() => {
@@ -1198,7 +1266,7 @@ function App() {
       setGithubIngesting(false);
     }
   };
-  
+
   const handleSaveWebPage = async (targetFolder = 'General') => {
     try {
       setIsLoading(true);
@@ -1208,7 +1276,7 @@ function App() {
         toast.error("No active tab to save", { id: toastId });
         return;
       }
-      
+
       let textToSave = "";
       try {
         const extResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
@@ -1399,15 +1467,15 @@ function App() {
 
     let isLowQuality = false;
     try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        if (tab?.id && tab.url === url) {
-            const extractionResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
-            if (extractionResponse && extractionResponse.isLowQuality) {
-                isLowQuality = true;
-            }
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id && tab.url === url) {
+        const extractionResponse = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
+        if (extractionResponse && extractionResponse.isLowQuality) {
+          isLowQuality = true;
         }
+      }
     } catch (e) {
-        // Content script might not be injected
+      // Content script might not be injected
     }
 
     try {
@@ -1424,7 +1492,7 @@ function App() {
             });
             // Optionally update toast, but avoid spamming. Only on distinct phase changes.
             if (progressEvent.progress && progressEvent.progress % 20 === 0 && progressEvent.progress < 100) {
-               toast.loading(progressEvent.message, { id: toastId });
+              toast.loading(progressEvent.message, { id: toastId });
             }
           }
         },
@@ -1437,7 +1505,7 @@ function App() {
         const msg = crawlOptions.mode === 'multi'
           ? `Crawled ${response.pages_indexed || response.pages_crawled || 'multiple'} pages, ${response.total_chunks || response.chunks_count || 0} chunks indexed`
           : `Indexed chunks successfully`;
-        
+
         toast.success(msg, { id: toastId });
         setIngestStatus(null);
         setExternalUrl('');
@@ -1471,6 +1539,92 @@ function App() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGenerateWidget = async () => {
+    if (!activeWidgetSite) return;
+
+    setIsWidgetIngesting(true);
+    const toastId = toast.loading(`Initializing multipage crawler for ${activeWidgetSite.url}...`);
+
+    try {
+      // 1. Trigger ingest
+      const widgetId = activeWidgetSite.id; // Using site ID as default widget ID
+      const response = await apiClient.ingestWidget(activeWidgetSite.url, widgetId, widgetMaxPages);
+
+      if (response.success) {
+        toast.success("Chatbot data ready", { id: toastId });
+
+        // 2. Generate script
+        const baseUrl = await apiClient.getBaseUrl();
+        const scriptUrl = `${baseUrl}/static/snapmind-widget.js`;
+        const script = `<script \n  src="${scriptUrl}" \n  data-site-id="${widgetId}" \n  data-color="${widgetColor}" \n  async>\n</script>`;
+        setWidgetScript(script);
+      } else {
+        toast.error(`Ingest failed: ${response.message}`, { id: toastId });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(`Error creating widget: ${err.message}`, { id: toastId });
+    } finally {
+      setIsWidgetIngesting(false);
+    }
+  };
+
+  const handleInjectLive = async () => {
+    if (!widgetScript) return;
+    
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        toast.error("No active tab found");
+        return;
+      }
+
+      // Check URL match to avoid confusion
+      const siteOrigin = new URL(activeWidgetSite.url).origin;
+      const tabOrigin = new URL(tab.url).origin;
+      
+      if (siteOrigin !== tabOrigin) {
+        toast.warning("The active tab does not match the site URL. Switch to the correct tab first.");
+        return;
+      }
+
+      const baseUrl = await apiClient.getBaseUrl();
+      const scriptUrl = `${baseUrl}/static/snapmind-widget.js`;
+      
+      // Use scripting.executeScript for more robust injection (bypasses "Receiving end does not exist")
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (sUrl, sId, sColor) => {
+          if (document.querySelector(`script[src="${sUrl}"]`)) {
+            return { success: true, alreadyExists: true };
+          }
+          const script = document.createElement('script');
+          script.src = sUrl;
+          script.dataset.siteId = sId;
+          script.dataset.color = sColor;
+          script.async = true;
+          document.body.appendChild(script);
+          return { success: true };
+        },
+        args: [scriptUrl, activeWidgetSite.id, widgetColor]
+      });
+
+      const result = results[0].result;
+      if (result?.success) {
+        if (result.alreadyExists) {
+          toast.success("Widget is already active on this page!");
+        } else {
+          toast.success("Widget injected live! Check the bottom right of the page.");
+        }
+      } else {
+        throw new Error("Injection failed");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(`Live injection failed: ${err.message}. (Try reloading the page if this persists)`);
     }
   };
 
@@ -1893,7 +2047,7 @@ function App() {
           if (!citations.find(c => c.blockId === blockId)) {
             // Descriptive snippet for pinned tabs and sources
             let snippet = `Source ${blockId.replace(/^(bi-block-|nb-block-|db-block-|br-block-|source-block-)/, '')}`;
-            
+
             if (blockId.startsWith('pin-')) {
               // Format: pin-t0-5 or pin-t0-bi-block-5
               const parts = blockId.split('-');
@@ -1903,7 +2057,7 @@ function App() {
             } else if (blockId.startsWith('source-')) {
               snippet = "Site Header";
             }
-            
+
             citations.push({ blockId, snippet });
             console.log("[Stream] Added citation - ID:", blockId, "Snippet:", snippet);
           }
@@ -2457,10 +2611,10 @@ function App() {
                 {memoryTab === 'saved'
                   ? "Your beautifully summarized saved pages"
                   : memoryTab === 'sites'
-                  ? "Pages you've indexed for intelligent search"
-                  : memoryTab === 'graph'
-                    ? "Semantic entities and relationships discovered across your knowledge base"
-                    : "Pinned citations and key snippets saved for your research"}
+                    ? "Pages you've indexed for intelligent search"
+                    : memoryTab === 'graph'
+                      ? "Semantic entities and relationships discovered across your knowledge base"
+                      : "Pinned citations and key snippets saved for your research"}
               </p>
             </div>
 
@@ -2468,7 +2622,11 @@ function App() {
             {memoryTab === 'saved' ? (
               <SavedPagesView />
             ) : memoryTab === 'sites' ? (
-              <SiteList onBack={() => setView('chat')} />
+              <SiteList onBack={() => setView('chat')} onWidgetCreate={(site) => {
+                setActiveWidgetSite(site);
+                setIsWidgetModalOpen(true);
+                setWidgetScript('');
+              }} />
             ) : memoryTab === 'graph' ? (
               selectedGraphSession ? (
                 <div className="space-y-4">
@@ -2880,6 +3038,22 @@ function App() {
         )
       }
 
+      {/* Manual Suggestion Trigger (Only when autoSuggest is OFF) */}
+      {
+        view === 'chat' && mode === 'rag' && messages.length <= 1 && !autoSuggest && !isSuggesting && suggestions.length === 0 && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '0 16px 4px 16px' }}>
+            <button
+              onClick={fetchSuggestions}
+              className="flex items-center gap-2 px-5 py-2.5 text-indigo-600 rounded-full text-xs font-bold hover:bg-indigo-50/60 hover:shadow-lg hover:shadow-indigo-500/10 transition-all active:scale-95 group border border-transparent hover:border-indigo-200/60"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 group-hover:scale-110 transition-all" />
+              Get AI Page Summary
+              <svg className="w-3 h-3 text-indigo-400 group-hover:translate-x-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+          </div>
+        )
+      }
+
       {/* Smart Suggestions UI */}
       {
         view === 'chat' && mode === 'rag' && messages.length <= 1 && (isSuggesting || suggestions.length > 0) && (
@@ -2957,7 +3131,7 @@ function App() {
 
             {/* Floating PIN TAB Button */}
             {(!activeContext || activeContext.type === 'url') && currentUrl && !pinnedTabs.find(t => t.url === currentUrl) && mode === 'rag' && (
-              <div className="bg-white/95 backdrop-blur border-2 border-indigo-200 px-4 py-2 rounded-2xl flex items-center justify-center gap-2 shadow-xl cursor-pointer hover:-translate-y-1 transition-all w-fit pointer-events-auto group ring-4 ring-indigo-500/5 hover:border-indigo-400 active:scale-95"
+              <div className="backdrop-blur-xl bg-white/80 border border-indigo-100/80 px-4 py-2 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/8 cursor-pointer hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-500/12 transition-all w-fit pointer-events-auto group active:scale-95"
                 onClick={async () => {
                   let blocks = contentBlocks;
                   if (blocks.length === 0) {
@@ -3089,101 +3263,273 @@ function App() {
                       ? 'bg-amber-100 text-amber-600 shadow-md shadow-amber-100 scale-105 ring-2 ring-amber-50'
                       : 'bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                       }`}
-                  >
+                    >
                     <Bookmark className="w-4 h-4" />
                   </button>
-                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const domainId = new URL(currentUrl).hostname.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+                    setActiveWidgetSite({
+                      url: currentUrl,
+                      id: domainId,
+                      title: currentTabTitle
+                    });
+                    setIsWidgetModalOpen(true);
+                    setWidgetScript('');
+                  }}
+                  title="Create Chatbot Widget"
+                  className="p-2.5 ml-1 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 hover:scale-110 active:scale-95 transition-all shadow-sm border border-indigo-100/50"
+                >
+                  <Bot className="w-4 h-4" />
+                </button>
+              </div>
               </div>
             )}
 
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-              className="relative flex items-center group mt-2"
-            >
-              <input
-                autoFocus
-                type="text"
-                className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
-                placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-        </footer>
-      )}
-      <Toaster richColors position="top-center" />
-
-      {/* Save Folder Modal */}
-      {isSaveFolderModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-white/50 animate-in zoom-in-95 duration-300">
-            <h3 className="font-extrabold text-lg text-slate-800 mb-1 flex items-center gap-2">
-              <Bookmark className="w-5 h-5 text-indigo-500" />
-              Save to Folder
-            </h3>
-            <p className="text-xs text-slate-500 mb-5 font-medium ml-7">Group related websites together.</p>
-            
-            <input 
-              type="text"
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+            className="relative flex items-center group mt-2"
+          >
+            <input
               autoFocus
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all font-semibold text-sm text-slate-800 placeholder:text-slate-400 mb-4"
-              placeholder="e.g. Research, Python Docs"
-              value={saveFolderName}
-              onChange={(e) => setSaveFolderName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && saveFolderName.trim()) {
-                  setIsSaveFolderModalOpen(false);
-                  handleSaveWebPage(saveFolderName.trim());
-                }
-              }}
+              type="text"
+              className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
+              placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
             />
+            <button
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+        </footer>
+  )
+}
+<Toaster richColors position="top-center" />
 
-            <div className="flex flex-wrap gap-2 mb-6">
-              {['General', 'Docs', 'Research', 'Tech'].map(f => (
-                <button
-                  key={f}
-                  onClick={() => setSaveFolderName(f)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform hover:scale-105 ${saveFolderName === f ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                >
-                  {f}
-                </button>
-              ))}
+{/* Save Folder Modal */ }
+{
+  isSaveFolderModalOpen && (
+    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-white/50 animate-in zoom-in-95 duration-300">
+        <h3 className="font-extrabold text-lg text-slate-800 mb-1 flex items-center gap-2">
+          <Bookmark className="w-5 h-5 text-indigo-500" />
+          Save to Folder
+        </h3>
+        <p className="text-xs text-slate-500 mb-5 font-medium ml-7">Group related websites together.</p>
+
+        <input
+          type="text"
+          autoFocus
+          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all font-semibold text-sm text-slate-800 placeholder:text-slate-400 mb-4"
+          placeholder="e.g. Research, Python Docs"
+          value={saveFolderName}
+          onChange={(e) => setSaveFolderName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && saveFolderName.trim()) {
+              setIsSaveFolderModalOpen(false);
+              handleSaveWebPage(saveFolderName.trim());
+            }
+          }}
+        />
+
+        <div className="flex flex-wrap gap-2 mb-6">
+          {['General', 'Docs', 'Research', 'Tech'].map(f => (
+            <button
+              key={f}
+              onClick={() => setSaveFolderName(f)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform hover:scale-105 ${saveFolderName === f ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            className="flex-1 py-2.5 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors"
+            onClick={() => setIsSaveFolderModalOpen(false)}
+          >
+            Cancel
+          </button>
+          <button
+            className="flex-1 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all hover:scale-[1.02]"
+            onClick={() => {
+              if (saveFolderName.trim()) {
+                setIsSaveFolderModalOpen(false);
+                handleSaveWebPage(saveFolderName.trim());
+              }
+            }}
+          >
+            Save Page
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* Keyboard Shortcuts Modal */ }
+{ showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} /> }
+
+{/* Chatbot Widget Modal */ }
+{isWidgetModalOpen && (
+  <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
+    <div className="bg-white rounded-[28px] w-full max-w-sm overflow-hidden shadow-2xl border border-white/50 animate-in zoom-in-95 duration-200">
+      {/* Premium Header */}
+      <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-7 text-white relative">
+        <div className="absolute top-6 right-6">
+          <button
+            onClick={() => setIsWidgetModalOpen(false)}
+            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all hover:rotate-90"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-4 ring-1 ring-white/20">
+          <Bot className="w-6 h-6 text-white" />
+        </div>
+        <h3 className="text-xl font-bold tracking-tight leading-tight">
+          Chatbot Generator
+        </h3>
+        <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest text-indigo-100">
+          {new URL(activeWidgetSite?.url || "http://site.com").hostname}
+        </div>
+      </div>
+
+      <div className="p-7 space-y-6">
+        {/* Color Customization */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <div className="w-1 h-1 rounded-full bg-indigo-500"></div>
+              Brand Identity
+            </label>
+            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Primary Color</span>
+          </div>
+          
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4 bg-slate-50/50 p-2 rounded-2xl border border-slate-100">
+                    <div
+                      className="w-11 h-11 rounded-xl shadow-inner border border-slate-200 shrink-0 transition-all duration-300"
+                      style={{ backgroundColor: widgetColor, boxShadow: `0 8px 16px ${widgetColor}20` }}
+                    ></div>
+                    <input
+                      type="text"
+                      value={widgetColor}
+                      onChange={(e) => setWidgetColor(e.target.value)}
+                      className="flex-1 bg-transparent outline-none font-mono font-bold text-xs text-slate-700 placeholder:text-slate-300"
+                      placeholder="#6366f1"
+                    />
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2 px-1">
+                    {['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#0f172a'].map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setWidgetColor(c)}
+                        className={`w-6 h-6 rounded-full border-2 border-white shadow-sm transition-all ${widgetColor === c ? 'scale-110 ring-2 ring-indigo-500/20 shadow-md' : 'hover:scale-110 opacity-70 hover:opacity-100'}`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
+                </div>
+        </div>
+
+        {/* Crawler Config */}
+        <div className="space-y-4">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+            <div className="w-1 h-1 rounded-full bg-emerald-500"></div>
+            Crawler Strategy
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl px-4 py-3 group hover:border-indigo-500/30 transition-all">
+              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-1">Max Pages</div>
+              <div className="flex items-center justify-between">
+                <input
+                  type="number"
+                  value={widgetMaxPages}
+                  onChange={(e) => setWidgetMaxPages(parseInt(e.target.value))}
+                  className="w-full bg-transparent outline-none font-bold text-slate-700 text-sm"
+                />
+                <ChevronRight className="w-3 h-3 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+              </div>
             </div>
-
-            <div className="flex items-center gap-3">
-              <button 
-                className="flex-1 py-2.5 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors"
-                onClick={() => setIsSaveFolderModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button 
-                className="flex-1 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all hover:scale-[1.02]"
-                onClick={() => {
-                  if (saveFolderName.trim()) {
-                    setIsSaveFolderModalOpen(false);
-                    handleSaveWebPage(saveFolderName.trim());
-                  }
-                }}
-              >
-                Save Page
-              </button>
+            <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl px-4 py-3 flex flex-col justify-center">
+              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-1">Engine</div>
+              <div className="text-emerald-600 font-black text-[10px] tracking-tight uppercase">Firecrawl AI</div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Keyboard Shortcuts Modal */}
-      {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
-    </div >
+        {/* Script Output */}
+        {widgetScript && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse"></div>
+                Script Ready
+              </label>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(widgetScript);
+                  toast.success("Script copied to clipboard");
+                }}
+                className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-[0.1em] transition-colors"
+              >
+                Copy Script
+              </button>
+            </div>
+              <div className="relative group">
+                <pre className="bg-slate-900/95 backdrop-blur-sm rounded-2xl p-5 text-[10px] text-indigo-300 font-mono overflow-hidden break-all whitespace-pre-wrap leading-relaxed shadow-xl border border-indigo-500/10 ring-1 ring-white/5">
+                  {widgetScript}
+                </pre>
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent pointer-events-none rounded-2xl"></div>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-2.5 pt-2">
+            <button
+              disabled={isWidgetIngesting || !widgetScript}
+              onClick={handleInjectLive}
+              className={`flex-1 py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${isWidgetIngesting || !widgetScript
+                ? 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
+                : 'bg-emerald-600/90 text-white shadow-lg shadow-emerald-500/10 hover:bg-emerald-600 hover:-translate-y-0.5 active:scale-95'}`}
+            >
+              Test Live
+            </button>
+            <button
+              disabled={isWidgetIngesting}
+              onClick={handleGenerateWidget}
+              className={`flex-[1.5] py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${isWidgetIngesting
+                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500 hover:-translate-y-0.5 active:scale-95 ring-1 ring-white/10'}`}
+            >
+              {isWidgetIngesting ? (
+                <div className="flex items-center justify-center gap-3">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Ingesting...
+                </div>
+              ) : (
+                widgetScript ? 'Regenerate' : 'Create Chatbot'
+              )}
+            </button>
+          </div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    </div>
   );
 }
 

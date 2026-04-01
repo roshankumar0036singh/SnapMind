@@ -405,6 +405,83 @@ MIGRATIONS = [
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         """
+    },
+    {
+        "version": 10,
+        "name": "chatbot_widget_table",
+        "sql": """
+            CREATE TABLE IF NOT EXISTS widget_documents (
+                id BIGSERIAL PRIMARY KEY,
+                widget_id TEXT NOT NULL,
+                url TEXT NOT NULL,
+                content TEXT NOT NULL,
+                embedding vector(3072),
+                metadata JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS widget_documents_widget_id_idx ON widget_documents (widget_id);
+            CREATE INDEX IF NOT EXISTS widget_documents_url_idx ON widget_documents (url);
+            CREATE INDEX IF NOT EXISTS widget_documents_content_fts_idx ON widget_documents USING GIN (to_tsvector('english', content));
+
+            DROP FUNCTION IF EXISTS hybrid_search_widget(vector, text, float, integer, text, float, float);
+            
+            CREATE OR REPLACE FUNCTION hybrid_search_widget(
+                query_embedding vector(3072),
+                query_text TEXT,
+                match_threshold FLOAT,
+                match_count INTEGER,
+                filter_widget_id TEXT,
+                vector_weight FLOAT DEFAULT 0.5,
+                keyword_weight FLOAT DEFAULT 0.5
+            ) RETURNS TABLE (
+                id BIGINT,
+                url TEXT,
+                content TEXT,
+                metadata JSONB,
+                similarity FLOAT,
+                bm25_score FLOAT,
+                combined_score FLOAT
+            ) LANGUAGE plpgsql AS $$
+            BEGIN
+                RETURN QUERY
+                WITH vector_matches AS (
+                    SELECT 
+                        d.id,
+                        1 - (d.embedding <=> query_embedding) AS sim
+                    FROM widget_documents d
+                    WHERE d.widget_id = filter_widget_id
+                      AND 1 - (d.embedding <=> query_embedding) > match_threshold
+                    ORDER BY d.embedding <=> query_embedding
+                    LIMIT match_count * 2
+                ),
+                keyword_matches AS (
+                    SELECT 
+                        d.id,
+                        ts_rank(to_tsvector('english', d.content), websearch_to_tsquery('english', query_text)) AS rank
+                    FROM widget_documents d
+                    WHERE d.widget_id = filter_widget_id
+                      AND to_tsvector('english', d.content) @@ websearch_to_tsquery('english', query_text)
+                    ORDER BY rank DESC
+                    LIMIT match_count * 2
+                )
+                SELECT 
+                    d.id,
+                    d.url,
+                    d.content,
+                    d.metadata,
+                    COALESCE(v.sim, 0)::FLOAT AS similarity,
+                    COALESCE(k.rank, 0)::FLOAT AS bm25_score,
+                    (COALESCE(v.sim, 0) * vector_weight + COALESCE(k.rank, 0) * keyword_weight)::FLOAT AS combined_score
+                FROM widget_documents d
+                LEFT JOIN vector_matches v ON d.id = v.id
+                LEFT JOIN keyword_matches k ON d.id = k.id
+                WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+                ORDER BY combined_score DESC
+                LIMIT match_count;
+            END;
+            $$;
+        """
     }
 ]
 

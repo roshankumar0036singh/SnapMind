@@ -1133,5 +1133,39 @@ export const apiClient = {
             console.error("Get Saved Pages Error:", e);
             return { success: false, data: [] };
         }
+    },
+
+    /**
+     * Triggers multipage ingestion for a chatbot widget.
+     */
+    async ingestWidget(url, widgetId, maxPages = 50, maxDepth = 3) {
+        const baseUrl = await this.getBaseUrl();
+        const endpoint = `${baseUrl}/widget/ingest`;
+
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(await this.getApiKeysHeaders())
+                },
+                body: JSON.stringify({
+                    url: url,
+                    widget_id: widgetId,
+                    max_pages: maxPages,
+                    max_depth: maxDepth
+                })
+            });
+
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({ detail: "Ingest failed" }));
+                throw new Error(data.detail || `Server Error: ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error("Widget Ingest Error:", error);
+            return { success: false, message: error.message };
+        }
     }
 };

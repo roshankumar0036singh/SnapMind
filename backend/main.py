@@ -102,6 +102,18 @@ if not supabase_url:
         except Exception:
             pass
 
+# --- Static Files (Phase 28) ---
+from fastapi.staticfiles import StaticFiles
+# Ensure static directory exists
+if not os.path.exists("static"):
+    os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/snapmind-widget.js")
+async def get_widget_js():
+    """Convenience route to serve the widget script from root."""
+    return FileResponse("static/snapmind-widget.js")
+
 supabase: Client = create_client(supabase_url or "", supabase_key or "")
 
 # Initialize Mistral Client
@@ -198,13 +210,30 @@ class ChatRequest(BaseModel):
     query_lang: str | None = None   # [NEW] Original language of the query
     output_lang: str = "auto"       # [NEW] Forced Output Language (Feature 5)
     context_url: str | None = None
+    session_id: str | None = None   # [NEW] Phase 5: Semantic Chat Memory
+    site_id: str | None = None      # [NEW] Phase 3: Context Switching (UUID)
+    history: list[dict] | None = None # [NEW] Conversational History
+    page_content: str | None = None  # [NEW] Allow direct text context
+    content_blocks: list[dict] | None = None # [NEW] Structured blocks for citation
+
+class WidgetIngestRequest(BaseModel):
+    url: str
+    widget_id: str
+    max_pages: int = 50
+    max_depth: int = 3
+    api_key: str | None = None
+
+class WidgetChatRequest(BaseModel):
+    query: str
+    widget_id: str
+    session_id: str | None = None # [NEW] Phase 5: Semantic Chat Memory
     page_content: str | None = None  # [NEW] Allow direct text context
     content_blocks: list[dict] | None = None # [NEW] Structured blocks for citation
     site_id: str | None = None # [NEW] Phase 3: Context Switching (UUID)
     history: list[dict] | None = None # [NEW] Conversational History
-    session_id: str | None = None # [NEW] Phase 5: Semantic Chat Memory
     query_notebook: bool = False # [NEW] Phase 20: Research Notebook Correlation
     persona_id: str | None = None # [NEW] Feature 21: Custom Agent Personas
+    api_key: str | None = None
 
 class SuggestRequest(BaseModel):
     page_content: str | None = None
@@ -1001,7 +1030,9 @@ async def chat_stream_endpoint(request: ChatRequest, req: Request):
     from fastapi.responses import StreamingResponse
     from search import chat_logic_stream
     
-    print(f"Stream query: {request.query} (Site ID: {request.site_id})")
+    # [NEW] Default to request.query if site_id is missing to avoid AttributeError
+    s_id = getattr(request, 'site_id', None)
+    print(f"Stream query: {request.query} (Site ID: {s_id})")
     
     api_keys = {
         "gemini": req.headers.get("x-gemini-key"),
@@ -1013,15 +1044,11 @@ async def chat_stream_endpoint(request: ChatRequest, req: Request):
             request.query, 
             request.page_content, 
             request.content_blocks, 
-            request.site_id, 
+            s_id, 
             request.history, 
             request.session_id, 
             api_keys=api_keys,
-            search_query=request.search_query,
-            query_lang=request.query_lang,
-            output_lang=request.output_lang,
-            query_notebook=request.query_notebook,
-            persona_id=request.persona_id
+            output_lang=request.output_lang
         ),
         media_type="application/x-ndjson"
     )
@@ -1559,3 +1586,63 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
 
+# --- Widget Endpoints (Phase 28) ---
+
+@app.post("/widget/ingest")
+async def widget_ingest(request: WidgetIngestRequest, req: Request):
+    """
+    Multipage ingestion for website chatbot widgets.
+    """
+    # Collect API keys (Header prioritized, Body as fallback)
+    gemini_key = req.headers.get("x-gemini-key") or request.api_key
+    mistral_key = req.headers.get("x-mistral-key")
+    firecrawl_key = req.headers.get("x-firecrawl-key")
+    
+    # Exhaustive Debug Logging
+    print(f"[WIDGET-INGEST] Request headers: {dict(req.headers)}")
+    if gemini_key: print(f"[WIDGET-INGEST] Gemini key detected (Source: {'Header' if req.headers.get('x-gemini-key') else 'Body'}).")
+    else: print(f"[WIDGET-INGEST] WARNING: No Gemini key found in headers or body.")
+
+    api_keys = {
+        "gemini": gemini_key,
+        "mistral": mistral_key,
+        "firecrawl": firecrawl_key
+    }
+
+    from widget_logic import ingest_widget_multipage
+    result = await ingest_widget_multipage(
+        url=request.url,
+        widget_id=request.widget_id,
+        max_pages=request.max_pages,
+        max_depth=request.max_depth,
+        api_keys=api_keys
+    )
+    return result
+
+@app.post("/widget/chat")
+async def widget_chat(request: WidgetChatRequest, req: Request):
+    """
+    Chat endpoint for website chatbot widgets.
+    """
+    # Collect API keys (Header prioritized, Body as fallback)
+    gemini_key = req.headers.get("x-gemini-key") or request.api_key
+    mistral_key = req.headers.get("x-mistral-key")
+    
+    # Exhaustive Debug Logging
+    print(f"[WIDGET-CHAT] Request headers: {dict(req.headers)}")
+    if gemini_key: print(f"[WIDGET-CHAT] Gemini key detected for session {request.session_id} (Source: {'Header' if req.headers.get('x-gemini-key') else 'Body'}).")
+    else: print(f"[WIDGET-CHAT] WARNING: No Gemini key found in headers or body for session {request.session_id}. Falling back to server key.")
+
+    api_keys = {
+        "gemini": gemini_key,
+        "mistral": mistral_key,
+    }
+
+    from widget_logic import widget_chat_logic
+    result = await widget_chat_logic(
+        query=request.query,
+        widget_id=request.widget_id,
+        session_id=request.session_id,
+        api_keys=api_keys
+    )
+    return result
