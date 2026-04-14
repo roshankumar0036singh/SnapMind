@@ -86,6 +86,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Snapmind Backend", lifespan=lifespan)
 
+# Include modules
+from evolution_api import router as evolution_router
+app.include_router(evolution_router)
+
 # Initialize Supabase (Global for Saved Pages)
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
@@ -121,13 +125,26 @@ mistral_api_key = os.getenv("MISTRAL_API_KEY")
 mistral_client = Mistral(api_key=mistral_api_key)
 
 # Allow CORS for Chrome Extension
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to extension ID
+    allow_origins=ALLOWED_ORIGINS,  # In production, restrict to extension ID
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # To avoid breaking the React widget, we'll keep CSP relatively open but disable eval
+    response.headers["Content-Security-Policy"] = "default-src 'self' 'unsafe-inline' https: http:; object-src 'none'"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
@@ -138,6 +155,27 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Process-Time"] = str(process_time)
     # We could also log this to a DB for the analytics view's 'latency distribution' chart
     return response
+
+@app.middleware("http")
+async def limit_upload_size(request: Request, call_next):
+    # Limit body size to 50MB
+    MAX_SIZE = 50 * 1024 * 1024
+    if request.headers.get('content-length'):
+        if int(request.headers.get('content-length')) > MAX_SIZE:
+            return JSONResponse({"detail": "File too large. Maximum size is 50MB."}, status_code=413)
+    return await call_next(request)
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+@app.get("/health/ready")
+def readiness_check():
+    from database import get_db_pool
+    pool = get_db_pool()
+    if pool:
+        return {"status": "ready"}
+    return JSONResponse({"status": "unready", "detail": "Database not connected"}, status_code=503)
 
 @app.get("/admin/refresh-suggestions")
 async def get_refresh_suggestions():
@@ -778,7 +816,7 @@ async def ingest_file_endpoint(
     session_id: str = Form(None)
 ):
     """
-    Accepts locally uploaded files (PDF, DOCX, CSV, TXT), parses their content,
+    Accepts locally uploaded files (PDF, DOCX, CSV, TXT, MP3, WAV, MP4), parses their content,
     translates them if requested, and ingests them into the RAG database.
     """
     file_bytes = await file.read()
@@ -789,6 +827,7 @@ async def ingest_file_endpoint(
         "gemini": req.headers.get("x-gemini-key"),
         "mistral": req.headers.get("x-mistral-key"),
         "lingodev": req.headers.get("x-lingodev-key"),
+        "groq": req.headers.get("x-groq-key"),
     }
     
     # Use provided site URL as the "source", or default to a fake file:// URL
@@ -798,6 +837,41 @@ async def ingest_file_endpoint(
     
     from rag_pipeline import ingest_file_logic
     result = ingest_file_logic(source_url, file_bytes, filename, content_type, target_lang=target_language, api_keys=api_keys, session_id=session_id)
+    
+    return result
+
+@app.post("/api/deep-research")
+async def deep_research_endpoint(req: Request):
+    """
+    Explicit multi-hop reasoning endpoint. Decomposes a query into sub-questions 
+    and executes a reasoning chain across web and local sources.
+    """
+    data = await req.json()
+    query = data.get("query")
+    session_id = data.get("session_id")
+    target_lang = data.get("target_language", "auto")
+    
+    api_keys = {
+        "gemini": req.headers.get("x-gemini-key"),
+        "mistral": req.headers.get("x-mistral-key"),
+        "groq": req.headers.get("x-groq-key"),
+    }
+    
+    if not query:
+        raise HTTPException(status_code=400, detail="Query is required")
+        
+    print(f"[API] Starting Deep Research for: {query[:50]}...")
+    
+    from reasoning_chain import ReasoningPlanner, ReasoningExecutor
+    planner = ReasoningPlanner(api_keys)
+    executor = ReasoningExecutor(api_keys, session_id=session_id, output_lang=target_lang)
+    
+    # 1. Plan the chain
+    # We might pass a context hint if we have a current site open
+    plan = planner.plan(query)
+    
+    # 2. Execute the chain
+    result = executor.execute_chain(plan, query)
     
     return result
 
@@ -1256,9 +1330,6 @@ def list_sites():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/v1/files/ingest")
 async def ingest_local_file(request: Request):
     """
@@ -1353,47 +1424,7 @@ async def update_setting(request: dict):
         print(f"Error updating setting {key}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/admin/analytics")
-def get_system_analytics():
-    """Returns telemetry for the AnalyticsView."""
-    from database import get_db_pool
-    import os
-    try:
-        pool = get_db_pool()
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                # 1. Chunk Count
-                cur.execute("SELECT COUNT(*) FROM documents")
-                docs_count = cur.fetchone()[0]
-                
-                # 2. Session Count
-                cur.execute("SELECT COUNT(DISTINCT session_id) FROM chat_sessions")
-                sessions_count = cur.fetchone()[0]
-                
-                # 3. Bookmarks Count
-                cur.execute("SELECT COUNT(*) FROM bookmarks")
-                bookmarks_count = cur.fetchone()[0]
-                
-                # 4. Recent Ledger
-                cur.execute("SELECT source_url, created_at FROM sites ORDER BY created_at DESC LIMIT 10")
-                recent = [{"url": row[0], "date": row[1].isoformat()} for row in cur.fetchall()]
-                
-                # 5. Storage (Simplified)
-                # Roughly estimating based on PostgreSQL file size or just doc count
-                # Let's just say 2KB per chunk for a rough estimate
-                storage_bytes = docs_count * 2048 
-                storage_str = f"{storage_bytes / (1024*1024):.1f} MB" if storage_bytes > 1024*1024 else f"{storage_bytes/1024:.1f} KB"
 
-                return {
-                    "docs": docs_count,
-                    "sessions": sessions_count,
-                    "bookmarks": bookmarks_count,
-                    "storage": storage_str,
-                    "recent": recent
-                }
-    except Exception as e:
-        print(f"Error fetching analytics: {e}")
-        return {"error": str(e)}
 
 # --- Export Endpoints (Phase 4.1) ---
 
@@ -1559,19 +1590,19 @@ def debug_list_urls():
         raise HTTPException(status_code=500, detail=str(e))
 
 # API to temporarily hold screenshots for cross-platform visual search
-vision_cache = {}
+from collections import OrderedDict
 import uuid
+
+vision_cache = OrderedDict()
 
 @app.post("/api/vision/cache")
 async def cache_vision_image(request: Request):
     data = await request.json()
     cache_id = str(uuid.uuid4())
     vision_cache[cache_id] = data.get("image", "")
-    # Clean up old items to prevent memory leak
-    if len(vision_cache) > 50:
-        keys_to_delete = list(vision_cache.keys())[:-20]
-        for k in keys_to_delete:
-            del vision_cache[k]
+    # Strict FIFO cleanup to prevent memory leak
+    while len(vision_cache) > 50:
+        vision_cache.popitem(last=False)
     return {"cache_id": cache_id}
 
 @app.get("/api/vision/cache/{cache_id}")

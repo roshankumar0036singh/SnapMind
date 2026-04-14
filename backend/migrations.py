@@ -482,6 +482,44 @@ MIGRATIONS = [
             END;
             $$;
         """
+    },
+    {
+        "version": 11,
+        "name": "knowledge_evolution_tracking",
+        "sql": """
+            -- Content snapshots for temporal knowledge tracking
+            CREATE TABLE IF NOT EXISTS content_versions (
+                id BIGSERIAL PRIMARY KEY,
+                source_url TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                content_snapshot TEXT,
+                diff_summary TEXT,
+                version_number INTEGER DEFAULT 1,
+                metadata JSONB DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_content_versions_url ON content_versions (source_url);
+            CREATE INDEX IF NOT EXISTS idx_content_versions_url_created ON content_versions (source_url, created_at DESC);
+        """
+    },
+    {
+        "version": 12,
+        "name": "research_path_tracking",
+        "sql": """
+            -- Research action log for path visualization
+            CREATE TABLE IF NOT EXISTS research_actions (
+                id BIGSERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                action_type TEXT NOT NULL,
+                action_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                parent_action_id BIGINT REFERENCES research_actions(id),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_research_actions_session ON research_actions (session_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_research_actions_parent ON research_actions (parent_action_id);
+        """
     }
 ]
 

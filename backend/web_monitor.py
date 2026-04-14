@@ -30,10 +30,39 @@ def is_web_monitor_enabled():
         print(f"[WEB-MONITOR] Error checking settings: {e}")
         return True
 
+async def generate_diff_summary(old_content: str, new_content: str) -> str:
+    """Use Mistral Small to summarize what changed."""
+    from api_clients import get_mistral_client
+    from config import ModelRegistry
+    client = get_mistral_client({})
+    if not client:
+        return "Content changed (Hash mismatch)"
+        
+    prompt = f"""Compare these two versions of a webpage and summarize what changed in 2-3 bullet points.
+    
+OLD VERSION (first 3000 chars):
+{old_content[:3000]}
+
+NEW VERSION (first 3000 chars):
+{new_content[:3000]}
+
+Output ONLY the bullet-point changes. Be specific about what was added, removed, or modified."""
+    
+    try:
+        response = client.chat.complete(
+            model=ModelRegistry.MISTRAL_SMALL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[WEB-MONITOR] Diff generation failed: {e}")
+        return "Content changed (Hash mismatch)"
+
 async def check_for_updates():
     """
     Checks indexed URLs and compares their current content with stored content.
-    If significant changes are detected, a refresh suggestion is created.
+    If significant changes are detected, logs a new snapshot in content_versions 
+    and creates a refresh suggestion.
     """
     pool = get_db_pool()
     if not pool: return
@@ -75,25 +104,53 @@ async def check_for_updates():
                         content = scraper.extract(url)
                         
                         if not content or "Error" in content or "Exception" in content:
-                            print(f"[WEB-MONITOR] Scraping failed for {url}: {content[:50]}...")
+                            print(f"[WEB-MONITOR] Scraping failed for {url}: {content[:50] if content else 'None'}...")
                             continue
                             
                         new_hash = get_content_hash(content)
                         
-                        # Check existing hash
+                        # Check existing hash and snapshot
                         cur.execute("SELECT content_hash FROM web_monitor_state WHERE url = %s", (url,))
                         row = cur.fetchone()
                         
                         if not row:
-                            # First time seeing this, just store it
+                            # First time seeing this, store it and create baseline version
                             print(f"[WEB-MONITOR] Storing initial hash for {url}")
                             cur.execute("""
                                 INSERT INTO web_monitor_state (url, content_hash) 
                                 VALUES (%s, %s)
                             """, (url, new_hash))
+                            
+                            cur.execute("""
+                                INSERT INTO content_versions (source_url, content_hash, content_snapshot, diff_summary, version_number)
+                                VALUES (%s, %s, %s, %s, 1)
+                            """, (url, new_hash, content, "Baseline index"))
                         elif row[0] != new_hash:
                             # Content has changed!
-                            print(f"[WEB-MONITOR] 🚨 Change detected for {url}! Suggesting refresh.")
+                            print(f"[WEB-MONITOR] 🚨 Change detected for {url}! Generating diff.")
+                            
+                            # Get previous content snapshot to compare against
+                            cur.execute("""
+                                SELECT content_snapshot, version_number FROM content_versions 
+                                WHERE source_url = %s ORDER BY version_number DESC LIMIT 1
+                            """, (url,))
+                            ver_row = cur.fetchone()
+                            
+                            prev_content = ver_row[0] if ver_row else ""
+                            prev_version = ver_row[1] if ver_row else 0
+                            
+                            # Generate AI diff
+                            diff_summary = await generate_diff_summary(prev_content, content)
+                            print(f"[WEB-MONITOR] Diff: {diff_summary}")
+                            
+                            # Store new version
+                            new_version = prev_version + 1
+                            cur.execute("""
+                                INSERT INTO content_versions (source_url, content_hash, content_snapshot, diff_summary, version_number)
+                                VALUES (%s, %s, %s, %s, %s)
+                            """, (url, new_hash, content, diff_summary, new_version))
+                            
+                            # Suggest refresh
                             cur.execute("""
                                 INSERT INTO refresh_suggestions (url, last_fingerprint, reason, status)
                                 VALUES (%s, %s, %s, 'pending')
@@ -102,7 +159,7 @@ async def check_for_updates():
                                     last_fingerprint = %s,
                                     reason = %s,
                                     last_visited = CURRENT_TIMESTAMP
-                            """, (url, row[0], "Content changed (Hash mismatch)", row[0], "Content changed"))
+                            """, (url, row[0], diff_summary, row[0], diff_summary))
                             
                             # Update the state
                             cur.execute("""

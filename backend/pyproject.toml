@@ -1,0 +1,28 @@
+[project]
+name = "snapmind-backend"
+version = "0.1.0"
+description = "RAG-powered knowledge management API"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "T20", # flake8-print (flag print statements)
+]
+ignore = ["T201"] # Allow print for now (logging migration later)
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "database", "api_clients"]
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]

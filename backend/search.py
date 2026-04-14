@@ -21,9 +21,14 @@ _reranker_instance = None
 
 def is_mostly_non_ascii(s):
     if not s: return False
-    # Heuristic: If > 20% of chars are non-ASCII, it's likely a foreign language
-    non_ascii = len([c for c in s if ord(c) > 127])
-    return non_ascii > len(s) * 0.2
+    threshold = len(s) * 0.2
+    non_ascii = 0
+    for c in s:
+        if ord(c) > 127:
+            non_ascii += 1
+            if non_ascii > threshold:
+                return True
+    return False
 
 def get_reranker():
     """Lazy initialization of reranker"""
@@ -71,10 +76,8 @@ async def get_embedding_standalone(query: str, api_keys: dict = None) -> list[fl
             embedding = result.embeddings[0].values
         
         # [CRITICAL PADDING FIX] Match DB dimension (3072)
-        if embedding and len(embedding) < 3072:
-            embedding = list(embedding) + [0.0] * (3072 - len(embedding))
-        elif embedding and len(embedding) > 3072:
-            embedding = embedding[:3072]
+        from utils import pad_embedding
+        embedding = pad_embedding(embedding)
             
         return embedding
     except Exception as e:
@@ -1011,7 +1014,7 @@ Your GOAL is to answer the user's question directly and intelligently using ONLY
 2. **NO META-ANALYSIS**: Do NOT explain the "Snapmind rules," "Notebook Mode inferences," or describe how your internal retrieval works. Just provide the answer.
 3. **Direct Answers**: Immediately address the user's query. Do NOT use headers like "### Key Inferences from Notebook Mode" or "### Example Scenarios" unless they are part of the actual data in the context.
 4. **Context Only**: ONLY answer using information from the provided CONTEXT. DO NOT use external knowledge or make assumptions.
-5. **Direct Fallback**: If the CONTEXT lacks the answer, output ONLY: "I don't have that information in the current research context". Nothing else.
+5. **Contextual Fallback**: If the CONTEXT specifically lacks the exact answer (e.g. "recent LinkedIn posts"), but contains related info (e.g. "organizing an academic visit" or "social activity"), you MUST synthesize what YOU HAVE and explain that this is the activity found. ONLY say "I don't have that information" if the CONTEXT is completely unrelated or empty. Do NOT give this error if partial information exists.
 6. [GENERATIVE UI] If the user explicitly asks for a process, workflow, architecture, diagram, or sequence of events, you MUST output a Mermaid.js diagram. Wrap it strictly in a ```mermaid\n ... \n``` block.
 7. **Suggested Follow-ups**: At the very end, suggest 2-3 short, engaging follow-up questions ONLY if answerable from the CONTEXT. Format as '**Suggested Follow-ups:**' with each in **bold**.
 </POLISH_RULES>
@@ -1191,7 +1194,7 @@ The user wants to compare distinct websites/pages in different languages. You ha
                 from rag_pipeline import scrape_website_firecrawl
                 from chunking import chunk_text
                 
-                urls_to_scrape = [sid for sid in site_ids if sid.startswith(("http://", "https://"))]
+                urls_to_scrape = [sid for sid in site_ids if sid.startswith(("http://", "https://")) and "localhost" not in sid]
                 print(f"[CHAT-STREAM] Insufficient context (pinned={pinned_text_len}, db_avg={avg_len:.0f}). Scraping {len(urls_to_scrape)} URLs in parallel...")
                 
                 # [FIX] Scrape in parallel instead of sequentially
@@ -1260,37 +1263,31 @@ The user wants to compare distinct websites/pages in different languages. You ha
     # [FIX] Always include retrieved_raw_blocks in context, regardless of optimize_context output
     # Previously, if optimize_context returned empty (due to MIN_RELEVANCE_SCORE filtering),
     # all DB blocks were silently dropped and the LLM had no data to answer from.
+    # [FIX] Core Context Assembly: Use optimized.content (the deduplicated/filtered data)
+    # instead of re-looping through retrieved_raw_blocks.
     if retrieved_raw_blocks:
-        context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n"
-        from browser_agents import extract_highlight_snippet
-        import hashlib
-        for i, doc in enumerate(retrieved_raw_blocks):
+        if 'optimized' in locals() and optimized.content:
+            context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n" + optimized.content + "\n\n"
+            # Sync content_blocks for frontend to match optimized chunks
             content_blocks = content_blocks or []
-            c_text = doc.get('content', '')
-            h_snippet = extract_highlight_snippet(c_text)
-            source_url = doc.get('source_url', '')
-            url_hash = hashlib.md5(source_url.encode()).hexdigest()[:6] if source_url else 'unknown'
-            block_id = doc.get('id', f"db-block-{url_hash}-{i+1}")
-            context_str += f"SOURCE: {source_url}\nID: [{block_id}]\nCONTENT: {c_text}\n\n---\n\n"
-            # [NEW] YouTube Block Enrichment
-            _meta = doc.get("metadata") or {}
-            yt_url_field = None
-            if _meta.get("source_type") == "youtube":
-                _vid = _meta.get("video_id") or ""
-                _ts  = _meta.get("timestamp_seconds", 0)
-                if _vid:
-                    yt_url_field = f"https://www.youtube.com/watch?v={_vid}&t={_ts}s"
-            content_blocks.append({
-                "id": block_id,
-                "text": c_text,
-                "highlight_snippet": h_snippet,
-                "url": yt_url_field or source_url,
-                "source_type": _meta.get("source_type", "web"),
-                "timestamp_seconds": _meta.get("timestamp_seconds", 0),
-                "title": _meta.get("title") or "",
-                "youtubeUrl": yt_url_field  # None for non-YouTube blocks
-            })
-        print(f"[CHAT-STREAM] Embedded {len(retrieved_raw_blocks)} database blocks with IDs and source URLs")
+            existing_ids = {cb.get('id') for cb in content_blocks}
+            for ochunk in optimized.chunks:
+                if ochunk.get('id') not in existing_ids:
+                    content_blocks.append({
+                        "id": ochunk.get('id'),
+                        "text": ochunk.get('content', ''),
+                        "url": ochunk.get('source_url', ''),
+                        "title": ochunk.get('metadata', {}).get('title', 'Historical Page'),
+                        "source_type": ochunk.get('metadata', {}).get('source_type', 'web')
+                    })
+        else:
+            # Fallback if optimization didn't run or returned nothing
+            context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n"
+            for i, doc in enumerate(retrieved_raw_blocks):
+                c_text = doc.get('content', '')
+                source_url = doc.get('source_url', '')
+                block_id = doc.get('id', f"db-block-{i+1}")
+                context_str += f"SOURCE: {source_url}\nID: [{block_id}]\nCONTENT: {c_text}\n\n---\n\n"
     elif db_context:
         context_str += "DATABASE CONTEXT (HISTORICAL INDEXED DATA):\n" + db_context + "\n\n"
 
@@ -1566,11 +1563,8 @@ DO NOT include any explanations. Output strictly a JSON object with a 'suggestio
             response_format={"type": "json_object"}
         )
         
-        content = response.choices[0].message.content.strip()
-        if content.startswith("```json"): content = content[7:]
-        if content.startswith("```"): content = content[3:]
-        if content.endswith("```"): content = content[:-3]
-        content = content.strip()
+        from utils import strip_json_fences
+        content = strip_json_fences(response.choices[0].message.content)
         
         return json.loads(content)
     except Exception as e:

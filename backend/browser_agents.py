@@ -214,6 +214,16 @@ class BrowserOrchestrator:
     def run(self, user_query: str) -> dict:
         print(f"[BrowserOrchestrator] Starting for query: {user_query}")
         
+        # [NEW] Feature #5: Check if query requires multi-hop reasoning
+        from reasoning_chain import is_multi_hop_query
+        if is_multi_hop_query(user_query, self.api_keys):
+            print(f"[BrowserOrchestrator] Detecting multi-hop reasoning required for: {user_query}")
+            from reasoning_chain import ReasoningPlanner, ReasoningExecutor
+            planner = ReasoningPlanner(self.api_keys)
+            executor = ReasoningExecutor(self.api_keys, self.session_id, self.output_lang)
+            plan = planner.plan(user_query)
+            return executor.execute_chain(plan, user_query)
+        
         # [FIX] Initialize missing variables
         scraped_contexts = []
         citations = []
@@ -524,11 +534,9 @@ User Query: {query}
                 messages=[{"role": "user", "content": prompt}]
             )
             text = response.choices[0].message.content.strip()
+            from utils import strip_json_fences
             # clean markdown ticks if any
-            if text.startswith("```json"):
-                text = text[7:-3].strip()
-            elif text.startswith("```"):
-                text = text[3:-3].strip()
+            text = strip_json_fences(text)
                 
             queries = json.loads(text)
             if isinstance(queries, list):
@@ -677,11 +685,9 @@ Results:
                 messages=[{"role": "user", "content": prompt}]
             )
             text = response.choices[0].message.content.strip()
+            from utils import strip_json_fences
             # clean markdown ticks if any
-            if text.startswith("```json"):
-                text = text[7:-3].strip()
-            elif text.startswith("```"):
-                text = text[3:-3].strip()
+            text = strip_json_fences(text)
                 
             ids = json.loads(text)
             top_urls = [unique_results[i]['url'] for i in ids if 0 <= i < len(unique_results)]

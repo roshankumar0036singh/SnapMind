@@ -10,6 +10,7 @@ import { exportSession } from '../utils/exporter.js';
 import { loadSession, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { extractCodeBlocks } from '../utils/ast_parser.js';
+import { handleCommonCommands } from '../utils/commands.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -172,8 +173,24 @@ export async function startCoder(options = {}) {
     }
     
     while (true) {
-      const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.blue('coder>') }]);
+      let query;
+      try {
+        const answers = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.blue('coder>') }]);
+        query = answers.query;
+      } catch (e) {
+        if (e.name === 'ExitPromptError') {
+          console.log(chalk.gray('\n  × Shutdown requested. Saving session...'));
+          await saveSession(namespace, history);
+          process.exit(0);
+        }
+        throw e;
+      }
+
       if (query.toLowerCase() === 'exit') break;
+
+      // Shared Commands
+      const cmdResult = await handleCommonCommands(query, { history, namespace, llm, currentFocus: null });
+      if (cmdResult.handled) continue;
 
       if (query.startsWith('/global')) {
         const subQuery = query.replace('/global', '').trim();
@@ -229,10 +246,8 @@ export async function startCoder(options = {}) {
         continue;
       }
 
-      if (query.toLowerCase() === '/export') {
-        await exportSession(history);
-        continue;
-      }
+      // /export handled by handleCommonCommands
+
 
       if (query.toLowerCase() === '/diagram') {
         const diagramSpinner = ora('Generating architecture diagram...').start();

@@ -1859,23 +1859,42 @@ function App() {
           blocks,
           userMsg.text,
           (token) => {
+            fullText += token;
+            
+            // [NEW] Incremental Citation Extraction
+            const citationRegex = /((?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)/gi;
+            const currentCitations = [];
+            let match;
+            while ((match = citationRegex.exec(fullText)) !== null) {
+              const blockId = match[1];
+              if (!currentCitations.find(c => c.blockId === blockId)) {
+                let snippet = `Source ${blockId.replace(/^(bi-block-|nb-block-|db-block-|br-block-|source-block-)/, '')}`;
+                if (blockId.startsWith('pin-')) {
+                  const parts = blockId.split('-');
+                  snippet = `Pinned Tab ${parseInt(parts[1].replace('t', '')) + 1} #${parts[parts.length - 1]}`;
+                } else if (blockId.startsWith('source-')) {
+                  snippet = "Site Header";
+                }
+                currentCitations.push({ blockId, snippet });
+              }
+            }
+
             if (isFirstToken) {
               isFirstToken = false;
-              setIsLoading(false); // Hide the "AI is thinking..." loader
-              fullText += token;
+              setIsLoading(false);
               setMessages(prev => [...prev, {
                 id: aiMsgId,
                 role: 'assistant',
                 text: fullText,
-                citations: []
+                citations: currentCitations
               }]);
             } else {
-              fullText += token;
               setMessages(currentMessages =>
-                currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m)
+                currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText, citations: currentCitations } : m)
               );
             }
           },
+
           (newBlocks) => {
             if (newBlocks && newBlocks.length > 0) {
               console.log("[Stream] Received blocks:", newBlocks.length, newBlocks);
@@ -2357,8 +2376,23 @@ function App() {
                                     a: ({href, children}) => <a href={href} target="_blank" className="text-[#6366f1] underline decoration-[#6366f1]/30 underline-offset-4 hover:decoration-[#6366f1] transition-all">{children}</a>
                                   }}
                                 >
-                                  {msg.text ? msg.text.replace(/\[(?:br|bi|nb|db)-block-[a-zA-Z0-9-]+\]/gi, '').trim() : ''}
+                                  {(() => {
+                                    if (!msg.text) return '';
+                                    if (!msg.citations || msg.citations.length === 0) return msg.text;
+                                    
+                                    // [NEW] Map raw block IDs to numeric citations for a cleaner UI [1], [2], etc.
+                                    let processedText = msg.text;
+                                    msg.citations.forEach((cite, i) => {
+                                      const escapedId = cite.blockId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                      const regex = new RegExp(`\\[${escapedId}\\]`, 'g');
+                                      processedText = processedText.replace(regex, `[${i + 1}]`);
+                                    });
+                                    
+                                    return processedText.trim();
+                                  })()}
+
                                 </ReactMarkdown>
+
                               )}
                             </div>
 

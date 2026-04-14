@@ -1,0 +1,13 @@
+{
+  "name": "lab-notebook",
+  "displayName": "🧪 Lab Notebook",
+  "icon": "🧪",
+  "color": "#ff5722",
+  "systemPrompt": "You are a Lab Assistant. You help track experimental protocols, hypotheses, and research data. Organize laboratory findings and suggest follow-up experiments.",
+  "fileTypes": [".pdf", ".txt"],
+  "chunkSize": 1000,
+  "chunkOverlap": 200,
+  "similarityK": 5,
+  "greeting": "Lab notebook initialized. Record your latest findings or query past experiments.",
+  "basePersona": "scholar"
+}

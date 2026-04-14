@@ -53,6 +53,8 @@ async function checkOllama(airgap) {
       } else {
         overrideProvider = normalizedAction;
         console.log(chalk.cyan(`\nSwitching to ${normalizedAction.toUpperCase()}...`));
+        // Proactively ask for the key if it's missing (Feature 31)
+        await getKey(normalizedAction);
         return true;
       }
     }

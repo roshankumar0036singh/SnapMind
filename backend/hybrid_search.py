@@ -231,6 +231,19 @@ class HybridSearcher:
                 match['score'] = match.get('combined_score', 0)
                 match['vector_score'] = match.get('similarity', 0)
                 match['keyword_score'] = match.get('bm25_score', 0)
+                
+                # [NEW] Feature #6: Credibility-weighted scoring
+                # 30% of final score influenced by source credibility
+                meta = match.get('metadata', {})
+                if isinstance(meta, str):
+                    try:
+                        import json
+                        meta = json.loads(meta)
+                    except Exception:
+                        meta = {}
+                cred_score = meta.get('credibility_score', 50) / 100.0
+                match['score'] = match['score'] * (0.7 + 0.3 * cred_score)
+                match['credibility_tier'] = meta.get('credibility_tier', 'community')
             
             return matches
         except Exception as e:
@@ -271,11 +284,8 @@ class HybridSearcher:
                 embedding = result.embeddings[0].values
             
             # [CRITICAL PADDING FIX] Match DB dimension (3072)
-            if embedding and len(embedding) < 3072:
-                # print(f"[SEARCH-EMBED] Padding vector from {len(embedding)} to 3072")
-                embedding = list(embedding) + [0.0] * (3072 - len(embedding))
-            elif embedding and len(embedding) > 3072:
-                embedding = embedding[:3072]
+            from utils import pad_embedding
+            embedding = pad_embedding(embedding)
                 
             return embedding
         except Exception as e:

@@ -10,6 +10,13 @@ import config from './utils/config.js';
 import { setKey, deleteKey } from './utils/credentials.js';
 import { globalSearch } from './utils/vector_storage.js';
 import { getEmbeddings } from './utils/llm.js';
+import { 
+  savePersona, 
+  listCustomPersonas, 
+  deletePersona, 
+  exportPersona, 
+  importPersona 
+} from './utils/persona_store.js';
 
 
 
@@ -27,6 +34,7 @@ program
   .name('snapmind-ai')
   .description('The ultimate local AI companion for students, developers, and analysts.')
   .version('1.1.3')
+  .argument('[extraPaths...]', 'Extra paths if spaces were not escaped')
   .option('--airgap', 'Run in 100% offline mode using local models only')
   .option('--watch <path>', 'Automatically index changes in the specified directory')
   .option('--repo <url>', 'Clone and index a GitHub repository')
@@ -293,8 +301,101 @@ program
   );
 
 program
-  .action(async (options) => {
-    if (program.args.length > 0 && program.args[0] === 'config') return;
+  .command('persona')
+  .description('Manage custom AI personas')
+  .addCommand(
+    new Command('create')
+      .description('Create a new custom persona')
+      .option('--from <template>', 'Base the new persona on a template')
+      .action(async (opts) => {
+        const path = (await import('path')).default;
+        const fs = (await import('fs-extra')).default;
+        
+        let initialConfig = {};
+        if (opts.from) {
+          const templatePath = path.join(process.cwd(), 'src', 'templates', `${opts.from}.json`);
+          if (await fs.pathExists(templatePath)) {
+            initialConfig = await fs.readJson(templatePath);
+            delete initialConfig.name; // User will provide new name
+          } else {
+            console.log(chalk.yellow(`\nTemplate "${opts.from}" not found. Starting from scratch.`));
+          }
+        }
+
+        const answers = await inquirer.prompt([
+          { type: 'input', name: 'name', message: 'Unique ID for the persona (e.g. my-expert):', validate: (i) => /^[a-z0-9-]+$/.test(i) || 'Invalid ID' },
+          { type: 'input', name: 'displayName', message: 'Display Name:', default: initialConfig.displayName || 'My Expert' },
+          { type: 'input', name: 'icon', message: 'Emoji Icon:', default: initialConfig.icon || '🤖' },
+          { type: 'input', name: 'color', message: 'Hex Color:', default: initialConfig.color || '#00d4ff' },
+          { type: 'editor', name: 'systemPrompt', message: 'Core System Prompt:', default: initialConfig.systemPrompt || 'You are an expert assistant.' },
+          { type: 'input', name: 'greeting', message: 'Initial Greeting:', default: initialConfig.greeting || 'Ready to assist.' }
+        ]);
+
+        await savePersona(answers.name, answers);
+        console.log(chalk.green(`\n✅ Persona "${answers.name}" created successfully!`));
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('List all custom personas')
+      .action(async () => {
+        const personas = await listCustomPersonas();
+        if (personas.length === 0) {
+          console.log(chalk.yellow('\nNo custom personas found. create one with: snapmind-ai persona create'));
+          return;
+        }
+        console.log(chalk.bold.cyan(`\nCustom Personas (${personas.length})\n`));
+        personas.forEach(p => {
+          console.log(chalk.white(`  ${p.icon} ${chalk.bold(p.displayName)} (${p.name})`));
+          console.log(chalk.gray(`     Prompt: ${p.systemPrompt.slice(0, 60)}...`));
+        });
+      })
+  )
+  .addCommand(
+    new Command('delete')
+      .description('Delete a custom persona')
+      .argument('<name>', 'ID of the persona to delete')
+      .action(async (name) => {
+        const success = await deletePersona(name);
+        if (success) console.log(chalk.green(`\n✅ Persona "${name}" deleted.`));
+        else console.log(chalk.red(`\nPersona "${name}" not found.`));
+      })
+  )
+  .addCommand(
+    new Command('export')
+      .description('Export a persona to JSON')
+      .argument('<name>', 'ID of the persona to export')
+      .action(async (name) => {
+        try {
+          const path = await exportPersona(name);
+          console.log(chalk.green(`\n✅ Exported to: ${path}`));
+        } catch (e) {
+          console.error(chalk.red(`\n${e.message}`));
+        }
+      })
+  )
+  .addCommand(
+    new Command('import')
+      .description('Import a persona from JSON file')
+      .argument('<path>', 'Path to the JSON file')
+      .action(async (p) => {
+        try {
+          const persona = await importPersona(p);
+          console.log(chalk.green(`\n✅ Imported persona: ${persona.displayName}`));
+        } catch (e) {
+          console.error(chalk.red(`\n${e.message}`));
+        }
+      })
+  );
+
+program
+  .action(async (extraPaths, options) => {
+    if (program.args.length > 0 && (['config', 'search', 'maintenance', 'vault', 'schedule', 'persona'].includes(program.args[0]))) return;
+
+    // Fix for unquoted paths with spaces (Feature 30)
+    if (extraPaths && extraPaths.length > 0 && options.mount) {
+      options.mount = [options.mount, ...extraPaths].join(' ');
+    }
 
     const isDirect = options.repo || options.mount || options.persona || options.watch;
     

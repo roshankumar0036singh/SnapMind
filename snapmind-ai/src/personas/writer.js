@@ -9,6 +9,7 @@ import { generateNamespace, getVectorStore, globalSearch } from '../utils/vector
 import { loadSession, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { getTheme } from '../utils/themes.js';
+import { handleCommonCommands } from '../utils/commands.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -88,8 +89,24 @@ export async function startWriter(options = {}) {
     }
 
     while (true) {
-      const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: theme.writer('writer>') }]);
+      let query;
+      try {
+        const answers = await inquirer.prompt([{ type: 'input', name: 'query', message: theme.writer('writer>') }]);
+        query = answers.query;
+      } catch (e) {
+        if (e.name === 'ExitPromptError') {
+          console.log(chalk.gray('\n  × Shutdown requested. Saving session...'));
+          await saveSession(namespace, history);
+          process.exit(0);
+        }
+        throw e;
+      }
+
       if (query.toLowerCase() === 'exit') break;
+
+      // Shared Commands
+      const cmdResult = await handleCommonCommands(query, { history, namespace, llm, currentFocus: null });
+      if (cmdResult.handled) continue;
 
       if (query.startsWith('/global')) {
         const subQuery = query.replace('/global', '').trim();
@@ -150,10 +167,8 @@ export async function startWriter(options = {}) {
         continue;
       }
 
-      if (query.toLowerCase() === '/export') {
-        await exportSession(history, 'writer_draft');
-        continue;
-      }
+      // /export handled by handleCommonCommands
+
 
       const chatSpinner = ora('Synthesizing...').start();
       try {

@@ -10,6 +10,7 @@ import { exportSession } from '../utils/exporter.js';
 import { loadSession, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { renderLineChart } from '../utils/charts.js';
+import { handleCommonCommands } from '../utils/commands.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -99,8 +100,24 @@ export async function startAnalyst(options = {}) {
     }
     
     while (true) {
-      const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.green('analyst>') }]);
+      let query;
+      try {
+        const answers = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.green('analyst>') }]);
+        query = answers.query;
+      } catch (e) {
+        if (e.name === 'ExitPromptError') {
+          console.log(chalk.gray('\n  × Shutdown requested. Saving session...'));
+          await saveSession(namespace, history);
+          process.exit(0);
+        }
+        throw e;
+      }
+
       if (query.toLowerCase() === 'exit') break;
+
+      // Shared Commands
+      const cmdResult = await handleCommonCommands(query, { history, namespace, llm, currentFocus: null });
+      if (cmdResult.handled) continue;
 
       if (query.startsWith('/global')) {
         const subQuery = query.replace('/global', '').trim();
@@ -115,26 +132,6 @@ export async function startAnalyst(options = {}) {
             ['user', `Global Context:\n${globalContext}\n\nTask: ${subQuery}`]
           ]);
           await streamToTerminal(stream, 'green');
-        } catch (e) {
-          globalSpinner.fail('Global search failed.');
-          handleError(e);
-        }
-        continue;
-      }
-
-      if (query.startsWith('/global')) {
-        const subQuery = query.replace('/global', '').trim();
-        const globalSpinner = ora('Relational RAG: Searching across all datasets...').start();
-        try {
-          const globalResults = await globalSearch(subQuery, embeddings, 5);
-          globalSpinner.stop();
-          const globalContext = globalResults.map(r => `[GLOBAL] Source: ${r.namespace}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
-          
-          const stream = await llm.stream([
-            ['system', `You are SnapMind Coder. Expert in cross-repo logic. Answer using GLOBAL context and codebase context.`],
-            ['user', `Global Context:\n${globalContext}\n\nTask: ${subQuery}`]
-          ]);
-          await streamToTerminal(stream, 'cyan');
         } catch (e) {
           globalSpinner.fail('Global search failed.');
           handleError(e);

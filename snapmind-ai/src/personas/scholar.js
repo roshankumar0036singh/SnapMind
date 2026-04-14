@@ -9,6 +9,7 @@ import { loadSession, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { getTheme } from '../utils/themes.js';
 import { NLP_CONFIG } from '../utils/constants.js';
+import { handleCommonCommands } from '../utils/commands.js';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -118,8 +119,24 @@ export async function startScholar(options = {}) {
     const plugins = await loadPlugins();
 
     while (true) {
-      const { query } = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.yellow('scholar>') }]);
+      let query;
+      try {
+        const answers = await inquirer.prompt([{ type: 'input', name: 'query', message: chalk.yellow('scholar>') }]);
+        query = answers.query;
+      } catch (e) {
+        if (e.name === 'ExitPromptError') {
+          console.log(chalk.gray('\n  × Shutdown requested. Saving session...'));
+          await saveSession(namespace, history);
+          process.exit(0);
+        }
+        throw e;
+      }
+
       if (query.toLowerCase() === 'exit') break;
+
+      // Shared Commands
+      const cmdResult = await handleCommonCommands(query, { history, namespace, llm, currentFocus: null });
+      if (cmdResult.handled) continue;
 
       if (query.startsWith('/global')) {
         const subQuery = query.replace('/global', '').trim();
@@ -141,16 +158,8 @@ export async function startScholar(options = {}) {
         continue;
       }
 
-      if (query.toLowerCase() === '/handoff') {
-        const { target } = await inquirer.prompt([{
-          type: 'list',
-          name: 'target',
-          message: 'Handoff to which Intelligence Architecture?',
-          choices: ['coder', 'analyst', 'writer']
-        }]);
-        return { target, history, mount: targetPath };
-      }
-
+      // /export handled by handleCommonCommands
+      // /snapshot kept for backward sync and custom names
       if (query.startsWith('/snapshot')) {
         const name = query.split(' ')[1] || 'default';
         await saveSession(namespace, history, name);

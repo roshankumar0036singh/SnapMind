@@ -13,6 +13,10 @@ const schema = {
     type: 'number',
     default: 0.3,
   },
+  multilingual: {
+    type: 'boolean',
+    default: false,
+  },
 };
 
 const config = new Conf({

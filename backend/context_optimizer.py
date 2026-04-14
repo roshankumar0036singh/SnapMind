@@ -281,11 +281,25 @@ class ContextOptimizer:
         # Build optimized content
         optimized_parts = []
         for i, chunk in enumerate(chunks):
-            source = chunk.get('source_url', 'Doc')
+            metadata = chunk.get('metadata', {})
             content = chunk.get('content', '')
             
+            # [FIX] Enhanced Source URL Recovery
+            source = (
+                chunk.get('source_url', None) or 
+                metadata.get('url', None) or 
+                metadata.get('source', None) or 
+                'Vector Store'
+            )
+            
+            # [NEW] LinkedIn Heuristic
+            # If the source is generic but content looks like LinkedIn, override it
+            if source in ['Vector Store', 'Doc', 'Current Page']:
+                linkedin_patterns = [r'LinkedIn', r'11mo', r'Head Coordinator', r'IIIT Nagpur']
+                if any(re.search(p, content, re.I) for p in linkedin_patterns):
+                    source = "LinkedIn Social Post"
+
             # Add metadata if available
-            metadata = chunk.get('metadata', {})
             heading = metadata.get('heading', '')
             
             # Add rerank score if available
@@ -296,13 +310,12 @@ class ContextOptimizer:
             heading_info = f"\nHeading: {heading}" if heading else ""
             
             # [FIX] Remap the chunk id to match what's written in the context string.
-            # Raw DB UUIDs were leaking into retrieved_blocks, causing the LLM to cite
-            # UUIDs (e.g. c82ce0dd-...) instead of structured IDs (db-block-N).
             pseudo_id = f"db-block-{i+1}"
             chunk['id'] = pseudo_id
             
             part = f"Source: {source}{heading_info}{score_info}\nID: [{pseudo_id}]\nContent:\n{content}"
             optimized_parts.append(part)
+
         
         optimized_content = '\n\n---\n\n'.join(optimized_parts)
         optimized_tokens = self.estimate_tokens(optimized_content)

@@ -50,6 +50,13 @@ def get_job_status(session_id: str):
     return JOB_STATUS.get(session_id, {"status": "unknown", "message": "No active job found."})
 
 from agentic_chunking import run_agentic_chunking
+import re
+
+# Compile regex once for O(n) single-pass execution
+ENGLISH_WORDS_PATTERN = re.compile(
+    r'\b(?:the|and|with|from|this|that|have|for|not|you|was|but|are|indexing|content|repo|github|agreement|protection|policy|privacy|data)\b',
+    re.IGNORECASE
+)
 
 def is_unreliable_translation_skip(text: str, src_lang: str, target_lang: str) -> bool:
     """
@@ -61,21 +68,11 @@ def is_unreliable_translation_skip(text: str, src_lang: str, target_lang: str) -
         
     if src_lang == target_lang and src_lang in ['es', 'fr', 'de', 'it', 'pt', 'nl']:
         # Technical/ASCII-heavy English is often misdetected as Romance languages by some engines
-        # We use a larger list and check for word boundaries to avoid false positives in substrings
-        import re
-        english_words = [
-            'the', 'and', 'with', 'from', 'this', 'that', 'have', 'for', 'not', 
-            'you', 'was', 'but', 'are', 'indexing', 'content', 'repo', 'github',
-            'agreement', 'protection', 'policy', 'privacy', 'data'
-        ]
-        lower_text = text[:3000].lower()
+        lower_text = text[:3000]
         
-        # Refined check with word boundaries
-        matches = 0
-        for word in english_words:
-            if re.search(r'\b' + re.escape(word) + r'\b', lower_text):
-                matches += 1
-                
+        # O(n) single-pass regex search for distinct English words
+        matches = len(set(match.lower() for match in ENGLISH_WORDS_PATTERN.findall(lower_text)))
+        
         # If we find 3+ distinct English words, it's English
         if matches >= 3:
             return True
@@ -170,8 +167,7 @@ def translate_text_lingo(text: str, target_lang: str = "en", api_keys: dict = No
             print(f"[LINGO] Translation failed/timed out: {e}. Falling back to Mistral for translation to {target_lang}.")
             return translate_text_mistral(text, target_lang, api_keys)
                 
-        return translated_text, src_lang, is_trans
-            
+                
     except Exception as e:
         print(f"[LINGO] REST Error: {e}. Falling back to Mistral for translation to {target_lang}...")
         import traceback
@@ -200,14 +196,8 @@ def translate_text_mistral(text: str, target_lang: str = "en", api_keys: dict = 
         )
         
         try:
-            content = resp.choices[0].message.content.strip()
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.startswith("```"):
-                content = content[3:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
+            from utils import strip_json_fences
+            content = strip_json_fences(resp.choices[0].message.content)
                 
             res = json.loads(content)
             src_lang = res.get("detected_lang", "unknown")
@@ -245,14 +235,8 @@ def extract_semantic_tags(text: str, api_keys: dict = None) -> List[str]:
         )
         
         # Parse JSON
-        content = response.choices[0].message.content.strip()
-        if content.startswith("```json"):
-            content = content[7:]
-        if content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-        content = content.strip()
+        from utils import strip_json_fences
+        content = strip_json_fences(response.choices[0].message.content)
         
         import json
         tag_list = json.loads(content)
@@ -510,10 +494,8 @@ def embed_single_chunk(chunk: str, api_keys: dict = None, client=None) -> Tuple[
             raise ValueError("Empty embedding returned from Gemini")
             
         # [PADDING FIX] Force dimension to match database (3072)
-        if len(embedding) < 3072:
-            embedding = list(embedding) + [0.0] * (3072 - len(embedding))
-        elif len(embedding) > 3072:
-            embedding = embedding[:3072]
+        from utils import pad_embedding
+        embedding = pad_embedding(embedding)
         
         return (chunk, embedding)
     except Exception as e:
@@ -522,8 +504,6 @@ def embed_single_chunk(chunk: str, api_keys: dict = None, client=None) -> Tuple[
             print(f"[EMBED] CRITICAL: Google API Key reported as leaked or invalid! Returning neutral embedding.")
             # Return a zero-vector so indexing can proceed without vector features
             return (chunk, [0.0] * 3072) # [FIX] Updated to 3072 for consistent dimensions
-        print(f"Embedding error for chunk: {e}")
-        raise
         print(f"Embedding error for chunk: {e}")
         raise
 
@@ -575,18 +555,10 @@ def parallel_embed_chunks(chunks: List[dict], max_workers: int = None, source_ur
         print(f"[EMBED] Failed to initialize client: {e}")
         # Will attempt to use api_keys directly in embed_single_chunk
 
-    # [NEW] Rate-limit protection for Gemini free-tier (100 rpm).
-    # Process in batches of 30 for large ingestions; pause 65s between batches.
-    is_gemini = "gemini" in EmbeddingConfig.EMBEDDING_MODEL.lower()
-    BATCH_SIZE = 30 if (is_gemini and len(chunks) > 30) else len(chunks)
-    BATCH_DELAY = 65  # seconds — just over the 60s quota window
+    BATCH_SIZE = len(chunks)
 
     for batch_start in range(0, len(chunks), BATCH_SIZE):
         batch = chunks[batch_start : batch_start + BATCH_SIZE]
-        if batch_start > 0 and is_gemini:
-            print(f"[EMBED] Rate-limit pause {BATCH_DELAY}s before batch {batch_start//BATCH_SIZE + 1}...")
-            import time as _embed_time
-            _embed_time.sleep(BATCH_DELAY)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_chunk = {
@@ -820,6 +792,17 @@ def ingest_website_logic(url: str, api_keys: dict = None, target_lang: str = "au
         chunk["metadata"]["highlight_snippet"] = h_snippet
         chunk["metadata"]["highlightUrl"] = generate_highlight_url(normalized_url, h_snippet)
     
+    # [NEW] Feature #6: Source Credibility Scoring
+    try:
+        from credibility import score_source
+        cred_result = score_source(normalized_url, markdown_content)
+        print(f"[INGEST] Credibility: {cred_result['score']}/100 ({cred_result['tier']})")
+        for chunk in chunks:
+            chunk["metadata"]["credibility_score"] = cred_result["score"]
+            chunk["metadata"]["credibility_tier"] = cred_result["tier"]
+    except Exception as e:
+        print(f"[INGEST WARNING] Credibility scoring failed: {e}")
+    
     data_list = parallel_embed_chunks(
         chunks,
         max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
@@ -1000,6 +983,17 @@ def ingest_text_logic(url: str, text_content: str, target_lang: str = "auto", ap
                     secs_ts = int(ts_match.group(2))
                     chunk["metadata"]["timestamp_seconds"] = mins_ts * 60 + secs_ts
             
+        # [NEW] Feature #6: Source Credibility Scoring
+        try:
+            from credibility import score_source
+            cred_result = score_source(normalized_url, text_content[:5000])
+            print(f"[INGEST_TEXT] Credibility: {cred_result['score']}/100 ({cred_result['tier']})")
+            for chunk in chunks:
+                chunk["metadata"]["credibility_score"] = cred_result["score"]
+                chunk["metadata"]["credibility_tier"] = cred_result["tier"]
+        except Exception as e:
+            print(f"[INGEST_TEXT WARNING] Credibility scoring failed: {e}")
+
         data_list = parallel_embed_chunks(
             chunks,
             max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
@@ -1065,10 +1059,10 @@ def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content
              return {"success": False, "message": "Received empty file data."}
 
         if content_type == "application/pdf" or filename.endswith(".pdf"):
-            import PyPDF2
+            import pypdf
             # Use a helper to get pages safely
             def get_reader(b):
-                r = PyPDF2.PdfReader(io.BytesIO(b), strict=False)
+                r = pypdf.PdfReader(io.BytesIO(b), strict=False)
                 # Force a read of the trailer to trigger EOF errors early
                 _ = len(r.pages)
                 return r
@@ -1125,13 +1119,46 @@ def ingest_file_logic(source_url: str, file_bytes: bytes, filename: str, content
                 text_content = f"--- VISUAL DESCRIPTION OF {filename} ---\n\n" + vision_res.get("answer", "")
             else:
                 return {"success": False, "message": f"Vision analysis failed: {vision_res.get('answer')}"}
+        
+        # [NEW] Feature #10: Audio File Ingestion
+        elif content_type.startswith("audio/") or filename.lower().endswith(('.mp3', '.wav', '.m4a', '.ogg', '.flac', '.wma')):
+            from audio_transcriber import AudioTranscriber
+            print(f"[INGEST_FILE] Audio file detected. Transcribing with Groq Whisper...")
+            transcriber = AudioTranscriber(api_keys=api_keys)
+            audio_result = transcriber.transcribe(file_bytes, filename)
+            if audio_result["success"]:
+                text_content = f"--- AUDIO TRANSCRIPTION OF {filename} ---\n"
+                text_content += f"Duration: {audio_result.get('duration_seconds', 0):.0f}s | "
+                text_content += f"Language: {audio_result.get('language', 'unknown')}\n\n"
+                text_content += audio_result["text"]
+            else:
+                return {"success": False, "message": f"Audio transcription failed: {audio_result.get('error')}"}
+
+        # [NEW] Feature #10: Video/Zoom Recording Ingestion
+        elif content_type.startswith("video/") or filename.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
+            from audio_transcriber import AudioTranscriber
+            print(f"[INGEST_FILE] Video/Zoom recording detected. Extracting audio & transcribing...")
+            transcriber = AudioTranscriber(api_keys=api_keys)
+            video_result = transcriber.transcribe(file_bytes, filename)
+            if video_result["success"]:
+                text_content = f"--- MEETING/VIDEO TRANSCRIPTION OF {filename} ---\n"
+                text_content += f"Duration: {video_result.get('duration_seconds', 0):.0f}s | "
+                text_content += f"Language: {video_result.get('language', 'unknown')}\n\n"
+                text_content += video_result["text"]
+            else:
+                return {"success": False, "message": f"Video transcription failed: {video_result.get('error')}"}
+
         else:
             return {"success": False, "message": f"Unsupported file type: {content_type}"}
         
-        # Tag as image if applicable
+        # Tag source type metadata
         extra_metadata = {}
         if content_type.startswith("image/") or filename.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
-            extra_metadata = {"source_type": "image", "original_filename": filename}
+            extra_metadata = {"source_type": "image"}
+        elif content_type.startswith("audio/") or filename.lower().endswith(('.mp3', '.wav', '.m4a', '.ogg', '.flac', '.wma')):
+            extra_metadata = {"source_type": "audio", "original_filename": filename}
+        elif content_type.startswith("video/") or filename.lower().endswith(('.mp4', '.mkv', '.avi', '.mov')):
+            extra_metadata = {"source_type": "meeting_recording", "original_filename": filename}
         
     except Exception as e:
         print(f"[INGEST_FILE] Error parsing {filename}: {e}")
