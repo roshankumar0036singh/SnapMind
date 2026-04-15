@@ -6,6 +6,7 @@ import re
 from pydantic import BaseModel
 from api_clients import get_mistral_client, get_firecrawl_key
 from config import ContextConfig, ModelRegistry
+from llm_router import LLMRouter
 
 def clean_scraped_markdown(text: str) -> str:
     """General-purpose heuristic to strip navigation boilerplate and breadcrumbs."""
@@ -447,8 +448,8 @@ class BrowserOrchestrator:
             lang_name = LANG_MAP.get(self.output_lang, self.output_lang)
             lang_instruction = f"\n\nCRITICAL: You MUST translate and output your entire final response securely into {lang_name}."
             
-        # Call Mistral for Final Synthesis
-        client = get_mistral_client(self.api_keys)
+        # Call LLMRouter for Final Synthesis
+        router = LLMRouter(self.api_keys)
         # [BUGFIX] Use final_contexts (truncated) instead of scraped_contexts (unlimited)
         context_str = "\n\n---\n\n".join(final_contexts)
         prompt = f"""You are an advanced Browser Assistant.
@@ -464,11 +465,10 @@ Context:
 User Query: {user_query}
 """
         try:
-            response = client.chat.complete(
-                model=ModelRegistry.MISTRAL_LARGE,
-                messages=[{"role": "user", "content": prompt}]
+            raw_answer = router.chat(
+                prompt=prompt,
+                model_id=ModelRegistry.MISTRAL_LARGE
             )
-            raw_answer = response.choices[0].message.content.strip()
             # 1. Strip Emojis and standard Markdown footnotes
             import re
             # Strip emojis
@@ -520,7 +520,7 @@ class QueryAnalyzer:
         self.api_keys = api_keys
 
     def analyze(self, query: str) -> list[str]:
-        client = get_mistral_client(self.api_keys)
+        router = LLMRouter(self.api_keys)
         prompt = f"""You are a query analysis agent.
 The user wants to find information on the web.
 Generate 1 to 2 highly specific, long-tail search queries that target precise technical details or data points for the user's need. Avoid generic terms.
@@ -529,16 +529,12 @@ Output ONLY a JSON array of strings. No markdown formatting.
 User Query: {query}
 """
         try:
-            response = client.chat.complete(
-                model=ModelRegistry.MISTRAL_SMALL,
-                messages=[{"role": "user", "content": prompt}]
+            content = router.chat(
+                prompt=prompt,
+                model_id=ModelRegistry.MISTRAL_SMALL,
+                response_format="json_object"
             )
-            text = response.choices[0].message.content.strip()
-            from utils import strip_json_fences
-            # clean markdown ticks if any
-            text = strip_json_fences(text)
-                
-            queries = json.loads(text)
+            queries = json.loads(content)
             if isinstance(queries, list):
                 return queries[:2]
         except Exception as e:
@@ -558,10 +554,7 @@ class SlicerAgent:
             return content
             
         print(f"[SlicerAgent] Slicing {len(content)} chars down to {target_chars} for relevance...")
-        client = get_mistral_client(self.api_keys)
-        if not client:
-            return content[:target_chars]
-
+        router = LLMRouter(self.api_keys)
         # Use a smaller window for the slicer to improve speed and reduce disconnection risk
         input_context = content[:12000]
         
@@ -575,28 +568,17 @@ User Query: {query}
 Content:
 {input_context}
 """
-        # Simple Retry Loop
-        max_retries = 2
-        for attempt in range(max_retries + 1):
-            try:
-                response = client.chat.complete(
-                    model=ModelRegistry.MISTRAL_SMALL,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                sliced_text = response.choices[0].message.content.strip()
-                # If we get a valid but empty response, fallback
-                if not sliced_text:
-                    return content[:target_chars]
-                return sliced_text[:target_chars]
-            except Exception as e:
-                print(f"[SlicerAgent] Attempt {attempt+1} failed: {e}")
-                if attempt < max_retries:
-                    import time
-                    time.sleep(1) # Small backoff
-                else:
-                    print(f"[SlicerAgent] Final fallback: Returning first {target_chars} chars.")
-                    return content[:target_chars]
-        return content[:target_chars]
+        try:
+            sliced_text = router.chat(
+                prompt=prompt,
+                model_id=ModelRegistry.MISTRAL_SMALL
+            )
+            if not sliced_text:
+                return content[:target_chars]
+            return sliced_text[:target_chars]
+        except Exception as e:
+            print(f"[SlicerAgent] Slicing failed: {e}")
+            return content[:target_chars]
 
 class SearchAgent:
     def __init__(self, api_key: str):

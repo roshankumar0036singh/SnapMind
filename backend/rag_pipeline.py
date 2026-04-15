@@ -26,6 +26,7 @@ FIRECRAWL_BASE_URL = "https://api.firecrawl.dev/v1"
 
 # Import configuration
 from config import ChunkingConfig, EmbeddingConfig, SearchConfig, FeatureFlags, RerankingConfig, ModelRegistry
+from llm_router import LLMRouter
 
 # Import semantic chunking
 from chunking import chunk_text
@@ -180,25 +181,20 @@ def translate_text_mistral(text: str, target_lang: str = "en", api_keys: dict = 
     Fallback translation using Mistral.
     """
     try:
-        mistral_client = get_mistral_client(api_keys)
-        if not mistral_client:
-            return text, "unknown", False
-            
-        prompt = f"Detect the language of the following text and translate it to {target_lang}.\n" \
-                 f"Output ONLY a valid JSON object with 'detected_lang' (ISO code) and 'translated_text'.\n\n" \
-                 f"Text: {text}"
-                 
+        router = LLMRouter(api_keys=api_keys)
+        prompt = (
+            f"Detect the language of the following text and translate it to {target_lang}.\n"
+            f"Output ONLY a valid JSON object with 'detected_lang' (ISO code) and 'translated_text'.\n\n"
+            f"Text: {text}"
+        )
         start_time = time.time()
-        resp = mistral_client.chat.complete(
-            model=ModelRegistry.MISTRAL_SMALL,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+        content = router.chat(
+            prompt=prompt,
+            model_id=ModelRegistry.MISTRAL_SMALL,
+            response_format="json_object"
         )
         
         try:
-            from utils import strip_json_fences
-            content = strip_json_fences(resp.choices[0].message.content)
-                
             res = json.loads(content)
             src_lang = res.get("detected_lang", "unknown")
 
@@ -212,32 +208,24 @@ def translate_text_mistral(text: str, target_lang: str = "en", api_keys: dict = 
             return text, "unknown", False
             
     except Exception as e:
-        print(f"[FALLBACK] Mistral translation failed: {e}")
+        print(f"[FALLBACK] Translation failed: {e}")
         return text, "unknown", False
 
 def extract_semantic_tags(text: str, api_keys: dict = None) -> List[str]:
-    """Uses Mistral to extract 3-5 core entity tags from the text."""
+    """Uses LLMRouter to extract 3-5 core entity tags from the text."""
     try:
-        mistral_client = get_mistral_client(api_keys)
-        if not mistral_client or not text:
+        if not text:
             return []
             
-        response = mistral_client.chat.complete(
-            model=ModelRegistry.MISTRAL_SMALL,
-            messages=[{
-                "role": "system", 
-                "content": "You are a semantic tag extractor. Read the text and extract 2-5 highly relevant, single-word or short-phrase technical tags (e.g. 'React', 'Git', 'Authentication', 'Python'). DO NOT include explanations, generic words like 'code' or 'tutorial', or markdown. Output strictly a JSON object with a 'tags' key containing an array of strings: {\"tags\": [\"tag1\", \"tag2\"]}."
-            }, {
-                "role": "user",
-                "content": text[:3000] # Limit context injection to save speed/tokens
-            }],
-            response_format={"type": "json_object"}
+        router = LLMRouter(api_keys=api_keys)
+        content = router.chat(
+            prompt=text[:3000], # Limit context
+            system_instruction="You are a semantic tag extractor. Read the text and extract 2-5 highly relevant, single-word or short-phrase technical tags (e.g. 'React', 'Git', 'Authentication', 'Python'). DO NOT include explanations, generic words like 'code' or 'tutorial', or markdown. Output strictly a JSON object with a 'tags' key containing an array of strings: {\"tags\": [\"tag1\", \"tag2\"]}.",
+            model_id=ModelRegistry.MISTRAL_SMALL,
+            response_format="json_object"
         )
         
         # Parse JSON
-        from utils import strip_json_fences
-        content = strip_json_fences(response.choices[0].message.content)
-        
         import json
         tag_list = json.loads(content)
         
@@ -246,11 +234,6 @@ def extract_semantic_tags(text: str, api_keys: dict = None) -> List[str]:
             for val in tag_list.values():
                 if isinstance(val, list):
                     return val[:5]
-            return []
-            
-        if isinstance(tag_list, list):
-            return [str(t) for t in tag_list][:5]
-            
         return []
     except Exception as e:
         print(f"[TAGGING] Extraction failed: {e}")
@@ -1246,16 +1229,20 @@ def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, ap
                     chunk_size = 1000
                     chunks = [{'content': content[i:i+chunk_size]} for i in range(0, len(content), chunk_size)]
                     
-                print(f"[MULTIPAGE] Extracting semantic tags via Mistral...")
-                extracted_tags = extract_semantic_tags(content, api_keys=api_keys)
-                
-                # [NEW] Phase 13: GraphRAG Extraction
-                if FeatureFlags.GRAPHRAG_ENABLED:
+                # [NEW] Phase 2 Optimization: Parallel Metadata Extraction
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                     from graph_logic import extract_graph_data, insert_graph_data
-                    print(f"[MULTIPAGE] Extracting GraphRAG data for {page_url}...")
-                    graph_data = extract_graph_data(content, api_keys=api_keys)
-                    if graph_data.get("nodes") or graph_data.get("edges"):
-                        insert_graph_data(graph_data, page_url, session_id=session_id)
+                    
+                    fut_tags = executor.submit(extract_semantic_tags, content, api_keys=api_keys)
+                    fut_graph = None
+                    if FeatureFlags.GRAPHRAG_ENABLED:
+                        fut_graph = executor.submit(extract_graph_data, content, api_keys=api_keys)
+                    
+                    extracted_tags = fut_tags.result()
+                    if fut_graph:
+                        graph_data = fut_graph.result()
+                        if graph_data.get("nodes") or graph_data.get("edges"):
+                            insert_graph_data(graph_data, page_url, session_id=session_id)
 
                 for chunk in chunks:
                     if "metadata" not in chunk:

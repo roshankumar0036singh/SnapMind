@@ -139,33 +139,17 @@ def get_relevant_context(query: str, match_threshold: float = None, site_id: str
         if not limit and RerankingConfig.RERANK_ENABLED and FeatureFlags.PHASE_3_RERANKING:
             initial_count = RerankingConfig.RERANK_CANDIDATES
         
-        # [NEW] Support multiple site_ids (comma-separated from frontend)
-        site_ids = [s.strip() for s in site_id.split(",")] if site_id else []
+        # Support multiple site_ids (comma-separated from frontend)
+        site_ids = [s.strip() for s in site_id.split(",") if s.strip()] if site_id else []
         
-        matches = []
         if site_ids:
-            # Query each site and aggregate
-            per_site_top_k = max(initial_count, 10) 
-            all_site_matches = []
-            seen_ids = set()
-            
-            for sid in site_ids:
-                if not sid:
-                    continue
-                site_matches = searcher.search(
-                    query=search_query,
-                    site_id=sid,
-                    top_k=per_site_top_k,
-                    mode=search_mode
-                )
-                for m in site_matches:
-                    if m['id'] not in seen_ids:
-                        all_site_matches.append(m)
-                        seen_ids.add(m['id'])
-                        
-            # Sort by combined score descending
-            all_site_matches.sort(key=lambda x: x.get('score', 0), reverse=True)
-            matches = all_site_matches[:initial_count]
+            matches = searcher.search(
+                query=search_query,
+                site_id=site_ids,
+                top_k=initial_count,
+                mode=search_mode
+            )
+            print(f"[SEARCH] Batch retrieval returned {len(matches)} matches for sites: {site_ids}")
         else:
             matches = searcher.search(
                 query=search_query,
@@ -834,59 +818,10 @@ Question: {query}
     
     final_messages.append({"role": "user", "content": query})
 
-    active_provider = (api_keys or {}).get("llm_provider", LLMProviderConfig.PROVIDER).lower()
-    active_model = (api_keys or {}).get("llm_model", "")
-
-    if active_provider in ["local", "hybrid", "ollama"]:
-        model_target = active_model or LLMProviderConfig.OLLAMA_GENERATION_MODEL
-        model_used = f"Ollama ({model_target})"
-        print(f"[CHAT] Using Local LLM (Ollama): {model_target}")
-        final_answer = ollama_client.generate(
-            prompt=query,
-            system_prompt=system_content,
-            model=model_target
-        )
-    elif active_provider == "openai":
-        model_target = active_model or ModelRegistry.GPT_4O_MINI
-        model_used = f"OpenAI ({model_target})"
-        print(f"[CHAT] Using OpenAI model: {model_target}")
-        client = get_openai_client(api_keys)
-        chat_response = client.chat.completions.create(
-            model=model_target,
-            messages=final_messages,
-        )
-        final_answer = chat_response.choices[0].message.content
-    elif active_provider == "gemini":
-        model_target = active_model or ModelRegistry.GEMINI_FLASH
-        model_used = f"Gemini ({model_target})"
-        print(f"[CHAT] Using Gemini model: {model_target}")
-        client = get_gemini_client(api_keys)
-        
-        gemini_system_instruction = final_messages[0]["content"] if final_messages and final_messages[0]["role"] == "system" else ""
-        gemini_contents = []
-        for m in final_messages:
-            if m["role"] != "system":
-                parts = [{"text": m["content"]}]
-                r = "user" if m["role"] == "user" else "model"
-                gemini_contents.append({"role": r, "parts": parts})
-                
-        from google.genai import types
-        chat_response = client.models.generate_content(
-            model=model_target,
-            contents=gemini_contents,
-            config=types.GenerateContentConfig(system_instruction=gemini_system_instruction)
-        )
-        final_answer = chat_response.text
-    else:
-        model_target = active_model or ModelRegistry.MISTRAL_SMALL
-        model_used = f"Mistral ({model_target})"
-        print(f"[CHAT] Generating with Mistral model: {model_target}")
-        client = get_mistral_client(api_keys)
-        chat_response = client.chat.complete(
-            model=model_target,
-            messages=final_messages,
-        )
-        final_answer = chat_response.choices[0].message.content
+    from llm_router import LLMRouter
+    provider = LLMRouter.get_provider(api_keys)
+    model_used = provider.model_used
+    final_answer = provider.generate(system_content, final_messages, query)
     
     # [NEW] Post-process to strip any leaked numeric footnotes [19], [1]
     import re
@@ -1145,39 +1080,19 @@ The user wants to compare distinct websites/pages in different languages. You ha
     db_context = ""
     retrieved_raw_blocks = []
     if site_id:
-        print(f"[CHAT-STREAM] Querying database for site_id: {site_id}...")
-        
-        # [FIX] Handle comma-separated site_ids (from pinned tabs feature)
-        # Same logic as get_relevant_context
-        site_ids = [s.strip() for s in site_id.split(",")] if site_id else []
+        # Batch query all sites
+        site_ids = [s.strip() for s in site_id.split(",") if s.strip()] if site_id else []
         
         if site_ids:
             searcher = HybridSearcher(db_pool, api_keys=api_keys)
+            retrieved_raw_blocks = searcher.search(
+                query=search_query,
+                site_id=site_ids,
+                top_k=SearchConfig.MATCH_COUNT,
+                mode=SearchConfig.SEARCH_MODE
+            )
             
-            # Query each site and aggregate results
-            per_site_top_k = max(SearchConfig.MATCH_COUNT, 10)
-            all_site_matches = []
-            seen_ids = set()
-            
-            for sid in site_ids:
-                if not sid:
-                    continue
-                site_matches = searcher.search(
-                    query=search_query,
-                    site_id=sid,
-                    top_k=per_site_top_k,
-                    mode=SearchConfig.SEARCH_MODE
-                )
-                for m in site_matches:
-                    if m['id'] not in seen_ids:
-                        all_site_matches.append(m)
-                        seen_ids.add(m['id'])
-            
-            # Sort by score descending
-            all_site_matches.sort(key=lambda x: x.get('score', 0), reverse=True)
-            retrieved_raw_blocks = all_site_matches[:SearchConfig.MATCH_COUNT]
-            
-            print(f"[CHAT-STREAM] Retrieved {len(retrieved_raw_blocks)} blocks from {len(site_ids)} sites")
+            print(f"[CHAT-STREAM] Batch retrieval returned {len(retrieved_raw_blocks)} blocks for sites: {site_ids}")
             print(f"[PERF] DB search completed in {_time.time() - _t1:.2f}s")
             
             # [NEW] Phase 26: Dynamic Pinned-Site Crawling (Bypass Indexing)
@@ -1398,98 +1313,14 @@ Question: {query}
         # 3. Current User Question
         final_messages.append({"role": "user", "content": query})
 
-        active_provider = (api_keys or {}).get("llm_provider", LLMProviderConfig.PROVIDER).lower()
-        active_model = (api_keys or {}).get("llm_model", "")
-
-        full_response = ""
+        from llm_router import LLMRouter
+        provider = LLMRouter.get_provider(api_keys)
+        model_used = provider.model_used
         
-        if active_provider in ["local", "hybrid", "ollama"]:
-            model_target = active_model or LLMProviderConfig.OLLAMA_GENERATION_MODEL
-            model_used = f"Ollama ({model_target})"
-            print(f"[LLM] Streaming with local Ollama model: {model_target}")
-            stream_response = ollama_client.chat_stream(
-                messages=final_messages,
-                model=model_target
-            )
-            for text_chunk in stream_response:
-                full_response += text_chunk
-                yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
-                
-        elif active_provider == "openai":
-            model_target = active_model or ModelRegistry.GPT_4O_MINI
-            model_used = f"OpenAI ({model_target})"
-            print(f"[LLM] Streaming with OpenAI model: {model_target}")
-            client = get_openai_client(api_keys)
-            stream_response = client.chat.completions.create(
-                model=model_target,
-                messages=final_messages,
-                stream=True
-            )
-            for chunk in stream_response:
-                if chunk.choices[0].delta.content is not None:
-                    text_chunk = chunk.choices[0].delta.content
-                    full_response += text_chunk
-                    yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
-                    
-        elif active_provider == "gemini":
-            model_target = active_model or ModelRegistry.GEMINI_FLASH
-            model_used = f"Gemini ({model_target})"
-            print(f"[LLM] Streaming with Gemini model: {model_target}")
-            client = get_gemini_client(api_keys)
-            # Gemini strictly enforces alternating user/model roles and single system instructions
-            gemini_system_instruction = final_messages[0]["content"] if final_messages and final_messages[0]["role"] == "system" else ""
-            gemini_contents = []
-            for m in final_messages:
-                if m["role"] != "system":
-                    parts = [{"text": m["content"]}]
-                    # Map standard roles to Gemini roles
-                    r = "user" if m["role"] == "user" else "model"
-                    gemini_contents.append({"role": r, "parts": parts})
-                    
-            from google.genai import types
-            stream_response = client.models.generate_content_stream(
-                model=model_target,
-                contents=gemini_contents,
-                config=types.GenerateContentConfig(system_instruction=gemini_system_instruction)
-            )
-            for chunk in stream_response:
-                text_chunk = chunk.text
-                full_response += text_chunk
-                yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
-
-        else: # Standard Mistral fallback
-            model_target = active_model or ModelRegistry.MISTRAL_SMALL
-            model_used = f"Mistral ({model_target})"
-            print(f"[LLM] Streaming with Mistral model: {model_target}")
-            client = get_mistral_client(api_keys)
-            try:
-                stream_response = client.chat.stream(
-                    model=model_target,
-                    messages=final_messages,
-                )
-                for chunk in stream_response:
-                    if chunk.data.choices[0].delta.content:
-                        text_chunk = chunk.data.choices[0].delta.content
-                        full_response += text_chunk
-                        yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
-            except Exception as mistral_stream_err:
-                # [FIX] Streaming failed (e.g. WinError 10060 connection timeout).
-                # Fall back to non-streaming Mistral completion and emit as one chunk.
-                print(f"[LLM] Mistral streaming failed ({mistral_stream_err}). Falling back to non-streaming...")
-                try:
-                    fallback_response = client.chat.complete(
-                        model=model_target,
-                        messages=final_messages,
-                    )
-                    full_response = fallback_response.choices[0].message.content or ""
-                    if full_response:
-                        yield json.dumps({"type": "token", "text": full_response}) + "\n"
-                        print(f"[LLM] Mistral non-streaming fallback succeeded ({len(full_response)} chars).")
-                    else:
-                        raise ValueError("Mistral non-streaming fallback returned empty response.")
-                except Exception as mistral_fallback_err:
-                    print(f"[LLM] Mistral non-streaming fallback also failed: {mistral_fallback_err}")
-                    raise  # Let the outer except handle it and yield error
+        full_response = ""
+        for text_chunk in provider.stream(system_content, final_messages):
+            full_response += text_chunk
+            yield json.dumps({"type": "token", "text": text_chunk}) + "\n"
         
         # [NEW] Post-Translation via Lingo.dev for stream
         print(f"[CHAT-STREAM] Post-generation check: output_lang={output_lang}, response_len={len(full_response)}")

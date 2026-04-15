@@ -6,7 +6,7 @@ Implements Reciprocal Rank Fusion (RRF) for result merging.
 """
 
 import os
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Union
 from google import genai
 from psycopg_pool import ConnectionPool
 from config import SearchConfig
@@ -40,56 +40,56 @@ class HybridSearcher:
         self,
         query: str,
         query_embedding: List[float] = None,
-        site_id: str = None,
+        site_id: Union[str, List[str]] = None, # [NEW] Support multiple site_ids
         top_k: int = None,
         mode: str = None
     ) -> List[Dict[str, Any]]:
         """
-        Main search method that routes to appropriate search strategy.
-        
-        Args:
-            query: Search query text
-            query_embedding: Pre-computed query embedding (optional)
-            site_id: Filter by source URL
-            top_k: Number of results to return
-            mode: Override search mode ('vector_only', 'hybrid', 'keyword_only')
-        
-        Returns:
-            List of document dictionaries with scores
+        Main search entry point that standardizes site_id inputs into a batch-ready list.
         """
         search_mode = mode or self.search_mode
         top_k = top_k or self.match_count
         
+        # Standardize site_id to site_ids list for batch processing
+        site_ids = []
+        if site_id:
+            if isinstance(site_id, str):
+                site_ids = [s.strip() for s in site_id.split(",") if s.strip()]
+            elif isinstance(site_id, list):
+                site_ids = site_id
+        
         if search_mode == "keyword_only":
-            return self._keyword_search(query, site_id, top_k)
+            return self._keyword_search(query, site_ids, top_k)
         elif search_mode == "hybrid":
-            return self._hybrid_search(query, query_embedding, site_id, top_k)
+            return self._hybrid_search(query, query_embedding, site_ids, top_k)
         else:  # vector_only (default)
-            return self._vector_search(query, query_embedding, site_id, top_k)
+            return self._vector_search(query, query_embedding, site_ids, top_k)
     
     def _vector_search(
         self,
         query: str,
         query_embedding: List[float] = None,
-        site_id: str = None,
+        site_ids: List[str] = None,
         top_k: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Pure vector similarity search (existing implementation).
+        Pure vector similarity search.
         """
         # Generate embedding if not provided
         if query_embedding is None:
             query_embedding = self._embed_query(query)
         
-        # Normalize URL for consistent matching
-        normalized_url = self._normalize_url(site_id) if site_id else None
+        # [NEW] Normalize and prepare array of prefixes
+        prefixes = None
+        if site_ids:
+            prefixes = [self._normalize_url(sid) + "%" for sid in site_ids if sid]
         
         # RPC Call
         params = {
             "query_embedding": query_embedding,
             "match_threshold": self.match_threshold,
             "match_count": top_k,
-            "filter_source_url": normalized_url
+            "filter_source_urls": prefixes
         }
         
         try:
@@ -110,7 +110,7 @@ class HybridSearcher:
                                     id, content, source_url, metadata,
                                     1 - (embedding <=> %(query_embedding)s::vector) AS similarity
                                 FROM documents
-                                WHERE (%(filter_source_url)s::text IS NULL OR source_url LIKE %(filter_source_url)s::text || '%%')
+                                WHERE (%(filter_source_urls)s::text[] IS NULL OR source_url LIKE ANY(%(filter_source_urls)s::text[]))
                                   AND 1 - (embedding <=> %(query_embedding)s::vector) > %(match_threshold)s
                                 ORDER BY embedding <=> %(query_embedding)s::vector
                                 LIMIT %(match_count)s
@@ -140,18 +140,25 @@ class HybridSearcher:
     def _keyword_search(
         self,
         query: str,
-        site_id: str = None,
+        site_ids: List[str] = None,
         top_k: int = 10
     ) -> List[Dict[str, Any]]:
         """
         Pure keyword search using PostgreSQL full-text search.
         """
-        normalized_url = self._normalize_url(site_id) if site_id else None
+        prefixes = None
+        if site_ids:
+            prefixes = [self._normalize_url(sid) + "%" for sid in site_ids if sid]
         
+        # We need all parameters for the SQL function signature even if weights are default for keyword-only search
         params = {
+            "query_embedding": [0.0] * 3072,  # Dummy embedding for keyword-only
             "query_text": query,
+            "match_threshold": 0.0,
             "match_count": top_k,
-            "filter_source_url": normalized_url
+            "filter_source_urls": prefixes,
+            "vector_weight": 0.0,
+            "keyword_weight": 1.0
         }
         
         try:
@@ -159,7 +166,7 @@ class HybridSearcher:
             with self.db_pool.connection() as conn:
                 with conn.cursor(row_factory=dict_row) as cur:
                     cur.execute(
-                        "SELECT * FROM hybrid_search_documents(%(query_embedding)s::vector, %(query_text)s::text, %(match_threshold)s, %(match_count)s, %(filter_source_url)s::text || '%%', %(vector_weight)s, %(keyword_weight)s)",
+                        "SELECT * FROM hybrid_search_documents(%(query_embedding)s::vector, %(query_text)s::text, %(match_threshold)s, %(match_count)s, %(filter_source_urls)s::text[], %(vector_weight)s, %(keyword_weight)s)",
                         params
                     )
                     matches = cur.fetchall()
@@ -173,13 +180,13 @@ class HybridSearcher:
         except Exception as e:
             print(f"Keyword search error: {e}")
             # Fallback to vector search
-            return self._vector_search(query, None, site_id, top_k)
+            return self._vector_search(query, None, site_ids, top_k)
     
     def _hybrid_search(
         self,
         query: str,
         query_embedding: List[float] = None,
-        site_id: str = None,
+        site_ids: List[str] = None,
         top_k: int = 10
     ) -> List[Dict[str, Any]]:
         """
@@ -189,14 +196,16 @@ class HybridSearcher:
         if query_embedding is None:
             query_embedding = self._embed_query(query)
         
-        normalized_url = self._normalize_url(site_id) if site_id else None
+        prefixes = None
+        if site_ids:
+            prefixes = [self._normalize_url(sid) + "%" for sid in site_ids if sid]
         
         params = {
             "query_embedding": query_embedding,
             "query_text": query,
             "match_threshold": self.match_threshold,
             "match_count": top_k,
-            "filter_source_url": normalized_url,
+            "filter_source_urls": prefixes,
             "vector_weight": self.vector_weight,
             "keyword_weight": self.keyword_weight
         }
@@ -208,19 +217,14 @@ class HybridSearcher:
             if not query_embedding:
                  print("[HYBRID] Skipping vector half of search due to missing embedding. Falling back to keyword search.")
                  # Use a clean params dict for keyword search to avoid "missing parameter" errors
-                 keyword_params = {
-                     "query_text": query,
-                     "match_count": top_k,
-                     "filter_source_url": site_id
-                 }
-                 return self._keyword_search(query, site_id, top_k)
+                 return self._keyword_search(query, site_ids, top_k)
 
             with self.db_pool.connection() as conn:
                 with conn.cursor(row_factory=dict_row) as cur:
                     # In psycopg3 we can execute the function via SELECT FROM function_name(args...)
                     # Ensure query_text string format is matched for %(query_text)s in params dictionary
                     cur.execute(
-                        "SELECT * FROM hybrid_search_documents(%(query_embedding)s::vector, %(query_text)s::text, %(match_threshold)s, %(match_count)s, %(filter_source_url)s::text || '%%', %(vector_weight)s, %(keyword_weight)s)",
+                        "SELECT * FROM hybrid_search_documents(%(query_embedding)s::vector, %(query_text)s::text, %(match_threshold)s, %(match_count)s, %(filter_source_urls)s::text[], %(vector_weight)s, %(keyword_weight)s)",
                         params
                     )
                     matches = cur.fetchall()
@@ -250,7 +254,7 @@ class HybridSearcher:
             print(f"Hybrid search error: {e}")
             print("Falling back to vector search...")
             # Fallback to vector search if hybrid search fails (will also check for empty embedding)
-            return self._vector_search(query, query_embedding, site_id, top_k)
+            return self._vector_search(query, query_embedding, site_ids, top_k)
     
     def _embed_query(self, query: str) -> List[float]:
         """

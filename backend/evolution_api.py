@@ -76,13 +76,7 @@ def get_diff_snapshot(version_id: int) -> Dict[str, Any]:
         print(f"[EVOLUTION] Diff fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-from pydantic import BaseModel
-
-class ResearchActionItem(BaseModel):
-    session_id: str
-    action_type: str
-    action_data: dict
-    parent_action_id: int = None
+from schemas import ResearchActionItem
 
 @router.post("/research-actions")
 def log_research_action(action: ResearchActionItem) -> Dict[str, Any]:

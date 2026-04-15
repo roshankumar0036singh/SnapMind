@@ -520,6 +520,71 @@ MIGRATIONS = [
             CREATE INDEX IF NOT EXISTS idx_research_actions_session ON research_actions (session_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_research_actions_parent ON research_actions (parent_action_id);
         """
+    },
+    {
+        "version": 13,
+        "name": "batch_site_search_support",
+        "sql": """
+            -- Support batch site search with array of prefixes
+            -- [FIX] Drop first to avoid signature mismatch errors
+            DROP FUNCTION IF EXISTS hybrid_search_documents(vector, text, float, integer, text, float, float);
+
+            CREATE OR REPLACE FUNCTION hybrid_search_documents(
+                query_embedding vector(3072),
+                query_text TEXT,
+                match_threshold FLOAT,
+                match_count INTEGER,
+                filter_source_urls TEXT[], -- Array of prefixes
+                vector_weight FLOAT DEFAULT 0.5,
+                keyword_weight FLOAT DEFAULT 0.5
+            ) RETURNS TABLE (
+                id TEXT,
+                url TEXT,
+                content TEXT,
+                metadata JSONB,
+                similarity FLOAT,
+                bm25_score FLOAT,
+                combined_score FLOAT
+            ) LANGUAGE plpgsql AS $$
+            BEGIN
+                RETURN QUERY
+                WITH vector_matches AS (
+                    SELECT 
+                        d.id,
+                        1 - (d.embedding <=> query_embedding) AS sim
+                    FROM documents d
+                    WHERE (filter_source_urls IS NULL OR d.source_url LIKE ANY(filter_source_urls))
+                      AND 1 - (d.embedding <=> query_embedding) > match_threshold
+                    ORDER BY d.embedding <=> query_embedding
+                    LIMIT match_count * 2
+                ),
+                keyword_matches AS (
+                    SELECT 
+                        d.id,
+                        ts_rank(to_tsvector('english', d.content), websearch_to_tsquery('english', query_text)) AS rank
+                    FROM documents d
+                    WHERE (filter_source_urls IS NULL OR d.source_url LIKE ANY(filter_source_urls))
+                      AND to_tsvector('english', d.content) @@ websearch_to_tsquery('english', query_text)
+                    ORDER BY rank DESC
+                    LIMIT match_count * 2
+                )
+                SELECT 
+                    d.id,
+                    d.source_url AS url,
+                    d.content,
+                    d.metadata,
+                    COALESCE(v.sim, 0)::FLOAT AS similarity,
+                    COALESCE(k.rank, 0)::FLOAT AS bm25_score,
+                    (COALESCE(v.sim, 0) * vector_weight + COALESCE(k.rank, 0) * keyword_weight)::FLOAT AS combined_score
+                FROM documents d
+                LEFT JOIN vector_matches v ON d.id = v.id
+                LEFT JOIN keyword_matches k ON d.id = k.id
+                WHERE v.id IS NOT NULL OR k.id IS NOT NULL
+                ORDER BY combined_score DESC
+                LIMIT match_count;
+            END;
+            $$;
+        """
     }
 ]
 

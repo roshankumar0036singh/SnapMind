@@ -1,7 +1,14 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Request, status
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from typing import List, Dict, Any, Union, Optional
+from schemas import (
+    BrowserRequest, IngestRequest, RepoIngestRequest, ChatRequest,
+    WidgetIngestRequest, WidgetChatRequest, SuggestRequest, TranslateRequest,
+    BookmarkRequest, SavePageRequest, WatchlistRequest, ReverseEngineerRequest,
+    ResearchRequest, ReportRequest, PersonaRequest, GlobalSearchRequest,
+    AnalyzeImageRequest
+)
 import uvicorn
 import os
 import asyncio # [NEW] Required for loops
@@ -220,80 +227,7 @@ async def trigger_refresh(request: dict):
 
 
 
-class BrowserRequest(BaseModel):
-    query: str
-    session_id: str | None = None
-    output_lang: str = "auto"
-    query_notebook: bool = False
-    image_data: str | None = None
-
-class IngestRequest(BaseModel):
-    url: str
-    text_content: str | None = None # [NEW] For Visual/Manual Ingest
-    crawl_mode: str = "single"  # "single" or "multi"
-    max_pages: int = 50  # For multi-page crawling
-    max_depth: int = 3   # For multi-page crawling
-    target_lang: str = "auto"  # [NEW] Language for Lingo.dev translation
-    session_id: str | None = None # [NEW] Phase 25: Conversation-Scoped Graph
-    stream: bool = False # [NEW] Stream progress via NDJSON
-
-class RepoIngestRequest(BaseModel):
-    repo_url: str
-    target_lang: str = "auto"
-    session_id: str | None = None # [NEW] Phase 25: Conversation-Scoped Graph
-
-class ChatRequest(BaseModel):
-    query: str
-    search_query: str | None = None # [NEW] Pre-translated query for searching
-    query_lang: str | None = None   # [NEW] Original language of the query
-    output_lang: str = "auto"       # [NEW] Forced Output Language (Feature 5)
-    context_url: str | None = None
-    session_id: str | None = None   # [NEW] Phase 5: Semantic Chat Memory
-    site_id: str | None = None      # [NEW] Phase 3: Context Switching (UUID)
-    history: list[dict] | None = None # [NEW] Conversational History
-    page_content: str | None = None  # [NEW] Allow direct text context
-    content_blocks: list[dict] | None = None # [NEW] Structured blocks for citation
-
-class WidgetIngestRequest(BaseModel):
-    url: str
-    widget_id: str
-    max_pages: int = 50
-    max_depth: int = 3
-    api_key: str | None = None
-
-class WidgetChatRequest(BaseModel):
-    query: str
-    widget_id: str
-    session_id: str | None = None # [NEW] Phase 5: Semantic Chat Memory
-    page_content: str | None = None  # [NEW] Allow direct text context
-    content_blocks: list[dict] | None = None # [NEW] Structured blocks for citation
-    site_id: str | None = None # [NEW] Phase 3: Context Switching (UUID)
-    history: list[dict] | None = None # [NEW] Conversational History
-    query_notebook: bool = False # [NEW] Phase 20: Research Notebook Correlation
-    persona_id: str | None = None # [NEW] Feature 21: Custom Agent Personas
-    api_key: str | None = None
-
-class SuggestRequest(BaseModel):
-    page_content: str | None = None
-    url: str | None = None
-    site_id: str | None = None
-
-class TranslateRequest(BaseModel):
-    text: str
-    target_lang: str = "auto"
-
-class BookmarkRequest(BaseModel):
-    content: str
-    source_url: str | None = None
-    metadata: dict | None = None
-
-class SavePageRequest(BaseModel):
-    url: str
-    text: str
-    folder_name: str = "General"
-
-class WatchlistRequest(BaseModel):
-    url: str
+# --- Models moved to schemas.py ---
 
 @app.get("/monitor/watched_urls")
 async def get_watched_urls():
@@ -407,10 +341,7 @@ async def import_endpoint(request: dict):
         raise HTTPException(status_code=400, detail="Import file not found at specified path.")
     return import_data(target_path)
 
-class ReverseEngineerRequest(BaseModel):
-    html: str
-    styles: dict
-    prompt: str | None = "Reverse-engineer this UI element into a clean, modern, and responsive React component using Tailwind CSS."
+# --- Model moved to schemas.py ---
 
 @app.post("/developer/reverse_engineer")
 async def reverse_engineer_endpoint(request: ReverseEngineerRequest, req: Request):
@@ -598,13 +529,7 @@ def health_check_debug():
             "DATABASE_URL": "SET" if os.getenv("DATABASE_URL") else "MISSING"
         }
     }
-class ResearchRequest(BaseModel):
-    session_id: str | None = None
-    query: str
-    output_lang: str = "auto"
-    query_notebook: bool = False
-    image_data: str | None = None
-    visible: bool = False # [NEW] For Desktop Browser Agent
+# --- Model moved to schemas.py ---
 
 @app.post("/browser/research")
 async def research_endpoint(request: ResearchRequest, req: Request):
@@ -650,10 +575,7 @@ async def research_endpoint(request: ResearchRequest, req: Request):
         
     return result
 
-class ReportRequest(BaseModel):
-    session_id: str
-    query: str
-    source_urls: list[str] | None = None # [NEW] Support selective synthesis
+# --- Model moved to schemas.py ---
 
 @app.post("/browser/generate_report")
 async def generate_report_endpoint(request: ReportRequest, req: Request):
@@ -1046,9 +968,7 @@ def translate_endpoint(request: TranslateRequest, req: Request):
 
 # --- Custom Agent Personas ---
 
-class PersonaRequest(BaseModel):
-    name: str
-    system_prompt_addon: str
+# --- Model moved to schemas.py ---
 
 @app.get("/personas")
 def get_personas_endpoint():
@@ -1141,9 +1061,7 @@ async def chat_suggest_endpoint(request: SuggestRequest, req: Request):
     
     res = get_chat_suggestions(request.page_content, request.url, request.site_id, api_keys)
     return res
-class GlobalSearchRequest(BaseModel):
-    query: str
-    limit: int = 20
+# --- Model moved to schemas.py ---
 
 @app.post("/search/global")
 def global_search_endpoint(request: GlobalSearchRequest, req: Request):
@@ -1176,11 +1094,7 @@ def get_tags_endpoint():
         print(f"Error fetching tags: {e}")
         return {"success": False, "tags": [], "error": str(e)}
 
-class AnalyzeImageRequest(BaseModel):
-    image_data: str # Base64 string
-    prompt: str | None = None
-    mode: str = "qa" # [NEW] "qa" or "extraction"
-    target_lang: str = "auto" # [NEW] Support for translation
+# --- Model moved to schemas.py ---
 
 @app.post("/analyze-image")
 def analyze_image_endpoint(request: AnalyzeImageRequest, req: Request):
