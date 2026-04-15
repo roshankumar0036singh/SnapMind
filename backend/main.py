@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, Request, status
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Union, Optional
 from schemas import (
@@ -605,13 +605,17 @@ async def generate_report_endpoint(request: ReportRequest, req: Request):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
-@app.get("/browser/ingest_status/{session_id}")
-async def get_ingest_status(session_id: str):
-    """
-    Check real-time status of background research ingestion.
-    """
+@app.get("/api/ingest/status/{session_id}")
+def get_session_ingest_status(session_id: str):
     from rag_pipeline import get_job_status
     return get_job_status(session_id)
+
+@app.get("/api/jobs/stream/{session_id}")
+async def stream_job_status(session_id: str):
+    """SSE endpoint for real-time ingestion progress logs."""
+    from fastapi.responses import StreamingResponse
+    from rag_pipeline import subscribe_job_status
+    return StreamingResponse(subscribe_job_status(session_id), media_type="text/event-stream")
 
 @app.post("/ingest")
 async def ingest_endpoint(request: IngestRequest, req: Request):

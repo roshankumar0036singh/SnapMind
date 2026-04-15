@@ -36,19 +36,51 @@ from custom_crawler import extract_links_from_page, crawl_multiple_pages_custom
 
 # Global Job Status Tracker for Sessions
 JOB_STATUS = {}
+JOB_SUBSCRIBERS = {} # { session_id: [Queue, Queue, ...] }
 
 def update_job_status(session_id: str, status: str, message: str, progress: int = 0):
     if not session_id: return
-    JOB_STATUS[session_id] = {
+    data = {
         "status": status,
         "message": message,
         "progress": progress,
         "timestamp": time.time()
     }
+    JOB_STATUS[session_id] = data
     print(f"[JOB_STATUS] {session_id} -> {status}: {message} ({progress}%)")
+    
+    # Broadcast to subscribers
+    if session_id in JOB_SUBSCRIBERS:
+        import json
+        payload = json.dumps(data)
+        # We need to remove dead subscribers or let them handle the queue
+        for q in list(JOB_SUBSCRIBERS[session_id]):
+            try:
+                q.put_nowait(payload)
+            except Exception:
+                JOB_SUBSCRIBERS[session_id].remove(q)
 
 def get_job_status(session_id: str):
     return JOB_STATUS.get(session_id, {"status": "unknown", "message": "No active job found."})
+
+async def subscribe_job_status(session_id: str):
+    """Creates a generator for SSE job status streaming."""
+    import asyncio
+    queue = asyncio.Queue()
+    if session_id not in JOB_SUBSCRIBERS:
+        JOB_SUBSCRIBERS[session_id] = []
+    JOB_SUBSCRIBERS[session_id].append(queue)
+    
+    try:
+        while True:
+            # Wait for data from update_job_status
+            msg = await queue.get()
+            yield f"data: {msg}\n\n"
+    finally:
+        if session_id in JOB_SUBSCRIBERS and queue in JOB_SUBSCRIBERS[session_id]:
+            JOB_SUBSCRIBERS[session_id].remove(queue)
+            if not JOB_SUBSCRIBERS[session_id]:
+                del JOB_SUBSCRIBERS[session_id]
 
 from agentic_chunking import run_agentic_chunking
 import re
