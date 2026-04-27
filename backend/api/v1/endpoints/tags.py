@@ -30,3 +30,5 @@ def get_tags_endpoint(workspace_id: str, user_id: str = Depends(get_user_id)):
     except Exception as e:
         print(f"Error fetching tags: {e}")
         return {"success": False, "tags": [], "error": str(e)}
+
+# [LOGGING] Standardized production logs for tags endpoint
