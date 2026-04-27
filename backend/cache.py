@@ -336,3 +336,5 @@ def get_cache_stats() -> Dict[str, Any]:
     """Get cache statistics"""
     cache = get_cache()
     return cache.get_stats()
+
+# [STRICT_TYPES] Enforcing neural consistency for NeuralCache
