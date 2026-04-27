@@ -9,7 +9,7 @@ full chain-of-thought visibility.
 import json
 import time
 from typing import Dict, Any, List
-from config import ModelRegistry, ContextConfig
+from config import settings
 
 
 class ReasoningPlanner:
@@ -55,7 +55,7 @@ User Query: {query}"""
 
         try:
             response = client.chat.complete(
-                model=ModelRegistry.MISTRAL_LARGE,
+                model=settings.models.mistral_large,
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
@@ -93,17 +93,12 @@ class ReasoningExecutor:
         self.session_id = session_id
         self.output_lang = output_lang
 
-    def execute_chain(self, plan: List[Dict], original_query: str) -> Dict[str, Any]:
+    async def execute_chain(self, plan: List[Dict], original_query: str):
         """
-        Execute the reasoning chain step-by-step.
+        Execute the reasoning chain step-by-step as an async generator.
 
-        Returns:
-            {
-                "final_answer": str,
-                "chain": [{"step": 1, "question": ..., "answer": ..., "sources": [...], "tool_used": ...}],
-                "citations": [...],
-                "blocks": [...]
-            }
+        Yields:
+            chunks of results or status updates.
         """
         scratchpad = []  # Accumulated findings
         chain_results = []
@@ -131,20 +126,28 @@ class ReasoningExecutor:
 
             print(f"[REASONING] Step {step_num}: {question[:80]}... (tool={tool})")
 
-            step_answer = ""
-            step_sources = []
-            step_citations = []
-            step_blocks = []
+            # Yield thought update
+            yield {
+                "type": "thought",
+                "step": step_num,
+                "thought": f"Executing research step: {question}",
+                "action": f"Using {tool} to find answers",
+                "status": "processing"
+            }
 
             try:
                 if tool == "local_rag":
-                    step_answer, step_sources = self._execute_local_rag(enriched_question)
+                    # Call async local rag
+                    step_answer, step_sources, s_citations, s_blocks = await self._execute_local_rag(enriched_question)
+                    step_citations = s_citations
+                    step_blocks = s_blocks
                 else:
-                    result = self._execute_web_search(enriched_question)
+                    # Web search via BrowserOrchestrator
+                    result = await self._execute_web_search(enriched_question)
                     step_answer = result.get("answer", "No results found.")
                     step_citations = result.get("citations", [])
                     step_blocks = result.get("blocks", [])
-                    step_sources = [c.get("snippet", "") for c in step_citations[:3]]
+                    step_sources = [c.get("url", "web") for c in step_citations[:3]]
             except Exception as e:
                 print(f"[REASONING] Step {step_num} failed: {e}")
                 step_answer = f"Step failed: {str(e)}"
@@ -153,12 +156,21 @@ class ReasoningExecutor:
             scratchpad.append(f"Step {step_num} ({question}): {step_answer[:500]}")
 
             chain_results.append({
-                "step": step_num,
-                "question": question,
+                "id": str(step_num),
+                "thought": f"Completed research for: {question}",
+                "action": f"Synthesis of {tool} findings",
                 "answer": step_answer,
                 "sources": step_sources,
-                "tool_used": tool
+                "status": "completed"
             })
+
+            # Yield progress
+            yield {
+                "type": "thought",
+                "step": step_num,
+                "thought": f"Finalized search for: {question}",
+                "status": "completed"
+            }
 
             # Namespace citations to avoid collisions
             for c in step_citations:
@@ -170,42 +182,49 @@ class ReasoningExecutor:
             all_blocks.extend(step_blocks)
 
         # Final synthesis
-        final_answer = self._synthesize(original_query, chain_results)
+        yield {
+                "type": "thought",
+                "thought": "Synthesizing final answer from all research steps...",
+                "status": "processing"
+        }
+        
+        final_answer = await self._synthesize(original_query, chain_results)
 
-        return {
+        yield {
+            "type": "final",
             "answer": final_answer,
             "chain": chain_results,
             "citations": all_citations,
-            "blocks": all_blocks,
-            "reasoning_type": "multi_hop"
+            "blocks": all_blocks
         }
 
-    def _execute_local_rag(self, query: str) -> tuple:
-        """Search the local knowledge base."""
+    async def _execute_local_rag(self, query: str) -> tuple:
+        """Search the local knowledge base using SearchService."""
         try:
-            from search import get_relevant_context
-            context, blocks = get_relevant_context(query, api_keys=self.api_keys)
-            if context:
-                # Summarize with Mistral
-                from api_clients import get_mistral_client
-                client = get_mistral_client(self.api_keys)
-                if client:
-                    resp = client.chat.complete(
-                        model=ModelRegistry.MISTRAL_SMALL,
-                        messages=[
-                            {"role": "system", "content": "Answer the question concisely using ONLY the provided context."},
-                            {"role": "user", "content": f"Context:\n{context[:4000]}\n\nQuestion: {query}"}
-                        ]
-                    )
-                    answer = resp.choices[0].message.content.strip()
-                    sources = [b.get("url", "local") for b in blocks[:3]] if blocks else ["local"]
-                    return answer, sources
-            return "No relevant information found in local knowledge base.", []
+            from services.search_service import SearchService
+            from models.dtos import SearchRequestDTO
+            
+            svc = SearchService(api_keys=self.api_keys)
+            # Pass skip_reasoning=True to prevent recursion
+            request = SearchRequestDTO(
+                query=query,
+                session_id=self.session_id,
+                user_id=None # Add user_id if available in context
+            )
+            
+            # Use chat instead of chat_stream for sub-steps to keep it simple
+            response = await svc.chat(request, api_keys=self.api_keys, skip_reasoning=True)
+            
+            if response.answer:
+                sources = [s.url for s in response.sources[:3]]
+                return response.answer, sources, [], [] # TODO: map citations/blocks
+                
+            return "No relevant information found in local knowledge base.", [], [], []
         except Exception as e:
             print(f"[REASONING] Local RAG failed: {e}")
-            return f"Local search error: {str(e)}", []
+            return f"Local search error: {str(e)}", [], [], []
 
-    def _execute_web_search(self, query: str) -> Dict:
+    async def _execute_web_search(self, query: str) -> Dict:
         """Execute a web search using the existing BrowserOrchestrator."""
         try:
             from browser_agents import BrowserOrchestrator
@@ -214,33 +233,34 @@ class ReasoningExecutor:
                 session_id=self.session_id,
                 output_lang=self.output_lang
             )
-            return orchestrator.run(query)
+            # BrowserOrchestrator.run is async, MUST be awaited
+            return await orchestrator.run(query)
         except Exception as e:
             print(f"[REASONING] Web search failed: {e}")
             return {"answer": f"Web search error: {str(e)}", "citations": [], "blocks": []}
 
-    def _synthesize(self, original_query: str, chain: List[Dict]) -> str:
+    async def _synthesize(self, original_query: str, chain: List[Dict]) -> str:
         """Generate final synthesized answer from all chain steps."""
         from api_clients import get_mistral_client
 
         client = get_mistral_client(self.api_keys)
         if not client:
             # Fallback: concatenate step answers
-            return "\n\n".join([f"**Step {s['step']}:** {s['answer']}" for s in chain])
+            return "\n\n".join([f"**Action:** {s.get('action')}\n**Answer:** {s['answer']}" for s in chain])
 
         chain_summary = ""
         for step in chain:
-            chain_summary += f"\n**Step {step['step']} — {step['question']}:**\n{step['answer'][:800]}\n"
+            chain_summary += f"\n**Question:** {step.get('thought')}\n**Finding:** {step['answer'][:800]}\n"
 
         lang_instruction = ""
         if self.output_lang and self.output_lang != "auto":
-            from search import LANG_MAP
+            from utils import LANG_MAP
             lang_name = LANG_MAP.get(self.output_lang, self.output_lang)
             lang_instruction = f"\n\nCRITICAL: Output your entire response in {lang_name}."
 
         prompt = f"""You are an advanced research assistant. A multi-step reasoning chain was executed to answer the user's complex question.
 
-Synthesize ALL the step results below into a single, comprehensive, well-structured answer.
+Synthesize ALL the findings below into a single, comprehensive, well-structured answer.
 Include key facts from each step. Use citations from the steps where applicable.
 Do NOT just repeat the steps — create a flowing, cohesive answer.{lang_instruction}
 
@@ -252,14 +272,19 @@ REASONING CHAIN RESULTS:
 Provide your final synthesized answer:"""
 
         try:
-            response = client.chat.complete(
-                model=ModelRegistry.MISTRAL_LARGE,
+            response = await client.chat.stream_async(
+                model=settings.models.mistral_large,
                 messages=[{"role": "user", "content": prompt}]
             )
-            return response.choices[0].message.content.strip()
+            # For simplicity in synthesis, we return the full text
+            full_text = ""
+            async for chunk in response:
+                if chunk.choices[0].delta.content:
+                    full_text += chunk.choices[0].delta.content
+            return full_text.strip()
         except Exception as e:
             print(f"[REASONING] Synthesis failed: {e}")
-            return "\n\n".join([f"**Step {s['step']}:** {s['answer']}" for s in chain])
+            return "\n\n".join([f"**Step:** {s.get('thought')}\n**Answer:** {s['answer']}" for s in chain])
 
 
 def is_multi_hop_query(query: str, api_keys: dict = None) -> bool:
@@ -297,8 +322,9 @@ def is_multi_hop_query(query: str, api_keys: dict = None) -> bool:
     if sum(1 for w in step_words if w in query_lower) >= 2:
         return True
 
-    # Pattern 4: Length-based heuristic (very long queries often need decomposition)
-    if len(query.split()) > 30:
-        return True
+    # Pattern 5: Continuation Exclusions (Do NOT do multi-hop for follow-ups)
+    continuation_keywords = ['finalize', 'successfully synced', 'synthesize all data', 'dossier based on']
+    if any(kw in query_lower for kw in continuation_keywords):
+        return False
 
     return False
