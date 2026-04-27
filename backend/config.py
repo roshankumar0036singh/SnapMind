@@ -1,305 +1,114 @@
-"""
-Configuration module for RAG pipeline.
-Centralizes all configurable parameters for easy tuning and experimentation.
-"""
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+from typing import List, Optional
 
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-
-# ============================================================================
-# MODEL REGISTRY
-# ============================================================================
-
-class ModelRegistry:
-    """Central registry for all LLM model identifiers"""
+class ModelSettings(BaseSettings):
+    """Configuration for LLM models"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
     
     # Mistral Models
-    MISTRAL_SMALL = os.getenv("MISTRAL_SMALL_MODEL", "mistral-small-latest")
-    MISTRAL_LARGE = os.getenv("MISTRAL_LARGE_MODEL", "mistral-large-latest")
-    MISTRAL_EMBED = os.getenv("MISTRAL_EMBED_MODEL", "mistral-embed")
+    mistral_small: str = Field("mistral-small-latest", env="MISTRAL_SMALL_MODEL")
+    mistral_large: str = Field("mistral-large-latest", env="MISTRAL_LARGE_MODEL")
+    mistral_embed: str = Field("mistral-embed", env="MISTRAL_EMBED_MODEL")
     
     # Gemini Models
-    GEMINI_FLASH = os.getenv("GEMINI_FLASH_MODEL", "gemini-2.0-flash")
-    GEMINI_FLASH_LITE = os.getenv("GEMINI_FLASH_LITE_MODEL", "gemini-2.0-flash-lite")
-    GEMINI_PRO = os.getenv("GEMINI_PRO_MODEL", "gemini-1.5-pro")
+    gemini_flash: str = Field("gemini-2.0-flash", env="GEMINI_FLASH_MODEL")
+    gemini_flash_lite: str = Field("gemini-2.0-flash-lite", env="GEMINI_FLASH_LITE_MODEL")
+    gemini_pro: str = Field("gemini-1.5-pro", env="GEMINI_PRO_MODEL")
+
+class DatabaseSettings(BaseSettings):
+    """Database configuration"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
     
-    # OpenAI Models
-    GPT_4O = os.getenv("GPT_4O_MODEL", "gpt-4o")
-    GPT_4O_MINI = os.getenv("GPT_4O_MINI_MODEL", "gpt-4o-mini")
-    
-    # Groq / Llama / Other
-    LLAMA_SCOUT = os.getenv("LLAMA_SCOUT_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
-    LLAMA3 = os.getenv("LLAMA3_MODEL", "llama3")
+    database_url: str = Field(..., env="DATABASE_URL")
+    supabase_url: Optional[str] = Field(None, env="SUPABASE_URL")
+    supabase_key: Optional[str] = Field(None, env="SUPABASE_KEY")
 
-
-# ============================================================================
-# PHASE 1: CHUNKING CONFIGURATION
-# ============================================================================
-
-class ChunkingConfig:
+class ChunkingSettings(BaseSettings):
     """Configuration for semantic chunking"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
     
-    # Semantic Chunking Settings
-    SEMANTIC_CHUNKING_ENABLED = os.getenv("SEMANTIC_CHUNKING_ENABLED", "true").lower() == "true"
-    AGENTIC_CHUNKING_MODEL = ModelRegistry.MISTRAL_LARGE
-    AGENTIC_CHUNKING_TARGET_SIZE = 1000
-    
-    # Chunk size parameters (in characters)
-    MIN_CHUNK_SIZE = int(os.getenv("MIN_CHUNK_SIZE", "200"))
-    TARGET_CHUNK_SIZE = int(os.getenv("TARGET_CHUNK_SIZE", "800"))
-    MAX_CHUNK_SIZE = int(os.getenv("MAX_CHUNK_SIZE", "1200"))
-    
-    # Overlap between chunks (0.0 to 1.0)
-    CHUNK_OVERLAP_PERCENTAGE = float(os.getenv("CHUNK_OVERLAP_PERCENTAGE", "0.2"))
-    
-    # Preserve special content
-    PRESERVE_CODE_BLOCKS = os.getenv("PRESERVE_CODE_BLOCKS", "true").lower() == "true"
-    PRESERVE_TABLES = os.getenv("PRESERVE_TABLES", "true").lower() == "true"
-    
-    # Metadata extraction
-    EXTRACT_METADATA = os.getenv("EXTRACT_METADATA", "true").lower() == "true"
+    enabled: bool = Field(True, env="SEMANTIC_CHUNKING_ENABLED")
+    min_size: int = Field(200, env="MIN_CHUNK_SIZE")
+    target_size: int = Field(800, env="TARGET_CHUNK_SIZE")
+    max_size: int = Field(1200, env="MAX_CHUNK_SIZE")
+    overlap_percentage: float = Field(0.2, env="CHUNK_OVERLAP_PERCENTAGE")
 
+class SearchSettings(BaseSettings):
+    """Configuration for Retrieval results"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    mode: str = Field("hybrid", env="SEARCH_MODE")
+    match_threshold: float = Field(0.2, env="MATCH_THRESHOLD")
+    match_count: int = Field(10, env="MATCH_COUNT")
+    vector_weight: float = Field(0.7, env="VECTOR_WEIGHT")
+    keyword_weight: float = Field(0.3, env="KEYWORD_WEIGHT")
 
-# ============================================================================
-# EMBEDDING CONFIGURATION
-# ============================================================================
+class RerankingSettings(BaseSettings):
+    """Configuration for document reranking"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    enabled: bool = Field(True, env="RERANK_ENABLED")
+    model: str = Field("mistral", env="RERANK_MODEL") # 'local' or 'mistral'
+    candidates: int = Field(15, env="RERANK_CANDIDATES")
+    top_k: int = Field(5, env="RERANK_TOP_K")
 
-class EmbeddingConfig:
-    """Configuration for embedding generation"""
-    
-    # Embedding model
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", ModelRegistry.MISTRAL_EMBED)
-    
-    # Parallel processing
-    MAX_EMBEDDING_WORKERS = int(os.getenv("MAX_EMBEDDING_WORKERS", "3"))
-    
-    # Batch size for bulk operations
-    EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "10"))
+class QuerySettings(BaseSettings):
+    """Configuration for query enhancement (HyDE/Multi-query)"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    hyde_enabled: bool = Field(True, env="HYDE_ENABLED")
+    multi_query_enabled: bool = Field(True, env="MULTI_QUERY_ENABLED")
+    query_variations: int = Field(3, env="QUERY_VARIATIONS")
 
+class CacheSettings(BaseSettings):
+    """Configuration for query caching"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    enabled: bool = Field(True, env="CACHE_ENABLED")
+    backend: str = Field("memory", env="CACHE_BACKEND")
+    ttl_general: int = Field(3600, env="CACHE_TTL_GENERAL")
+    ttl_indexed: int = Field(86400, env="CACHE_TTL_INDEXED")
+    similarity_threshold: float = Field(0.95, env="CACHE_SIMILARITY_THRESHOLD")
 
-# ============================================================================
-# SEARCH CONFIGURATION
-# ============================================================================
-
-class SearchConfig:
-    """Configuration for retrieval and search"""
-    
-    # Vector search parameters
-    MATCH_THRESHOLD = float(os.getenv("MATCH_THRESHOLD", "0.2"))
-    MATCH_COUNT = int(os.getenv("MATCH_COUNT", "10"))
-    
-    # Search mode: 'vector_only', 'hybrid', 'keyword_only'
-    SEARCH_MODE = os.getenv("SEARCH_MODE", "hybrid")
-    
-    # Hybrid search weights (if enabled)
-    VECTOR_WEIGHT = float(os.getenv("VECTOR_WEIGHT", "0.7"))
-    KEYWORD_WEIGHT = float(os.getenv("KEYWORD_WEIGHT", "0.3"))
-
-
-# ============================================================================
-# RERANKING CONFIGURATION (Phase 3)
-# ============================================================================
-
-class RerankingConfig:
-    """Configuration for reranking layer"""
-    
-    # Enable/disable reranking
-    RERANK_ENABLED = os.getenv("RERANK_ENABLED", "true").lower() == "true"
-    
-    # Reranking model: 'cohere', 'local', 'none'
-    RERANK_MODEL = os.getenv("RERANK_MODEL", "none")
-    
-    # Number of candidates to rerank
-    RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", "20"))
-    
-    # Number of results to return after reranking
-    RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "5"))
-
-
-# ============================================================================
-# CACHING CONFIGURATION (Phase 6)
-# ============================================================================
-
-class CacheConfig:
-    """Configuration for semantic caching"""
-    
-    # Enable/disable caching
-    CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
-    
-    # Cache backend: 'redis', 'memory'
-    CACHE_BACKEND = os.getenv("CACHE_BACKEND", "memory")
-    
-    # Redis URL (if using Redis)
-    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-    
-    # Cache TTL (in seconds)
-    CACHE_TTL_GENERAL = int(os.getenv("CACHE_TTL_GENERAL", "3600"))  # 1 hour
-    CACHE_TTL_INDEXED = int(os.getenv("CACHE_TTL_INDEXED", "86400"))  # 24 hours
-    
-    # Similarity threshold for cache hits
-    CACHE_SIMILARITY_THRESHOLD = float(os.getenv("CACHE_SIMILARITY_THRESHOLD", "0.95"))
-
-
-# ============================================================================
-# LLM PROVIDER & GENERATION CONFIGURATION
-# ============================================================================
-
-class LLMProviderConfig:
-    """Configuration for LLM hosting strategy (Desktop App feature)"""
-    
-    # Provider: 'cloud' (Supabase/API), 'local' (100% Ollama), 'hybrid' (Ollama Gen + Cloud Embed)
-    PROVIDER = os.getenv("LLM_PROVIDER", "cloud")
-    
-    # Ollama settings
-    OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    OLLAMA_GENERATION_MODEL = os.getenv("OLLAMA_GENERATION_MODEL", ModelRegistry.LLAMA3)
-
-class GenerationConfig:
-    """Configuration for LLM generation"""
-    
-    # Generation model
-    GENERATION_MODEL = os.getenv("GENERATION_MODEL", ModelRegistry.MISTRAL_SMALL)
-    
-    # Fallback models (in order of preference)
-    FALLBACK_MODELS = os.getenv("FALLBACK_MODELS", "").split(",") if os.getenv("FALLBACK_MODELS") else []
-    
-    # Temperature
-    TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
-    
-    # Max tokens
-    MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2000"))
-    
-    # Streaming
-    STREAMING_ENABLED = os.getenv("STREAMING_ENABLED", "true").lower() == "true"
-
-
-# ============================================================================
-# QUERY ENHANCEMENT CONFIGURATION (Phase 4)
-# ============================================================================
-
-class QueryConfig:
-    """Configuration for query enhancement"""
-    
-    # Enable HyDE (Hypothetical Document Embeddings)
-    HYDE_ENABLED = os.getenv("HYDE_ENABLED", "false").lower() == "true"
-    
-    # Enable multi-query generation
-    MULTI_QUERY_ENABLED = os.getenv("MULTI_QUERY_ENABLED", "false").lower() == "true"
-    
-    # Number of query variations to generate
-    QUERY_VARIATIONS = int(os.getenv("QUERY_VARIATIONS", "3"))
-
-
-# ============================================================================
-# CONTEXT OPTIMIZATION CONFIGURATION (Phase 5)
-# ============================================================================
-
-class ContextConfig:
+class ContextSettings(BaseSettings):
     """Configuration for context optimization"""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    max_context_length: int = Field(10000, env="MAX_CONTEXT_LENGTH")
+    enable_compression: bool = Field(True, env="ENABLE_COMPRESSION")
+    enable_deduplication: bool = Field(True, env="ENABLE_DEDUPLICATION")
+    min_relevance_score: float = Field(0.2, env="MIN_RELEVANCE_SCORE")
+
+class SnapMindSettings(BaseSettings):
+    """Global aggregation of all settings"""
+    models: ModelSettings = ModelSettings()
+    db: DatabaseSettings = DatabaseSettings()
+    chunking: ChunkingSettings = ChunkingSettings()
+    search: SearchSettings = SearchSettings()
+    reranking: RerankingSettings = RerankingSettings()
+    query: QuerySettings = QuerySettings()
+    cache: CacheSettings = CacheSettings()
+    context: ContextSettings = ContextSettings()
     
-    # Maximum context length (in characters, approx 10k as requested)
-    MAX_CONTEXT_LENGTH = int(os.getenv("MAX_CONTEXT_LENGTH", "8000"))
+    # Provider: 'cloud', 'local', 'hybrid'
+    llm_provider: str = Field("cloud", env="LLM_PROVIDER")
     
-    # Enable compression
-    ENABLE_COMPRESSION = os.getenv("ENABLE_COMPRESSION", "true").lower() == "true"
+    # Feature Flags
+    graphrag_enabled: bool = Field(True, env="GRAPHRAG_ENABLED")
+    agentic_chunking_enabled: bool = Field(True, env="AGENTIC_CHUNKING_ENABLED")
     
-    # Enable deduplication
-    ENABLE_DEDUPLICATION = os.getenv("ENABLE_DEDUPLICATION", "true").lower() == "true"
+    # Production Infrastructure
+    allowed_origins: List[str] = Field(
+        default=["http://localhost:5173", "http://localhost:3002"], 
+        env="ALLOWED_ORIGINS",
+        description="Comma-separated list of allowed origins for CORS"
+    )
+    rate_limit_per_minute: int = Field(5, env="RATE_LIMIT_PER_MINUTE")
+    server_url: str = Field("http://localhost:8000", env="SERVER_URL") # Used for self-ping
     
-    # Minimum relevance score for filtering
-    MIN_RELEVANCE_SCORE = float(os.getenv("MIN_RELEVANCE_SCORE", "0.0"))
+    @property
+    def context_limit(self) -> int:
+        """Legacy alias for context.max_context_length used by some agents"""
+        return self.context.max_context_length
 
+# Global Settings Instance
+settings = SnapMindSettings()
 
-# ============================================================================
-# MONITORING CONFIGURATION (Phase 9)
-# ============================================================================
-
-class MonitoringConfig:
-    """Configuration for monitoring and evaluation"""
-    
-    # Enable metrics collection
-    METRICS_ENABLED = os.getenv("METRICS_ENABLED", "false").lower() == "true"
-    
-    # Log retrieval quality
-    LOG_RETRIEVAL_QUALITY = os.getenv("LOG_RETRIEVAL_QUALITY", "false").lower() == "true"
-    
-    # Track latency
-    TRACK_LATENCY = os.getenv("TRACK_LATENCY", "false").lower() == "true"
-
-
-# ============================================================================
-# FEATURE FLAGS
-# ============================================================================
-
-class FeatureFlags:
-    """Feature flags for gradual rollout and A/B testing"""
-    
-    # Phase rollout flags
-    PHASE_1_SEMANTIC_CHUNKING = os.getenv("PHASE_1_ENABLED", "true").lower() == "true"
-    PHASE_2_HYBRID_SEARCH = os.getenv("PHASE_2_ENABLED", "false").lower() == "true"
-    PHASE_3_RERANKING = os.getenv("PHASE_3_ENABLED", "true").lower() == "true"
-    PHASE_4_QUERY_ENHANCEMENT = os.getenv("PHASE_4_ENABLED", "false").lower() == "true"
-    PHASE_5_CONTEXT_OPTIMIZATION = os.getenv("PHASE_5_ENABLED", "true").lower() == "true"
-    PHASE_6_CACHING = os.getenv("PHASE_6_ENABLED", "true").lower() == "true"
-    GRAPHRAG_ENABLED = os.getenv("GRAPHRAG_ENABLED", "true").lower() == "true" # [NEW] Phase 13
-    PHASE_15_AGENTIC_CHUNKING = os.getenv("AGENTIC_CHUNKING_ENABLED", "false").lower() == "true" # [NEW] Phase 15
-    
-    # A/B testing variant
-    AB_TEST_VARIANT = os.getenv("AB_TEST_VARIANT", "control")  # 'control' or 'treatment'
-
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def get_config_summary() -> dict:
-    """Get a summary of all active configurations"""
-    return {
-        "chunking": {
-            "semantic_enabled": ChunkingConfig.SEMANTIC_CHUNKING_ENABLED,
-            "target_size": ChunkingConfig.TARGET_CHUNK_SIZE,
-            "overlap": ChunkingConfig.CHUNK_OVERLAP_PERCENTAGE,
-        },
-        "search": {
-            "mode": SearchConfig.SEARCH_MODE,
-            "match_count": SearchConfig.MATCH_COUNT,
-        },
-        "reranking": {
-            "enabled": RerankingConfig.RERANK_ENABLED,
-            "model": RerankingConfig.RERANK_MODEL,
-        },
-        "caching": {
-            "enabled": CacheConfig.CACHE_ENABLED,
-            "backend": CacheConfig.CACHE_BACKEND,
-        },
-        "generation": {
-            "model": GenerationConfig.GENERATION_MODEL,
-            "streaming": GenerationConfig.STREAMING_ENABLED,
-        },
-        "features": {
-            "phase_1": FeatureFlags.PHASE_1_SEMANTIC_CHUNKING,
-            "phase_2": FeatureFlags.PHASE_2_HYBRID_SEARCH,
-            "phase_3": FeatureFlags.PHASE_3_RERANKING,
-            "phase_4": FeatureFlags.PHASE_4_QUERY_ENHANCEMENT,
-            "phase_5": FeatureFlags.PHASE_5_CONTEXT_OPTIMIZATION,
-            "phase_6": FeatureFlags.PHASE_6_CACHING,
-        }
-    }
-
-
-def print_config():
-    """Print current configuration (for debugging)"""
-    import json
-    config = get_config_summary()
-    print("=" * 80)
-    print("CURRENT RAG CONFIGURATION")
-    print("=" * 80)
-    print(json.dumps(config, indent=2))
-    print("=" * 80)
-
-
-if __name__ == "__main__":
-    print_config()
+# Settings are fully unified in the SnapMindSettings object above.
+# Legacy stubs have been removed.

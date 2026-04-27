@@ -23,16 +23,51 @@ def strip_json_fences(text: str) -> str:
 
 def extract_api_keys(headers: dict, fallback_dict: dict = None) -> dict:
     """Extract api keys from headers, fallback to body dictionary"""
-    # normalize headers to lowercase
-    headers = {k.lower(): v for k, v in headers.items()}
-    fallback = fallback_dict or {}
-    
     return {
-        "gemini": headers.get("x-gemini-key") or fallback.get("gemini"),
-        "mistral": headers.get("x-mistral-key") or fallback.get("mistral"),
-        "firecrawl": headers.get("x-firecrawl-key") or fallback.get("firecrawl"),
-        "lingodev": headers.get("x-lingodev-key") or fallback.get("lingodev"),
-        "groq": headers.get("x-groq-key") or fallback.get("groq"),
-        "openai": headers.get("x-openai-key") or fallback.get("openai"),
-        "hf": headers.get("x-hf-token") or fallback.get("hf")
+        "x-mistral-key": headers.get("x-mistral-key"),
+        "x-gemini-key": headers.get("x-gemini-key"),
+        "x-firecrawl-key": headers.get("x-firecrawl-key"),
+        "x-apify-token": headers.get("x-apify-token"),
     }
+
+def is_mostly_non_ascii(s):
+    if not s: return False
+    threshold = len(s) * 0.2
+    non_ascii = 0
+    for c in s:
+        if ord(c) > 127:
+            non_ascii += 1
+            if non_ascii > threshold:
+                return True
+    return False
+
+def normalize_url(url: str) -> str:
+    """Normalize URL for consistent storage. Preserves query strings (e.g. YouTube ?v=...)."""
+    try:
+        from urllib.parse import urlparse, urlunparse
+        parsed = urlparse(url)
+        # Rebuild URL: keep scheme, netloc, stripped path, params, query, and NO fragment
+        normalized = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path.rstrip('/'),
+            parsed.params,
+            parsed.query,   # IMPORTANT: preserve query string (e.g. ?v=xxxx for YouTube)
+            ''              # strip fragment (#anchor)
+        ))
+        return normalized
+    except:
+        return url
+
+LANG_MAP = {
+    "en": "English",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "it": "Italian",
+    "ja": "Japanese",
+    "zh": "Chinese",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "ko": "Korean"
+}

@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 pydantic
+pydantic-settings
 python-dotenv
 psycopg[binary,pool]
 pgvector
@@ -20,3 +21,5 @@ youtube-transcript-api
 httpx[http2]
 sentence-transformers
 supabase
+slowapi
+structlog
