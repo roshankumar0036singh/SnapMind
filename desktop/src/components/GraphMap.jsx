@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import ForceGraph2DImport from 'react-force-graph-2d';
 const ForceGraph2D = ForceGraph2DImport.default || ForceGraph2DImport;
-import { Loader2, ZoomIn, ZoomOut, Maximize2, Database, ShieldCheck, Zap, Activity, MousePointer2 } from 'lucide-react';
+import { Loader2, ZoomIn, ZoomOut, Maximize2, Database, ShieldCheck, Zap, Activity, MousePointer2, Globe, FileText, History } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
     const fgRef = useRef();
     const [hoverNode, setHoverNode] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedNode, setSelectedNode] = useState(null);
 
     // Filter and sanitize data for ForceGraph2D
     const graphData = useMemo(() => {
@@ -31,6 +34,19 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
         return { nodes, links };
     }, [data]);
 
+    // Enhanced filtered data for search
+    const filteredData = useMemo(() => {
+        if (!searchTerm) return graphData;
+        const term = searchTerm.toLowerCase();
+        return {
+            nodes: graphData.nodes.map(n => ({
+                ...n,
+                isMatch: n.name.toLowerCase().includes(term) || n.type.toLowerCase().includes(term)
+            })),
+            links: graphData.links
+        };
+    }, [graphData, searchTerm]);
+
     const handleNodeClick = useCallback(node => {
         if (fgRef.current) {
             fgRef.current.centerAt(node.x, node.y, 1000);
@@ -55,7 +71,7 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
             {/* 2D GRAPH ENGINE */}
             <ForceGraph2D
                 ref={fgRef}
-                graphData={graphData}
+                graphData={filteredData}
                 backgroundColor="#07070a"
                 showNavInfo={false}
                 
@@ -67,9 +83,17 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
                   </div>
                 `}
                 nodeRelSize={6}
-                nodeColor={node => node.type === 'site' ? '#6366f1' : '#10b981'}
-                onNodeClick={handleNodeClick}
+                onNodeClick={(node) => {
+                  handleNodeClick(node);
+                  setSelectedNode(node);
+                }}
                 onNodeHover={setHoverNode}
+                nodeColor={node => {
+                    if (searchTerm) {
+                        return node.isMatch ? '#6366f1' : '#1e1e26';
+                    }
+                    return node.type === 'site' ? '#6366f1' : '#10b981';
+                }}
 
                 // Link Styling
                 linkLabel={link => `<div style="padding: 4px 10px; background: rgba(0,0,0,0.8); border: 1px solid #1e1e26; border-radius: 6px; color: #71717a; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.05em;">${link.label}</div>`}
@@ -84,23 +108,41 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
                   const label = node.name;
                   const fontSize = 12 / globalScale;
                   ctx.font = `${fontSize}px Inter, system-ui`;
-                  const textWidth = ctx.measureText(label).width;
-
+                  
+                  // Highlight logic
+                  const isMatch = searchTerm ? node.isMatch : true;
+                  const radius = isMatch ? 5 : 3;
+                  const isSelected = selectedNode?.id === node.id;
+                  
                   // Draw Node circle
                   ctx.beginPath();
-                  ctx.arc(node.x, node.y, 5, 0, 2 * Math.PI, false);
-                  ctx.fillStyle = node.type === 'site' ? '#6366f1' : '#10b981';
+                  ctx.arc(node.x, node.y, radius + (isSelected ? 2 : 0), 0, 2 * Math.PI, false);
+                  
+                  if (searchTerm) {
+                    ctx.fillStyle = node.isMatch ? '#6366f1' : '#1e1e26';
+                    ctx.globalAlpha = node.isMatch ? 1 : 0.2;
+                  } else {
+                    ctx.fillStyle = node.type === 'site' ? '#6366f1' : '#10b981';
+                    ctx.globalAlpha = 1;
+                  }
+                  
                   ctx.fill();
-                  ctx.strokeStyle = '#fafafa20';
-                  ctx.stroke();
+                  
+                  if (isMatch || isSelected) {
+                    ctx.strokeStyle = isSelected ? '#6366f1' : '#fafafa20';
+                    ctx.lineWidth = isSelected ? 2 / globalScale : 1 / globalScale;
+                    ctx.stroke();
+                  }
 
-                  // Draw Label only if zoomed in
-                  if (globalScale > 1.5) {
+                  // Draw Label only if zoomed in or matching search
+                  if (globalScale > 1.5 || (searchTerm && node.isMatch)) {
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillStyle = '#fafafa';
+                    ctx.fillStyle = isMatch ? '#fafafa' : '#3f3f46';
                     ctx.fillText(label, node.x, node.y + 10);
                   }
+                  
+                  ctx.globalAlpha = 1;
                 }}
             />
 
@@ -111,7 +153,7 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
                         <div className="w-2 h-2 rounded-full bg-[#6366f1] shadow-[0_0_10px_#6366f1]" />
                         <span className="text-[10px] font-black text-[#fafafa] uppercase tracking-[0.2em]">SnapMind Neural Atlas <span className="text-[#3f3f46]">v3.0</span></span>
                     </div>
-                    <p className="text-[9px] text-[#71717a] font-bold uppercase tracking-widest pl-4">Simulating {graphData.nodes.length} Neural Intersections</p>
+                    <p className="text-[9px] text-[#71717a] font-bold uppercase tracking-widest pl-4">Simulating {graphData?.nodes?.length || 0} Neural Intersections</p>
                 </div>
                 
                 <div className="flex flex-col items-end gap-1">
@@ -126,24 +168,16 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
             <div className="absolute inset-x-0 bottom-0 p-8 flex justify-between items-end z-50 pointer-events-none">
                 <div className="flex items-center gap-3 pointer-events-auto">
                     <div className="p-5 bg-[#0f0f14]/80 backdrop-blur-xl border border-[#1e1e26] rounded-[24px] flex items-center gap-8 shadow-[0_20px_60px_rgba(0,0,0,0.6)]">
-                        <div className="flex flex-col gap-1.5">
-                            <span className="text-[8px] font-black text-[#3f3f46] uppercase tracking-[0.3em]">HMI Control Layer</span>
-                            <div className="flex items-center gap-6">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="p-2 bg-[#1a1a1d] rounded-xl border border-[#27272a] shadow-inner"><MousePointer2 className="w-3.5 h-3.5 text-[#6366f1]" /></div>
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] text-[#fafafa] font-bold">Left Click</span>
-                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">Target & Focus</span>
-                                    </div>
-                                </div>
-                                <div className="w-px h-5 bg-[#1e1e26]" />
-                                <div className="flex items-center gap-2.5">
-                                    <div className="p-2 bg-[#1a1a1d] rounded-xl border border-[#27272a] shadow-inner"><Maximize2 className="w-3.5 h-3.5 text-[#71717a]" /></div>
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] text-[#fafafa] font-bold">Fluid Drag</span>
-                                        <span className="text-[9px] text-[#71717a] font-bold uppercase tracking-tighter">2D Inspection</span>
-                                    </div>
-                                </div>
+                        <div className="flex flex-col gap-3">
+                            <span className="text-[8px] font-black text-[#3f3f46] uppercase tracking-[0.3em]">HMI Neural Search</span>
+                            <div className="flex items-center gap-4 bg-[#1a1a1d] border border-[#27272a] rounded-xl px-4 py-2 shadow-inner focus-within:border-[#6366f1]/50 transition-all">
+                                <Database className="w-3.5 h-3.5 text-[#3f3f46]" />
+                                <input 
+                                  className="bg-transparent border-none outline-none text-[#fafafa] text-[10px] font-bold placeholder:text-[#3f3f46] w-48"
+                                  placeholder="IDENTIFY NODE..."
+                                  value={searchTerm}
+                                  onChange={(e) => setSearchTerm(e.target.value)}
+                                />
                             </div>
                         </div>
                     </div>
@@ -165,6 +199,58 @@ const GraphMap = ({ data = { nodes: [], edges: [] }, isLoading }) => {
                 </div>
             </div>
             
+            {/* SELECTION DETAIL OVERLAY */}
+            <AnimatePresence>
+                {selectedNode && (
+                    <motion.div 
+                        initial={{ x: 300, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: 300, opacity: 0 }}
+                        className="absolute right-8 top-32 bottom-32 w-[280px] bg-[#09090b]/95 backdrop-blur-2xl border border-[#1e1e26] rounded-[32px] p-6 shadow-[-20px_0_60px_rgba(0,0,0,0.5)] z-[60] flex flex-col"
+                    >
+                        <div className="flex items-center justify-between mb-6">
+                            <span className="text-[10px] font-black text-[#6366f1] uppercase tracking-[0.3em]">Node Protocol</span>
+                            <button onClick={() => setSelectedNode(null)} className="p-2 hover:bg-[#1a1a1d] rounded-xl text-[#71717a]">
+                                <ZoomOut className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            <div className={`w-12 h-12 rounded-2xl ${selectedNode.type === 'site' ? 'bg-[#6366f1]/10 text-[#6366f1]' : 'bg-[#10b981]/10 text-[#10b981]'} flex items-center justify-center mb-4 border border-current/20 shadow-inner`}>
+                                {selectedNode.type === 'site' ? <Globe className="w-6 h-6" /> : <Database className="w-6 h-6" />}
+                            </div>
+                            
+                            <h3 className="text-lg font-black text-[#fafafa] tracking-tight leading-tight mb-2">{selectedNode.name}</h3>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-[#71717a] border border-[#1e1e26] px-2 py-1 rounded-full">{selectedNode.type} intersection</span>
+                            
+                            <div className="mt-8 space-y-6">
+                                <div>
+                                    <span className="text-[10px] font-black text-[#3f3f46] uppercase tracking-widest block mb-2">Neural Connectivity</span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 h-1.5 bg-[#1a1a1d] rounded-full overflow-hidden">
+                                            <div className="h-full bg-[#6366f1] rounded-full" style={{ width: `${Math.min(selectedNode.val * 20, 100)}%` }} />
+                                        </div>
+                                        <span className="text-[10px] font-black text-[#fafafa] italic">{selectedNode.val}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="p-4 bg-[#111116] border border-[#1e1e26] rounded-2xl">
+                                    <p className="text-[11px] text-[#71717a] leading-relaxed">
+                                        This {selectedNode.type} node represents a high-entropy concept extracted during neural analysis sessions.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button 
+                            className="mt-6 w-full py-4 bg-[#6366f1] text-black text-[10px] font-black uppercase tracking-widest rounded-[20px] transition-all hover:scale-[1.02] active:scale-95 shadow-[0_10px_30px_rgba(99,102,241,0.2)]"
+                        >
+                            Pivot Context
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* AMBIENT EFFECTS */}
             <div className="absolute inset-0 pointer-events-none">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(99,102,241,0.02),transparent_70%)]" />

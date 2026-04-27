@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@radix-ui/react-hover-card": "^1.1.15",
+    "@supabase/supabase-js": "^2.103.3",
     "chokidar": "^5.0.0",
     "cytoscape": "^3.33.1",
     "framer-motion": "^12.38.0",

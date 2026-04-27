@@ -2,6 +2,7 @@
  * API Client for SnapMind Desktop.
  * Adapts extension logic to work in a standard web environment (localStorage).
  */
+import { supabase } from '../supabaseClient';
 
 const DEFAULT_BACKEND_URL = "http://localhost:8000";
 
@@ -59,14 +60,20 @@ export const apiClient = {
     },
 
     async getApiKeysHeaders() {
+        const { data: { session } } = await supabase.auth.getSession();
         const res = await storageShim.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey']);
         const headers = {};
         if (res.geminiApiKey) headers['x-gemini-key'] = res.geminiApiKey;
         if (res.mistralApiKey) headers['x-mistral-key'] = res.mistralApiKey;
         if (res.lingodevApiKey) headers['x-lingodev-key'] = res.lingodevApiKey;
         if (res.firecrawlApiKey) headers['x-firecrawl-key'] = res.firecrawlApiKey;
+
+        if (session && session.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
         return headers;
     },
+
 
     async chat(request) {
         const baseUrl = await this.getBaseUrl();
@@ -241,6 +248,40 @@ export const apiClient = {
         });
         return response.json();
     },
+
+    async subscribeJobUpdates(sessionId, onUpdate) {
+        const baseUrl = await this.getBaseUrl();
+        const url = `${baseUrl}/api/jobs/stream/${sessionId}`;
+        console.log(`[SSE] Subscribing to job updates: ${url}`);
+        
+        const eventSource = new EventSource(url);
+        
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (onUpdate) onUpdate(data);
+                
+                // If job is finished, we could close but often we want to keep it open 
+                // for multiple jobs in the same session. 
+                // The backend handles the lifecycle.
+            } catch (e) {
+                console.error("[SSE] Message parse error:", e);
+            }
+        };
+        
+        eventSource.onerror = (err) => {
+            console.error("[SSE] Connection error:", err);
+            // Don't close immediately, EventSource auto-retries
+        };
+        
+        return () => {
+            console.log("[SSE] Closing subscription");
+            eventSource.close();
+        };
+    },
+
+
+
 
     async deleteSession(sessionId) {
         const baseUrl = await this.getBaseUrl();
@@ -536,6 +577,74 @@ export const apiClient = {
             body: JSON.stringify({ url, session_id: sessionId, stream: false })
         });
         return response.json();
+    },
+
+    async createBookmark(content, sourceUrl, metadata = {}) {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        try {
+            const response = await fetch(`${baseUrl}/bookmarks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...headers },
+                body: JSON.stringify({ content, source_url: sourceUrl, ...metadata })
+            });
+            if (!response.ok) return { success: false, error: `HTTP ${response.status}` };
+            return await response.json();
+        } catch (e) {
+            console.error("Failed to create bookmark:", e);
+            return { success: false, error: e.message };
+        }
+    },
+
+    async ingestGithub(url, targetLang = 'auto', sessionId = null) {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        try {
+            const response = await fetch(`${baseUrl}/ingest/github`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...headers },
+                body: JSON.stringify({ url, target_lang: targetLang, session_id: sessionId })
+            });
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                return { success: false, message: errData.detail || `HTTP ${response.status}` };
+            }
+            return await response.json();
+        } catch (e) {
+            console.error("GitHub ingest error:", e);
+            return { success: false, message: e.message };
+        }
+    },
+
+    async getIngestionStatus(jobId) {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const response = await fetch(`${baseUrl}/api/jobs/${jobId}`);
+            if (!response.ok) return { status: 'unknown' };
+            return await response.json();
+        } catch (e) {
+            console.error("Failed to get ingestion status:", e);
+            return { status: 'unknown' };
+        }
+    },
+
+    async downloadReport(sessionId, query) {
+        const baseUrl = await this.getBaseUrl();
+        const headers = await this.getApiKeysHeaders();
+        const response = await fetch(`${baseUrl}/browser/generate_report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...headers },
+            body: JSON.stringify({ session_id: sessionId, query })
+        });
+
+        if (!response.ok) throw new Error(`Report generation failed: ${response.status}`);
+
+        // Check if the response is JSON (pending status) or a blob (file)
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return await response.json(); // e.g. { status: 'pending' }
+        }
+        return response.blob(); // Docx file
     }
 };
 

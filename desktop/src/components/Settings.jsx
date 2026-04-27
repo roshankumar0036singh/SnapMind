@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Save, Key, ArrowLeft, Database, Upload, Download, Loader2, ShieldCheck, Globe, Zap } from 'lucide-react';
+import { Save, Key, ArrowLeft, Database, Upload, Download, Loader2, ShieldCheck, Globe, Zap, LogOut, User } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 import { toast } from 'sonner';
 import { chrome } from '../background/api';
 import WatchedUrlsPanel from './WatchedUrlsPanel';
@@ -192,8 +193,26 @@ export default function Settings({ onBack }) {
             </header>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
+                {/* Section: Account */}
+                <div className="space-y-4">
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                        <User className="w-4 h-4 text-[#6366f1]" />
+                        <h3 className="text-xs font-black text-[#71717a] uppercase tracking-[0.2em]">Account</h3>
+                    </div>
+                    
+                    <button
+                        onClick={async () => {
+                            await supabase.auth.signOut();
+                        }}
+                        className="w-full flex justify-between items-center bg-[#ef4444]/10 hover:bg-[#ef4444]/20 text-[#ef4444] px-5 py-4 rounded-xl border border-[#ef4444]/20 transition-all shadow-lg hover:-translate-y-0.5 active:scale-95"
+                    >
+                        <span className="text-sm font-black uppercase tracking-widest">Sign Out & Lock System</span>
+                        <LogOut className="w-4 h-4" />
+                    </button>
+                </div>
+
                 {/* Section: AI Infrastructure Routing */}
-                <section className="space-y-6">
+                <section className="space-y-6 pt-4 border-t border-[#1e1e26]">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="w-1 h-4 bg-[#6366f1] rounded-full" />
                         <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-[#71717a]">AI Infrastructure Routing</h3>
