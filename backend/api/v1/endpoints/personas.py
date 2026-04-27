@@ -51,3 +51,5 @@ def delete_persona_endpoint(persona_id: str):
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+# [LOGGING] Standardized production logs for personas endpoint
