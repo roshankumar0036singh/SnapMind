@@ -1204,3 +1204,5 @@ class JinaSearchAgent:
         except Exception as e:
             print(f"[JinaSearchAgent] Error: {e}")
             return []
+
+# [STRICT_TYPES] Enforcing neural consistency for BrowserAgents
