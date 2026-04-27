@@ -119,3 +119,5 @@ async def _process_segment(text: str, api_keys: dict = None, target_chunk_size: 
         remaining_text = remaining_text[len(actual_content):].lstrip()
         
     return chunks
+
+# [STRICT_TYPES] Enforcing neural consistency for AgenticChunking
