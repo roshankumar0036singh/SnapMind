@@ -585,6 +585,187 @@ MIGRATIONS = [
             END;
             $$;
         """
+    },
+    {
+        "version": 14,
+        "name": "multi_user_isolation",
+        "sql": """
+            -- 1. Add user_id column to core tables
+            ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE nodes ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE edges ADD COLUMN IF NOT EXISTS user_id UUID;
+
+            -- 2. Create indexes for user_id to optimize filtering
+            CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id);
+            CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_user_id ON ingestion_jobs(user_id);
+            CREATE INDEX IF NOT EXISTS idx_bookmarks_user_id ON bookmarks(user_id);
+
+            -- 3. Update Hybrid Search Function to support user_id filtering
+            DROP FUNCTION IF EXISTS hybrid_search_documents(vector, text, float, integer, text[], float, float);
+            
+            CREATE OR REPLACE FUNCTION hybrid_search_documents(
+                query_embedding vector(3072),
+                query_text TEXT,
+                match_threshold FLOAT,
+                match_count INTEGER,
+                filter_source_urls TEXT[], 
+                target_user_id UUID,        -- [NEW] Enforce data isolation
+                vector_weight FLOAT DEFAULT 0.5,
+                keyword_weight FLOAT DEFAULT 0.5
+            ) RETURNS TABLE (
+                id TEXT,
+                url TEXT,
+                content TEXT,
+                metadata JSONB,
+                similarity FLOAT,
+                bm25_score FLOAT,
+                combined_score FLOAT
+            ) LANGUAGE plpgsql AS $$
+            BEGIN
+                RETURN QUERY
+                WITH vector_matches AS (
+                    SELECT 
+                        d.id,
+                        1 - (d.embedding <=> query_embedding) AS sim
+                    FROM documents d
+                    WHERE (d.user_id = target_user_id) -- [REQUIRED] Strict isolation
+                      AND (filter_source_urls IS NULL OR d.source_url LIKE ANY(filter_source_urls))
+                      AND 1 - (d.embedding <=> query_embedding) > match_threshold
+                    ORDER BY d.embedding <=> query_embedding
+                    LIMIT match_count * 2
+                ),
+                keyword_matches AS (
+                    SELECT 
+                        d.id,
+                        ts_rank(to_tsvector('english', d.content), websearch_to_tsquery('english', query_text)) AS rank
+                    FROM documents d
+                    WHERE (d.user_id = target_user_id) -- [REQUIRED] Strict isolation
+                      AND (filter_source_urls IS NULL OR d.source_url LIKE ANY(filter_source_urls))
+                      AND to_tsvector('english', d.content) @@ websearch_to_tsquery('english', query_text)
+                    ORDER BY rank DESC
+                    LIMIT match_count * 2
+                )
+                SELECT 
+                    d.id,
+                    d.source_url AS url,
+                    d.content,
+                    d.metadata,
+                    COALESCE(v.sim, 0)::FLOAT AS similarity,
+                    COALESCE(k.rank, 0)::FLOAT AS bm25_score,
+                    (COALESCE(v.sim, 0) * vector_weight + COALESCE(k.rank, 0) * keyword_weight)::FLOAT AS combined_score
+                FROM documents d
+                LEFT JOIN vector_matches v ON d.id = v.id
+                LEFT JOIN keyword_matches k ON d.id = k.id
+                WHERE (v.id IS NOT NULL OR k.id IS NOT NULL)
+                  AND d.user_id = target_user_id
+                ORDER BY combined_score DESC
+                LIMIT match_count;
+            END;
+            $$;
+        """
+    },
+    {
+        "version": 15,
+        "name": "workspaces_and_tenant_isolation",
+        "sql": """
+            -- 1. Create a separate table for Workspaces
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name TEXT NOT NULL,
+                owner_id UUID NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                metadata JSONB DEFAULT '{}'::jsonb
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id);
+
+            -- 2. Add workspace_id to core entities for strict logical isolation
+            ALTER TABLE documents ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id);
+            ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id);
+            ALTER TABLE bookmarks ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id);
+            ALTER TABLE nodes ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id);
+            ALTER TABLE edges ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id);
+
+            CREATE INDEX IF NOT EXISTS idx_documents_workspace_id ON documents(workspace_id);
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace_id ON chat_sessions(workspace_id);
+
+            -- 3. Hardening Node Isolation: Unique Nodes per Workspace/User
+            -- Add a composite constraint to prevent entity collisions across tenants
+            ALTER TABLE nodes DROP CONSTRAINT IF EXISTS nodes_name_key;
+            ALTER TABLE nodes ADD CONSTRAINT nodes_name_workspace_user_unique UNIQUE (name, workspace_id, user_id);
+
+            -- 4. Update Hybrid Search for Workspace Support
+            DROP FUNCTION IF EXISTS hybrid_search_documents(vector, text, float, integer, text[], uuid, float, float);
+            
+            CREATE OR REPLACE FUNCTION hybrid_search_documents(
+                query_embedding vector(3072),
+                query_text TEXT,
+                match_threshold FLOAT,
+                match_count INTEGER,
+                filter_source_urls TEXT[], 
+                target_user_id UUID,
+                target_workspace_id UUID,   -- [NEW] Strict Workspace Isolation
+                vector_weight FLOAT DEFAULT 0.5,
+                keyword_weight FLOAT DEFAULT 0.5
+            ) RETURNS TABLE (
+                id TEXT,
+                url TEXT,
+                content TEXT,
+                metadata JSONB,
+                similarity FLOAT,
+                bm25_score FLOAT,
+                combined_score FLOAT
+            ) LANGUAGE plpgsql AS $$
+            BEGIN
+                RETURN QUERY
+                WITH vector_matches AS (
+                    SELECT 
+                        d.id,
+                        1 - (d.embedding <=> query_embedding) AS sim
+                    FROM documents d
+                    WHERE (d.user_id = target_user_id)
+                      AND (target_workspace_id IS NULL OR d.workspace_id = target_workspace_id) -- [REQUIRED]
+                      AND (filter_source_urls IS NULL OR d.source_url LIKE ANY(filter_source_urls))
+                      AND 1 - (d.embedding <=> query_embedding) > match_threshold
+                    ORDER BY d.embedding <=> query_embedding
+                    LIMIT match_count * 2
+                ),
+                keyword_matches AS (
+                    SELECT 
+                        d.id,
+                        ts_rank(to_tsvector('english', d.content), websearch_to_tsquery('english', query_text)) AS rank
+                    FROM documents d
+                    WHERE (d.user_id = target_user_id)
+                      AND (target_workspace_id IS NULL OR d.workspace_id = target_workspace_id) -- [REQUIRED]
+                      AND (filter_source_urls IS NULL OR d.source_url LIKE ANY(filter_source_urls))
+                      AND to_tsvector('english', d.content) @@ websearch_to_tsquery('english', query_text)
+                    ORDER BY rank DESC
+                    LIMIT match_count * 2
+                )
+                SELECT 
+                    d.id,
+                    d.source_url AS url,
+                    d.content,
+                    d.metadata,
+                    COALESCE(v.sim, 0)::FLOAT AS similarity,
+                    COALESCE(k.rank, 0)::FLOAT AS bm25_score,
+                    (COALESCE(v.sim, 0) * vector_weight + COALESCE(k.rank, 0) * keyword_weight)::FLOAT AS combined_score
+                FROM documents d
+                LEFT JOIN vector_matches v ON d.id = v.id
+                LEFT JOIN keyword_matches k ON d.id = k.id
+                WHERE (v.id IS NOT NULL OR k.id IS NOT NULL)
+                  AND d.user_id = target_user_id
+                  AND (target_workspace_id IS NULL OR d.workspace_id = target_workspace_id)
+                ORDER BY combined_score DESC
+                LIMIT match_count;
+            END;
+            $$;
+        """
     }
 ]
 
@@ -633,13 +814,13 @@ def run_migrations():
                             print(f"[MIGRATIONS] Migration v{migration['version']} applied successfully.")
                         except Exception as e:
                             conn.rollback()
-                            print(f"[MIGRATIONS] ❌ Failed to apply migration v{migration['version']}: {e}")
+                            print(f"[MIGRATIONS] Failed to apply migration v{migration['version']}: {e}")
                             raise e
                             
         print("[MIGRATIONS] Schema is up to date.")
         return True
     except Exception as e:
-        print(f"[MIGRATIONS] ❌ Critical failure during migration check: {e}")
+        print(f"[MIGRATIONS] Critical failure during migration check: {e}")
         return False
 
 # Standalone execution support

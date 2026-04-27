@@ -5,12 +5,13 @@ from typing import Dict, Any, List
 from database import get_db_pool
 
 
-def export_site_json(source_url: str) -> Dict[str, Any]:
+def export_site_json(source_url: str, user_id: str = None) -> Dict[str, Any]:
     """
-    Export all documents for a given source URL as JSON.
+    Export all documents for a given source URL as JSON, filtered by user.
     
     Args:
         source_url: The source URL to export
+        user_id: string UUID of the user
         
     Returns:
         Dictionary with success status and data
@@ -22,7 +23,10 @@ def export_site_json(source_url: str) -> Dict[str, Any]:
         
         with db_pool.connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute("SELECT id, content, source_url, embedding::text, metadata, created_at::text FROM documents WHERE source_url = %s ORDER BY created_at", (source_url,))
+                if user_id:
+                    cur.execute("SELECT id, content, source_url, embedding::text, metadata, created_at::text FROM documents WHERE source_url = %s AND user_id = %s ORDER BY created_at", (source_url, user_id))
+                else:
+                    cur.execute("SELECT id, content, source_url, embedding::text, metadata, created_at::text FROM documents WHERE source_url = %s ORDER BY created_at", (source_url,))
                 documents = cur.fetchall()
         
         return {
@@ -39,12 +43,13 @@ def export_site_json(source_url: str) -> Dict[str, Any]:
         }
 
 
-def export_site_text(source_url: str) -> str:
+def export_site_text(source_url: str, user_id: str = None) -> str:
     """
-    Export all documents for a given source URL as plain text.
+    Export all documents for a given source URL as plain text, filtered by user.
     
     Args:
         source_url: The source URL to export
+        user_id: string UUID of the user
         
     Returns:
         Formatted text string
@@ -56,7 +61,10 @@ def export_site_text(source_url: str) -> str:
         
         with db_pool.connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute("SELECT content, created_at::text FROM documents WHERE source_url = %s ORDER BY created_at", (source_url,))
+                if user_id:
+                    cur.execute("SELECT content, created_at::text FROM documents WHERE source_url = %s AND user_id = %s ORDER BY created_at", (source_url, user_id))
+                else:
+                    cur.execute("SELECT content, created_at::text FROM documents WHERE source_url = %s ORDER BY created_at", (source_url,))
                 documents = cur.fetchall()
         
         # Format as text

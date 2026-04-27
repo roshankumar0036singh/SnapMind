@@ -22,6 +22,10 @@ from config import settings
 
 class IngestService:
     """
+    Core service for multi-source data ingestion and indexing.
+    Part of the SnapMind intelligence layer.
+    """
+    """
     Service layer for SnapMind Data Ingestion.
     Handles scraping, embedding, and vector storage indexing.
     """

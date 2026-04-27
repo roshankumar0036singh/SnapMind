@@ -32,6 +32,16 @@ def get_openai_client(api_keys=None):
     import openai
     return openai.OpenAI(api_key=key.strip())
 
+def get_openai_async_client(api_keys=None):
+    api_keys = api_keys or {}
+    key = api_keys.get("openai")
+    if not key:
+        key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        raise ValueError("Missing OPENAI_API_KEY")
+    import openai
+    return openai.AsyncOpenAI(api_key=key.strip())
+
 def get_gemini_client(api_keys=None):
     api_keys = api_keys or {}
     key = api_keys.get("gemini")
@@ -50,11 +60,26 @@ def get_mistral_client(api_keys=None):
         return None
     return Mistral(api_key=key.strip())
 
+def get_mistral_async_client(api_keys=None):
+    """
+    Mistral modern SDK (v1.0.0+) supports async natively on the same client 
+    but often requires specific async instantiation for some versions.
+    We'll return a client and then use its async methods.
+    """
+    return get_mistral_client(api_keys)
+
 def get_firecrawl_key(api_keys=None):
     api_keys = api_keys or {}
-    key = api_keys.get("firecrawl")
+    key = api_keys.get("firecrawl") or api_keys.get("x-firecrawl-key")
     if not key:
         key = os.getenv("FIRECRAWL_API_KEY")
+    return key.strip() if key else key
+
+def get_apify_key(api_keys=None):
+    api_keys = api_keys or {}
+    key = api_keys.get("apify")
+    if not key:
+        key = os.getenv("APIFY_API_TOKEN")
     return key.strip() if key else key
 
 def get_lingo_key(api_keys=None):
@@ -71,12 +96,36 @@ def get_groq_key(api_keys=None):
         key = os.getenv("GROQ_API_KEY")
     return key.strip() if key else key
 
+def get_groq_client(api_keys=None):
+    key = get_groq_key(api_keys)
+    if not key:
+        raise ValueError("Missing GROQ_API_KEY")
+    import groq
+    return groq.Groq(api_key=key)
+
 def get_hf_token(api_keys=None):
     api_keys = api_keys or {}
     key = api_keys.get("hf") or api_keys.get("x-hf-token")
     if not key:
         key = os.getenv("HF_TOKEN")
     return key.strip() if key else key
+
+def get_serper_key(api_keys=None):
+    api_keys = api_keys or {}
+    key = api_keys.get("serper") or api_keys.get("x-serper-key")
+    if not key:
+        key = os.getenv("SERPER_API_KEY")
+    return key.strip() if key else key
+
+def get_cohere_client(api_keys=None):
+    api_keys = api_keys or {}
+    key = api_keys.get("cohere") or api_keys.get("x-cohere-key")
+    if not key:
+        key = os.getenv("COHERE_API_KEY")
+    if not key:
+        return None
+    import cohere
+    return cohere.Client(api_key=key.strip())
 def check_connectivity():
     """
     Check if the system has internet connectivity by attempting to resolve
