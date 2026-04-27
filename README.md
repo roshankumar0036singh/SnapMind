@@ -996,3 +996,6 @@ Built for research efficiency. Contributions are welcome — please see `CONTRIB
 <p align="center">
   <sub>Built with ❤️ by the SnapMind team</sub>
 </p>
+
+### Architecture
+Detailed documentation coming soon.
