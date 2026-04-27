@@ -60,3 +60,5 @@ def delete_site(site_id: str, user_id: str = Depends(get_user_id)):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# [LOGGING] Standardized production logs for sites endpoint
