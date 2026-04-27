@@ -268,3 +268,5 @@ class LLMRouter:
             # For providers that may return None deltas
             if chunk:
                 yield chunk
+
+# [STRICT_TYPES] Enforcing neural consistency for LLMRouter
