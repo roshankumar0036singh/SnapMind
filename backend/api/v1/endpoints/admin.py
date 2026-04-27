@@ -59,3 +59,5 @@ async def get_refresh_suggestions(user_id: str = Depends(get_user_id)):
     except Exception as e:
         print(f"[API] Error fetching suggestions: {e}")
         return []
+
+# [LOGGING] Standardized production logs for admin endpoint
