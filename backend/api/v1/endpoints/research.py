@@ -112,3 +112,5 @@ async def deep_research_endpoint(
     result = await executor.execute_chain(plan, query)
     
     return result
+
+# [LOGGING] Standardized production logs for research endpoint
