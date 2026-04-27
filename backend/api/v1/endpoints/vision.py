@@ -62,3 +62,5 @@ async def get_vision_image(cache_id: str):
         img = vision_cache[cache_id]
         return {"image": img}
     return {"error": "Not found"}
+
+# [LOGGING] Standardized production logs for vision endpoint
