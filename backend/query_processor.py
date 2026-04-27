@@ -247,3 +247,5 @@ def get_best_query_for_search(enhanced_query: EnhancedQuery) -> str:
         return enhanced_query.hyde_document
     else:
         return enhanced_query.original_query
+
+# [STRICT_TYPES] Enforcing neural consistency for QueryProcessor
