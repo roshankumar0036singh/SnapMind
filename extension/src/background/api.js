@@ -1,45 +1,57 @@
 /**
  * API Client for handling Backend/LLM communication.
  */
+import { supabase } from '../shared/supabaseClient';
 
 
-// WARNING: API Key is now managed via Settings (chrome.storage).
-// WARNING: API Key is now managed via Settings (chrome.storage).
-// User's working Python script uses "gemini-2.5-flash". Syncing extension to match.
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
-// Default to env var if available, else empty (user must set it in settings)
-const DEFAULT_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-const DEFAULT_BACKEND_URL = "https://roshan123478-snapmind-backend.hf.space";
-const DEFAULT_HF_TOKEN = "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";
+const DEFAULT_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
 export const apiClient = {
     /**
-     * Retrieves the backend base URL from storage or returns default.
+     * Generic GET helper with auth and base URL.
+     */
+    async get(endpoint) {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+            headers: await this.getApiKeysHeaders()
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: `Fetch failed: ${response.status}` }));
+            throw new Error(err.detail || "Server Error");
+        }
+        return await response.json();
+    },
+
+    /**
+     * Generic POST helper with auth and base URL.
+     */
+    async post(endpoint, body) {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                ...(await this.getApiKeysHeaders())
+            },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: `POST failed: ${response.status}` }));
+            throw new Error(err.detail || "Server Error");
+        }
+        return await response.json();
+    },
+
+    /**
+     * Retrieves the backend base URL.
+     * Prioritizes VITE_BACKEND_URL environment variable, falling back to default production node.
      */
     async getBaseUrl() {
-        console.log("[DEBUG] getBaseUrl() called");
-
-        // 1. Check if user activated Local Desktop Backend Mode
-        const storage = await new Promise(r => chrome.storage.local.get(['backendUrl', 'useLocalBackend'], r));
-
-        if (storage.useLocalBackend) {
-            console.log("[DEBUG] Sending traffic to LOCAL DESKTOP BACKEND: http://localhost:8000");
-            return "http://localhost:8000";
-        }
-
-        // 2. Prioritize user-configured URL from storage
-        if (storage.backendUrl) {
-            console.log("[DEBUG] Found configured backendUrl in storage:", storage.backendUrl);
-            return storage.backendUrl.replace(/\/$/, "");
-        }
-
-        // 3. Fallback to Environment Variable (Vite)
+        // Fallback to Environment Variable (Vite)
         const envUrl = import.meta.env.VITE_BACKEND_URL;
-        console.log("[DEBUG] Fallback to env VITE_BACKEND_URL:", envUrl);
         if (envUrl) return envUrl.replace(/\/$/, "");
 
-        // 4. Last resort hardcoded default
-        console.log("[DEBUG] Last resort: DEFAULT_BACKEND_URL:", DEFAULT_BACKEND_URL);
+        // Finally, use hardcoded production default
         return DEFAULT_BACKEND_URL.replace(/\/$/, "");
     },
 
@@ -47,18 +59,24 @@ export const apiClient = {
      * Retrieves all custom API keys from extension storage to pass to the backend.
      */
     async getApiKeysHeaders() {
-        return new Promise((resolve) => {
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey'], (res) => {
+        return new Promise(async (resolve) => {
+            // 1. Get Supabase Auth Session
+            const { data: { session } } = await supabase.auth.getSession();
+
+            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'hfToken'], (res) => {
                 const headers = {};
                 if (res.geminiApiKey) headers['x-gemini-key'] = res.geminiApiKey;
                 if (res.mistralApiKey) headers['x-mistral-key'] = res.mistralApiKey;
                 if (res.lingodevApiKey) headers['x-lingodev-key'] = res.lingodevApiKey;
                 if (res.firecrawlApiKey) headers['x-firecrawl-key'] = res.firecrawlApiKey;
 
-                // HF token is now hardcoded as per user preference
-                if (DEFAULT_HF_TOKEN) {
-                    headers['Authorization'] = `Bearer ${DEFAULT_HF_TOKEN}`;
-                    headers['x-hf-token'] = DEFAULT_HF_TOKEN;
+                // 2. Set Authorization Header for Backend Security
+                if (session && session.access_token) {
+                    headers['Authorization'] = `Bearer ${session.access_token}`;
+                }
+
+                if (res.hfToken) {
+                    headers['x-hf-token'] = res.hfToken;
                 }
 
                 if (res.groqApiKey) headers['x-groq-key'] = res.groqApiKey;
@@ -87,7 +105,7 @@ export const apiClient = {
             console.log(`[Lingo.dev] Translating via backend API: "${text.substring(0, 30)}..."`);
             const apiKeysHeaders = await this.getApiKeysHeaders();
             const baseUrl = await this.getBaseUrl();
-            const response = await fetch(`${baseUrl}/translate`, {
+            const response = await fetch(`${baseUrl}/api/v1/translate`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -130,7 +148,7 @@ export const apiClient = {
     async getApiKey() {
         return new Promise((resolve) => {
             chrome.storage.local.get(['geminiApiKey'], (result) => {
-                resolve(result.geminiApiKey || DEFAULT_KEY);
+                resolve(result.geminiApiKey || null);
             });
         });
     },
@@ -147,9 +165,9 @@ export const apiClient = {
         const baseUrl = await this.getBaseUrl();
 
         try {
-            console.log(`[API] analyzeImage calling: ${baseUrl}/analyze-image (Mode: ${mode})`);
+            console.log(`[API] analyzeImage calling: ${baseUrl}/api/v1/vision/analyze-image (Mode: ${mode})`);
 
-            const response = await fetch(`${baseUrl}/analyze-image`, {
+            const response = await fetch(`${baseUrl}/api/v1/vision/analyze-image`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -159,7 +177,8 @@ export const apiClient = {
                     image_data: base64Image,
                     prompt: prompt,
                     mode: mode,
-                    target_lang: options.outputLang || "auto"
+                    target_lang: options.outputLang || "auto",
+                    active_context: options.activeContext || null
                 })
             });
 
@@ -175,7 +194,7 @@ export const apiClient = {
                 }
             } catch (e) {
                 if (textBody.includes("<!DOCTYPE html>") || textBody.includes("<html")) {
-                    throw new Error(`Backend returned HTML instead of JSON. Ensure your Backend URL is correct and not hitting a dev server or proxy. (URL: ${baseUrl}/analyze-image)`);
+                    throw new Error(`Backend returned HTML instead of JSON. Ensure your Backend URL is correct and not hitting a dev server or proxy. (URL: ${baseUrl}/api/v1/vision/analyze-image)`);
                 }
                 throw new Error(`Invalid Response: ${textBody.substring(0, 100)}...`);
             }
@@ -211,12 +230,12 @@ export const apiClient = {
 
         // Get Backend URL from storage
         const baseUrl = await this.getBaseUrl();
-        const chatEndpoint = `${baseUrl}/chat`;
+        const chatEndpoint = `${baseUrl}/api/v1/search/chat`;
 
         try {
             console.log(`[API] Fetching ${chatEndpoint}...`);
 
-            const response = await fetch(chatEndpoint, {
+            const response = await fetch(`${baseUrl}/api/v1/search/chat`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -229,7 +248,8 @@ export const apiClient = {
                     content_blocks: blocks, // [NEW] Phase 1: Send structured blocks
                     page_content: fullText,  // Fallback / Debug
                     output_lang: arguments[2]?.outputLang || 'auto',
-                    query_notebook: !!arguments[2]?.queryNotebook // Access from potential options object
+                    query_notebook: !!arguments[2]?.queryNotebook, // Access from potential options object
+                    workspace_id: arguments[2]?.workspaceId || null
                 })
             });
 
@@ -302,7 +322,7 @@ export const apiClient = {
      */
     async getTags() {
         const baseUrl = await this.getBaseUrl();
-        const tagsEndpoint = `${baseUrl}/tags`;
+        const tagsEndpoint = `${baseUrl}/api/v1/tags`;
 
         try {
             const response = await fetch(tagsEndpoint, {
@@ -333,7 +353,7 @@ export const apiClient = {
      */
     async getSuggestions(pageContent, url, siteId) {
         const baseUrl = await this.getBaseUrl();
-        const suggestEndpoint = `${baseUrl}/chat/suggest`;
+        const suggestEndpoint = `${baseUrl}/api/v1/chat/suggest`;
 
         try {
             const response = await fetch(suggestEndpoint, {
@@ -373,7 +393,7 @@ export const apiClient = {
     async ingestPage(url, crawl_mode = 'single', max_pages = 10, max_depth = 3, target_lang = 'auto', session_id = null) {
         // Get Backend URL from storage
         const baseUrl = await this.getBaseUrl();
-        const ingestEndpoint = `${baseUrl}/ingest`;
+        const ingestEndpoint = `${baseUrl}/api/v1/ingest`;
 
         try {
             const apiKeysHeaders = await this.getApiKeysHeaders();
@@ -433,7 +453,7 @@ export const apiClient = {
     /**
      * Streams ingestion progress using NDJSON.
      */
-    async streamIngest(url, text = null, sessionId = null, onProgress, mode = "single", maxPages = 50, maxDepth = 3) {
+    async streamIngest(url, text = null, sessionId = null, onProgress, mode = "single", maxPages = 50, maxDepth = 3, workspaceId = null) {
         console.log('[API] Stream Ingest request...', url);
         const baseUrl = await this.getBaseUrl();
         const headers = await this.getApiKeysHeaders();
@@ -445,13 +465,14 @@ export const apiClient = {
                 stream: true,
                 crawl_mode: mode,
                 max_pages: maxPages,
-                max_depth: maxDepth
+                max_depth: maxDepth,
+                workspace_id: workspaceId
             };
             if (text) {
                 bodyPayload.text_content = text;
             }
 
-            const response = await fetch(`${baseUrl}/ingest`, {
+            const response = await fetch(`${baseUrl}/api/v1/ingest`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...headers },
                 body: JSON.stringify(bodyPayload)
@@ -508,7 +529,7 @@ export const apiClient = {
     async ingestText(url, text, session_id = null) {
         // Get Backend URL from storage
         const baseUrl = await this.getBaseUrl();
-        const ingestEndpoint = `${baseUrl}/ingest`; // Match backend route
+        const ingestEndpoint = `${baseUrl}/api/v1/ingest`; // Match backend route
 
         try {
             console.log(`[API] Ingesting text for ${url} (Session: ${session_id}) to ${ingestEndpoint}...`);
@@ -566,7 +587,7 @@ export const apiClient = {
     async ingestFile(file, siteUrl = null, targetLanguage = "auto", sessionId = null) {
         // Get Backend URL from storage
         const baseUrl = await this.getBaseUrl();
-        const ingestEndpoint = `${baseUrl}/ingest/file`;
+        const ingestEndpoint = `${baseUrl}/api/v1/ingest/file`;
 
         try {
             console.log(`[API] Uploading file ${file.name} to ${ingestEndpoint} with targetLanguage: ${targetLanguage}...`);
@@ -619,13 +640,40 @@ export const apiClient = {
     },
 
     /**
+     * Gets all workspaces for the current user
+     */
+    async getWorkspaces() {
+        const baseUrl = await this.getBaseUrl();
+        try {
+            const response = await fetch(`${baseUrl}/api/v1/workspaces/`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(await this.getApiKeysHeaders())
+                }
+            });
+
+            if (!response.ok) {
+                console.error(`[API] fetch Workspaces failed: ${response.status}`);
+                return { success: false, data: [] };
+            }
+
+            const data = await response.json();
+            return { success: true, data: data };
+        } catch (error) {
+            console.error("fetch Workspaces Error:", error);
+            return { success: false, data: [] };
+        }
+    },
+
+    /**
      * Triggers a background ingestion of a full GitHub repository.
      * @param {string} repoUrl - The URL of the GitHub repository.
      * @param {string} [targetLanguage="auto"] - Optional language to translate comments/docs to.
      */
     async ingestGithub(repoUrl, targetLanguage = "auto", sessionId = null) {
         const baseUrl = await this.getBaseUrl();
-        const ingestEndpoint = `${baseUrl}/ingest/github`;
+        const ingestEndpoint = `${baseUrl}/api/v1/ingest/github`;
 
         try {
             console.log(`[API] Triggering GitHub ingestion for ${repoUrl} to ${ingestEndpoint} (Session: ${sessionId})...`);
@@ -677,8 +725,8 @@ export const apiClient = {
     async getGraphData(sessionId = null) {
         const baseUrl = await this.getBaseUrl();
         const endpoint = sessionId
-            ? `${baseUrl}/graph/session/${sessionId}`
-            : `${baseUrl}/graph/data`;
+            ? `${baseUrl}/api/v1/graph/session/${sessionId}`
+            : `${baseUrl}/api/v1/graph/data`;
 
         try {
             const response = await fetch(endpoint, {
@@ -712,7 +760,7 @@ export const apiClient = {
 
     async getGraphSessions() {
         const baseUrl = await this.getBaseUrl();
-        const endpoint = `${baseUrl}/graph/sessions`;
+        const endpoint = `${baseUrl}/api/v1/graph/sessions`;
 
         try {
             const response = await fetch(endpoint, {
@@ -746,13 +794,17 @@ export const apiClient = {
 
     async downloadReport(sessionId, query) {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/browser/generate_report`, {
+        const response = await fetch(`${baseUrl}/api/v1/research/generate_report`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
                 ...(await this.getApiKeysHeaders())
             },
-            body: JSON.stringify({ session_id: sessionId, query: query })
+            body: JSON.stringify({ 
+                session_ids: [sessionId], 
+                query: query,
+                output_lang: "auto"
+            })
         });
 
         if (response.status === 202) {
@@ -769,7 +821,7 @@ export const apiClient = {
 
     async getIngestStatus(sessionId) {
         const baseUrl = await this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/browser/ingest_status/${sessionId}`, {
+        const response = await fetch(`${baseUrl}/api/v1/ingest/status/${sessionId}`, {
             headers: await this.getApiKeysHeaders()
         });
         if (!response.ok) return { status: 'unknown' };
@@ -785,7 +837,7 @@ export const apiClient = {
     async queryBrowserMode(question, sessionId = null, options = {}) {
         console.log('[API] Sending Browser Query to Backend...', { question, ...options });
         const baseUrl = await this.getBaseUrl();
-        const endpoint = `${baseUrl}/browser/research`;
+        const endpoint = `${baseUrl}/api/v1/research/research`;
 
         try {
             const response = await fetch(endpoint, {
@@ -799,7 +851,8 @@ export const apiClient = {
                     session_id: sessionId,
                     output_lang: options.outputLang || 'auto',
                     query_notebook: !!options.queryNotebook,
-                    image_data: options.imagePayload || null
+                    image_data: options.imagePayload || null,
+                    research_mode: options.research_mode || 'general'
                 })
             });
 
@@ -812,7 +865,9 @@ export const apiClient = {
             return {
                 answer: data.answer || "No response generated.",
                 citations: data.citations || [],
-                blocks: data.blocks || []
+                blocks: data.blocks || [],
+                status: data.status,
+                locked_url: data.locked_url
             };
 
         } catch (error) {
@@ -834,12 +889,12 @@ export const apiClient = {
      * @param {function} onBlocks - Callback(blocks) for metadata blocks.
      * @returns {Promise<Object>} Final result/metadata.
      */
-    async streamQueryRag(blocks, question, onChunk, onBlocks, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false) {
-        console.log('[API] Stream RAG request...', siteId ? `(Site: ${siteId})` : '', queryNotebook ? '(Notebook ON)' : '');
+    async streamQueryRag(blocks, question, onChunk, onBlocks, siteId = null, sessionId = null, search_query = null, query_lang = null, outputLang = "auto", queryNotebook = false, onThought = null, workspaceId = null) {
+        console.log('[API] Stream RAG request...', siteId ? `(Site: ${siteId})` : '', queryNotebook ? '(Notebook ON)' : '', workspaceId ? `(Workspace: ${workspaceId})` : '');
         const baseUrl = await this.getBaseUrl();
 
         try {
-            const response = await fetch(`${baseUrl}/chat/stream`, {
+            const response = await fetch(`${baseUrl}/api/v1/search/chat/stream`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -855,7 +910,8 @@ export const apiClient = {
                     session_id: sessionId,
                     history: null,
                     output_lang: outputLang,
-                    query_notebook: queryNotebook
+                    query_notebook: queryNotebook,
+                    workspace_id: workspaceId
                 })
             });
 
@@ -883,10 +939,14 @@ export const apiClient = {
                         const data = JSON.parse(trimmedLine);
                         if (data.type === 'token') {
                             onChunk(data.text);
+                        } else if (data.type === 'answer') {
+                            onChunk(data.data);
+                        } else if (data.type === 'thought') {
+                            if (onThought) onThought(data.data);
                         } else if (data.type === 'retrieved_blocks') {
                             if (onBlocks) onBlocks(data.blocks);
-                        } else if (data.type === 'usage' || data.type === 'error') {
-                            finalMetadata = data;
+                        } else if (data.type === 'metadata' || data.type === 'usage' || data.type === 'error') {
+                            finalMetadata = { ...finalMetadata, ...data };
                         }
                     } catch (e) {
                         console.warn("Stream parse error", e, "Line:", trimmedLine);
@@ -922,7 +982,9 @@ export const apiClient = {
     async getSites() {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/sites`);
+            const response = await fetch(`${baseUrl}/api/v1/sites`, {
+                headers: await this.getApiKeysHeaders()
+            });
 
             const contentType = response.headers.get("content-type");
             let data;
@@ -951,7 +1013,10 @@ export const apiClient = {
     async deleteSite(siteId) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/sites/${siteId}`, { method: 'DELETE' });
+            const response = await fetch(`${baseUrl}/api/v1/sites/${siteId}`, { 
+                method: 'DELETE',
+                headers: await this.getApiKeysHeaders() 
+            });
             if (!response.ok) throw new Error("Failed to delete site");
             return { success: true };
         } catch (e) {
@@ -968,10 +1033,12 @@ export const apiClient = {
     async exportSite(siteUrl, format = 'json') {
         const encodedUrl = encodeURIComponent(siteUrl);
         const baseUrl = await this.getBaseUrl();
-        const url = `${baseUrl}/export/${encodedUrl}?format=${format}`;
+        const url = `${baseUrl}/api/v1/export/${encodedUrl}?format=${format}`;
 
         try {
-            const response = await fetch(url);
+            const response = await fetch(url, {
+                headers: await this.getApiKeysHeaders()
+            });
             if (!response.ok) throw new Error(`Export failed: ${response.statusText}`);
 
             // Trigger download
@@ -996,7 +1063,9 @@ export const apiClient = {
     async getBookmarks() {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks`);
+            const response = await fetch(`${baseUrl}/api/v1/bookmarks`, {
+                headers: await this.getApiKeysHeaders()
+            });
 
             const contentType = response.headers.get("content-type");
             let data;
@@ -1025,7 +1094,7 @@ export const apiClient = {
     async createBookmark(content, sourceUrl, metadata = {}) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks`, {
+            const response = await fetch(`${baseUrl}/api/v1/bookmarks`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -1065,7 +1134,10 @@ export const apiClient = {
     async deleteBookmark(bookmarkId) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/bookmarks/${bookmarkId}`, { method: 'DELETE' });
+            const response = await fetch(`${baseUrl}/api/v1/bookmarks/${bookmarkId}`, { 
+                method: 'DELETE',
+                headers: await this.getApiKeysHeaders()
+            });
             if (!response.ok) throw new Error("Failed to delete bookmark");
             return { success: true };
         } catch (e) {
@@ -1081,7 +1153,7 @@ export const apiClient = {
     async getIngestionStatus(jobId) {
         const baseUrl = await this.getBaseUrl();
         try {
-            const response = await fetch(`${baseUrl}/ingest/status/${jobId}`, {
+            const response = await fetch(`${baseUrl}/api/v1/ingest/status/${jobId}`, {
                 headers: { ...(await this.getApiKeysHeaders()) }
             });
 
@@ -1110,12 +1182,16 @@ export const apiClient = {
         }
     },
 
-    // --- Saved Pages Feature (Port 5001) ---
     async savePageData(url, text, folderName = "General") {
+        const baseUrl = await this.getBaseUrl();
+        const endpoint = `${baseUrl}/api/v1/saved-pages`;
         try {
-            const response = await fetch("http://localhost:8000/api/save_page", {
+            const response = await fetch(endpoint, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(await this.getApiKeysHeaders())
+                },
                 body: JSON.stringify({ url, text, folder_name: folderName })
             });
             return await response.json();
@@ -1126,8 +1202,12 @@ export const apiClient = {
     },
 
     async getSavedPages() {
+        const baseUrl = await this.getBaseUrl();
+        const endpoint = `${baseUrl}/api/v1/saved-pages`;
         try {
-            const response = await fetch("http://localhost:8000/api/get_pages");
+            const response = await fetch(endpoint, {
+                headers: await this.getApiKeysHeaders()
+            });
             return await response.json();
         } catch (e) {
             console.error("Get Saved Pages Error:", e);
@@ -1140,7 +1220,7 @@ export const apiClient = {
      */
     async ingestWidget(url, widgetId, maxPages = 50, maxDepth = 3) {
         const baseUrl = await this.getBaseUrl();
-        const endpoint = `${baseUrl}/widget/ingest`;
+        const endpoint = `${baseUrl}/api/v1/widget/ingest`;
 
         try {
             const response = await fetch(endpoint, {

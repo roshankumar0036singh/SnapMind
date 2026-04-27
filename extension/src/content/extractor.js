@@ -28,9 +28,25 @@ export class DomExtractor {
 
     /**
      * Attempts to find the most relevant container for content.
-     * Falls back to body if no article/main found.
      */
     findMainContent() {
+        // LinkedIn Specific: Try to find the profile container first
+        if (window.location.hostname.includes('linkedin.com')) {
+            const profileSelectors = [
+                'main.scaffold-layout__main', 
+                'div#profile-content',
+                'section.pv-top-card',
+                '.pv-profile-section',
+                '#experience-section'
+            ];
+            for (const selector of profileSelectors) {
+                const el = document.querySelector(selector);
+                if (el && el.innerText.length > 200) {
+                    return { element: el, type: 'linkedin-profile-core' };
+                }
+            }
+        }
+
         const candidates = [
             'article',
             'main',
@@ -39,6 +55,7 @@ export class DomExtractor {
             '#main',
             '.main-content'
         ];
+
 
         for (const selector of candidates) {
             const el = document.querySelector(selector);
@@ -99,12 +116,24 @@ export class DomExtractor {
     shouldIgnore(node) {
         if (node.nodeType === Node.ELEMENT_NODE) {
             const tag = node.tagName.toLowerCase();
-            if (['script', 'style', 'noscript', 'svg', 'iframe', 'button', 'nav', 'footer', 'header'].includes(tag)) {
+            const cls = (node.className || "").toString().toLowerCase();
+            const id = (node.id || "").toLowerCase();
+
+            // Ignore navigation, footers, headers, and buttons
+            if (['script', 'style', 'noscript', 'svg', 'iframe', 'button', 'nav', 'footer', 'header', 'aside'].includes(tag)) {
                 return true;
             }
 
+            // LinkedIn specific noise filters (login banners, related profiles, ads)
+            if (window.location.hostname.includes('linkedin.com')) {
+                const noiseClasses = ['authwall', 'login', 'signup', 'ad-banner', 'premium-upsell', 'distraction-free'];
+                if (noiseClasses.some(noise => cls.includes(noise) || id.includes(noise))) {
+                    return true;
+                }
+            }
+
             const style = window.getComputedStyle(node);
-            if (style.display === 'none' || style.visibility === 'hidden') {
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === "0") {
                 return true;
             }
         }

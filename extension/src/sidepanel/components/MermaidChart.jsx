@@ -13,7 +13,7 @@ mermaid.initialize({
         tertiaryColor: '#ffffff'
     },
     fontFamily: 'inherit',
-    securityLevel: 'loose',
+    securityLevel: 'strict',
     suppressErrorRendering: true
 });
 
@@ -53,7 +53,13 @@ export default function MermaidChart({ chart }) {
                         throw new Error("Mermaid syntax error detected in SVG output");
                     }
 
-                    if (isMounted) setSvgStr(svg);
+                    // [FIX] Strip inline event handlers and scripts to prevent CSP violations in Chrome Extensions
+                    // This handles onclick, onmouseover, etc. with double quotes, single quotes, or no quotes.
+                    const sanitizedSvg = svg
+                        .replace(/on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+                        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+                    
+                    if (isMounted) setSvgStr(sanitizedSvg);
                 }
             } catch (err) {
                 console.error("Mermaid parsing error:", err);

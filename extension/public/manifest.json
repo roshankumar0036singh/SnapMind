@@ -8,12 +8,14 @@
         "activeTab",
         "scripting",
         "storage",
-        "contextMenus"
+        "contextMenus",
+        "identity"
     ],
     "host_permissions": [
         "<all_urls>",
         "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://127.0.0.1/*",
+        "https://hscptdibreqxgnlubopc.supabase.co/*"
     ],
     "side_panel": {
         "default_path": "src/sidepanel/index.html"

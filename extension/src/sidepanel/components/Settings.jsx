@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Key, ArrowLeft } from 'lucide-react';
+import { Save, Key, ArrowLeft, LogOut, User, ExternalLink, ShieldCheck, Zap, Globe, Sparkles } from 'lucide-react';
+import { supabase } from '../../shared/supabaseClient';
 
 export default function Settings({ onBack }) {
     const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -7,22 +8,17 @@ export default function Settings({ onBack }) {
     const [lingodevApiKey, setLingodevApiKey] = useState('');
     const [firecrawlApiKey, setFirecrawlApiKey] = useState('');
     const [groqApiKey, setGroqApiKey] = useState('');
-    const [backendUrl, setBackendUrl] = useState('');
-    const [useLocalBackend, setUseLocalBackend] = useState(false);
     const [autoSuggest, setAutoSuggest] = useState(false);
     const [saved, setSaved] = useState(false);
 
     useEffect(() => {
-        // Load existing keys
         if (chrome.storage && chrome.storage.local) {
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'backendUrl', 'useLocalBackend', 'autoSuggest'], (result) => {
+            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'autoSuggest'], (result) => {
                 if (result.geminiApiKey) setGeminiApiKey(result.geminiApiKey);
                 if (result.mistralApiKey) setMistralApiKey(result.mistralApiKey);
                 if (result.lingodevApiKey) setLingodevApiKey(result.lingodevApiKey);
                 if (result.firecrawlApiKey) setFirecrawlApiKey(result.firecrawlApiKey);
                 if (result.groqApiKey) setGroqApiKey(result.groqApiKey);
-                if (result.backendUrl) setBackendUrl(result.backendUrl);
-                if (result.useLocalBackend !== undefined) setUseLocalBackend(result.useLocalBackend);
                 if (result.autoSuggest !== undefined) setAutoSuggest(result.autoSuggest);
             });
         }
@@ -33,168 +29,177 @@ export default function Settings({ onBack }) {
             chrome.storage.local.set({
                 geminiApiKey: geminiApiKey.trim(),
                 mistralApiKey: mistralApiKey.trim(),
-                lingodevApiKey: mistralApiKey.trim(), // [FIX] Sync to mistral for now
+                lingodevApiKey: lingodevApiKey.trim(),
                 firecrawlApiKey: firecrawlApiKey.trim(),
                 groqApiKey: groqApiKey.trim(),
-                backendUrl: backendUrl.trim(),
-                useLocalBackend: useLocalBackend,
-                autoSuggest: autoSuggest // [NEW] Save autoSuggest
+                autoSuggest: autoSuggest
             }, () => {
                 setSaved(true);
                 setTimeout(() => setSaved(false), 2000);
             });
-        } else {
-            console.warn("Chrome storage not available (dev mode?)");
         }
     };
 
-    const testLocalConnection = async () => {
-        setLocalConnectionStatus('testing');
-        try {
-            const res = await fetch('http://localhost:8000/bridge/status');
-            if (res.ok) {
-                const data = await res.json();
-                if (data.status === 'connected') {
-                    setLocalConnectionStatus('success');
-                    return;
-                }
-            }
-            setLocalConnectionStatus('failed');
-        } catch (e) {
-            setLocalConnectionStatus('failed');
+    const apiGroups = [
+        {
+            title: "Core Intelligence",
+            icon: <Sparkles className="w-3.5 h-3.5 text-indigo-500" />,
+            items: [
+                { id: 'gemini', label: 'Google Gemini', value: geminiApiKey, setter: setGeminiApiKey, placeholder: 'AIzaSy...', link: 'https://aistudio.google.com/app/apikey', hint: 'Embeddings & Vision' },
+                { id: 'mistral', label: 'Mistral AI', value: mistralApiKey, setter: setMistralApiKey, placeholder: 'Key...', link: 'https://console.mistral.ai/api-keys/', hint: 'Primary Reasoning' },
+            ]
+        },
+        {
+            title: "Scraping & Connectivity",
+            icon: <Globe className="w-3.5 h-3.5 text-emerald-500" />,
+            items: [
+                { id: 'firecrawl', label: 'Firecrawl', value: firecrawlApiKey, setter: setFirecrawlApiKey, placeholder: 'fc-...', link: 'https://www.firecrawl.dev/app/api-keys', hint: 'Advanced Web Scraper' },
+                { id: 'groq', label: 'Groq Cloud', value: groqApiKey, setter: setGroqApiKey, placeholder: 'gsk_...', link: 'https://console.groq.com/keys', hint: 'Ultra-fast Vision' },
+                { id: 'lingo', label: 'Lingo.dev', value: lingodevApiKey, setter: setLingodevApiKey, placeholder: 'Key...', link: 'https://lingo.dev', hint: 'I18n Translation' },
+            ]
         }
-    };
+    ];
 
     return (
-        <div className="flex flex-col h-screen bg-white">
-            {/* Header - Fixed */}
-            <div className="shrink-0 px-5 py-4 border-b border-gray-100 flex items-center gap-3 bg-white/80 backdrop-blur-sm sticky top-0 z-20">
+        <div className="flex flex-col h-screen bg-[#F8FAFC]">
+            {/* Header */}
+            <header className="shrink-0 px-4 py-4 border-b border-slate-200/60 bg-white/80 backdrop-blur-md sticky top-0 z-30 flex items-center gap-3">
                 <button
                     onClick={onBack}
-                    className="p-1 -ml-1 hover:bg-gray-100 rounded-lg transition-colors text-gray-500"
+                    className="p-1.5 hover:bg-slate-100 rounded-xl transition-all text-slate-500 active:scale-95"
                 >
-                    <ArrowLeft className="w-5 h-5" />
+                    <ArrowLeft className="w-4 h-4" />
                 </button>
-                <h2 className="font-bold text-gray-900">Settings</h2>
-            </div>
+                <div className="flex flex-col">
+                    <h2 className="font-bold text-slate-900 text-sm leading-none">Settings</h2>
+                    <span className="text-[10px] text-slate-400 font-medium mt-1 uppercase tracking-tighter">SnapMind Extension</span>
+                </div>
+            </header>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-5 pb-8">
-                
-                {/* Section: API Keys */}
-                <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                        <Key className="w-4 h-4 text-indigo-500" />
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">API Infrastructure</h3>
+            <main className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 pb-24">
+
+                {/* Account Section */}
+                <section className="space-y-3">
+                    <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                            <User className="w-3.5 h-3.5 text-slate-400" />
+                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</h3>
+                        </div>
                     </div>
 
-                    {[
-                        { id: 'gemini', label: 'Gemini (Vertex/AI)', value: geminiApiKey, setter: setGeminiApiKey, placeholder: 'AIzaSy...', hint: 'Embeddings & Vector Search' },
-                        { id: 'mistral', label: 'Mistral (Chat)', value: mistralApiKey, setter: setMistralApiKey, placeholder: 'Mistral API Key...', hint: 'Primary Chat & Reasoning' },
-                        { id: 'lingo', label: 'Lingo.dev (I18n)', value: lingodevApiKey, setter: setLingodevApiKey, placeholder: 'Lingo Key...', hint: 'Multi-language processing' },
-                        { id: 'groq', label: 'Groq (Vision)', value: groqApiKey, setter: setGroqApiKey, placeholder: 'gsk_...', hint: 'Fast Vision Analysis Falback' },
-                        { id: 'firecrawl', label: 'Firecrawl (Web)', value: firecrawlApiKey, setter: setFirecrawlApiKey, placeholder: 'fc-...', hint: 'Advanced Web Scraping' },
-                    ].map((key) => (
-                        <div key={key.id} className="space-y-1.5 bg-gray-50/50 p-3 rounded-xl border border-gray-100 transition-all focus-within:border-indigo-200">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex justify-between">
-                                {key.label}
-                                <span className="text-[9px] font-medium text-gray-400 normal-case">{key.hint}</span>
-                            </label>
-                            <input
-                                type="password"
-                                value={key.value}
-                                onChange={(e) => key.setter(e.target.value)}
-                                placeholder={key.placeholder}
-                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-mono"
-                            />
-                        </div>
-                    ))}
-                </div>
+                    <div className="bg-white p-3 rounded-2xl border border-slate-200/60 shadow-sm">
+                        <button
+                            onClick={async () => {
+                                await supabase.auth.signOut();
+                            }}
+                            className="w-full flex justify-between items-center bg-red-50/50 hover:bg-red-50 text-red-600 px-3 py-2.5 rounded-xl border border-red-100/50 transition-all active:scale-[0.98]"
+                        >
+                            <span className="text-xs font-bold">Sign Out</span>
+                            <LogOut className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                </section>
 
-                {/* Section: Connectivity */}
-                <div className="space-y-3 pt-2">
-                    <div className="flex items-center gap-2 mb-1">
-                        <Save className="w-4 h-4 text-indigo-500" />
-                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Routing</h3>
+                {/* API Key Sections */}
+                {apiGroups.map((group, idx) => (
+                    <section key={idx} className="space-y-3">
+                        <div className="flex items-center gap-2 px-1">
+                            {group.icon}
+                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{group.title}</h3>
+                        </div>
+
+                        <div className="space-y-2.5">
+                            {group.items.map((key) => (
+                                <div key={key.id} className="bg-white p-3 rounded-2xl border border-slate-200/60 shadow-sm space-y-2 transition-all focus-within:ring-2 focus-within:ring-indigo-500/10 focus-within:border-indigo-500/50">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[10px] font-bold text-slate-600 flex items-center gap-1.5">
+                                            {key.label}
+                                            <a
+                                                href={key.link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-indigo-500 hover:text-indigo-600 transition-colors"
+                                                title={`Get ${key.label} Key`}
+                                            >
+                                                <ExternalLink className="w-2.5 h-2.5" />
+                                            </a>
+                                        </label>
+                                        <span className="text-[9px] font-medium text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded-md border border-slate-100">{key.hint}</span>
+                                    </div>
+                                    <div className="relative group">
+                                        <Key className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-300 group-focus-within:text-indigo-400 transition-colors" />
+                                        <input
+                                            type="password"
+                                            value={key.value}
+                                            onChange={(e) => key.setter(e.target.value)}
+                                            placeholder={key.placeholder}
+                                            className="w-full bg-slate-50/50 border border-slate-100 rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:bg-white transition-all font-mono"
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                ))}
+
+                {/* Preferences Section */}
+                <section className="space-y-3">
+                    <div className="flex items-center gap-2 px-1">
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Behavior</h3>
                     </div>
 
-                    <div className="p-4 bg-indigo-50/40 rounded-xl border border-indigo-100/50">
-                        <div className="flex items-center justify-between mb-2">
-                             <div className="space-y-0.5">
-                                <label className="text-xs font-bold text-gray-900">
-                                    Local Fusion Mode
-                                </label>
-                                <p className="text-[10px] text-gray-500">
-                                    Bridge to SnapMind Desktop
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setUseLocalBackend(!useLocalBackend)}
-                                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${useLocalBackend ? 'bg-indigo-600' : 'bg-gray-200'}`}
-                            >
-                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${useLocalBackend ? 'translate-x-5' : 'translate-x-0'}`} />
-                            </button>
-                        </div>
-                   </div>
-
-                    {/* [NEW] AUTO SUGGEST TOGGLE */}
-                    <div className="p-4 bg-gray-50/50 rounded-xl border border-gray-100">
+                    <div className="p-4 bg-white rounded-2xl border border-slate-200/60 shadow-sm">
                         <div className="flex items-center justify-between">
                             <div className="space-y-0.5">
-                                <label className="text-xs font-bold text-gray-900">
+                                <label className="text-xs font-bold text-slate-800">
                                     Auto-Suggest Summaries
                                 </label>
-                                <p className="text-[10px] text-gray-500 italic">
-                                    Saves API quota when disabled
+                                <p className="text-[9px] text-slate-400">
+                                    Generate context-aware suggestions
                                 </p>
                             </div>
                             <button
                                 onClick={() => setAutoSuggest(!autoSuggest)}
-                                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${autoSuggest ? 'bg-indigo-600' : 'bg-gray-200'}`}
+                                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${autoSuggest ? 'bg-indigo-600' : 'bg-slate-200'}`}
                             >
-                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${autoSuggest ? 'translate-x-5' : 'translate-x-0'}`} />
+                                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${autoSuggest ? 'translate-x-4' : 'translate-x-0'}`} />
                             </button>
                         </div>
                     </div>
+                </section>
 
-                    {!useLocalBackend && (
-                        <div className="space-y-1.5 p-3 rounded-xl border border-gray-100 bg-gray-50/50">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                                Cloud Node URL
-                            </label>
-                            <input
-                                type="text"
-                                value={backendUrl}
-                                onChange={(e) => setBackendUrl(e.target.value)}
-                                placeholder="https://..."
-                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-mono"
-                            />
-                        </div>
-                    )}
+                {/* Security Note */}
+                <div className="flex items-start gap-2.5 p-3 bg-indigo-50/30 rounded-2xl border border-indigo-100/30">
+                    <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                    <p className="text-[9px] text-indigo-700/70 leading-relaxed font-medium">
+                        All keys are stored encrypted locally in your browser and never touch our servers directly.
+                    </p>
                 </div>
+            </main>
 
-                {/* Footer Sync */}
-                <div className="pt-4">
-                    <button
-                        onClick={handleSave}
-                        disabled={saved}
-                        className={`w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-xs font-bold transition-all shadow-lg ${saved
-                            ? 'bg-emerald-500 text-white shadow-emerald-200 translate-y-0'
-                            : 'bg-gray-900 text-white hover:bg-black hover:shadow-xl active:scale-95'
+            {/* Fixed Footer for Save Button */}
+            <footer className="shrink-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-200/60 absolute bottom-0 left-0 right-0 z-40">
+                <button
+                    onClick={handleSave}
+                    disabled={saved}
+                    className={`w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-bold transition-all shadow-lg active:scale-[0.98] ${saved
+                        ? 'bg-emerald-500 text-white shadow-emerald-200'
+                        : 'bg-slate-900 text-white hover:bg-slate-800 shadow-slate-200'
                         }`}
-                    >
-                        {saved ? 'Synchronized ✓' : 'Save & Refresh Bridge'}
-                        {!saved && <Save className="w-4 h-4" />}
-                    </button>
-                </div>
-            </div>
+                >
+                    {saved ? (
+                        <>Saved Successfully ✓</>
+                    ) : (
+                        <>
+                            <Save className="w-3.5 h-3.5" />
+                            Save & Sync Settings
+                        </>
+                    )}
+                </button>
+            </footer>
 
-            <style dangerouslySetInnerHTML={{ __html: `
-                .custom-scrollbar::-webkit-scrollbar { width: 3px; }
-                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-                .custom-scrollbar::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
-                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #6366f1; }
-            `}} />
         </div>
     );
 }

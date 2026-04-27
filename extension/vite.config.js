@@ -15,6 +15,10 @@ export default defineConfig({
     })
   ],
   base: './',
+  esbuild: {
+    // Re-enable consoles for auth debugging
+    drop: ['debugger'],
+  },
   build: {
     rollupOptions: {
       input: {

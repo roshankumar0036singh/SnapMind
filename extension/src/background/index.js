@@ -211,8 +211,8 @@ async function handleIngest(request) {
 
 async function handleQuery(payload) {
     try {
-        const { mode, text, tabId, windowId, backendMode } = payload;
-        console.log(`[Background] Processing ${mode} query: "${text}"`);
+        const { mode, text, tabId, windowId, backendMode, activeContext } = payload;
+        console.log(`[Background] Processing ${mode} query: "${text}" with context:`, activeContext);
 
         if (mode === 'visual') {
             let dataUrl;
@@ -240,7 +240,8 @@ async function handleQuery(payload) {
 
             // 2. Send to Visual API (Pass backendMode and outputLang if provided)
             const result = await apiClient.analyzeImage(dataUrl, text, backendMode, {
-                outputLang: payload.outputLang
+                outputLang: payload.outputLang,
+                activeContext: activeContext
             });
             return { success: true, ...result };
         }

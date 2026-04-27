@@ -98,4 +98,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse({ success: false, error: err.message });
         }
     }
+    else if (request.type === 'PING') {
+        sendResponse({ success: true, message: 'PONG' });
+    }
 });

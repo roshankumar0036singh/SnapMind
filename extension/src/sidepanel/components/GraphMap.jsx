@@ -264,7 +264,7 @@ const GraphMap = ({ data, isLoading }) => {
                 ref={containerRef}
                 style={{
                     width: '100%',
-                    height: '500px',
+                    height: '350px',
                     cursor: 'grab'
                 }}
             />

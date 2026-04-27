@@ -1,6 +1,6 @@
 import * as HoverCard from '@radix-ui/react-hover-card';
 import 'highlight.js/styles/atom-one-dark.css';
-import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin, X, ChevronRight } from 'lucide-react';
+import { Bot, Crop, Database, FileText, History, Loader2, Send, Settings as SettingsIcon, User, UserCheck, Sparkles, Github, Bookmark, Globe, Youtube, MessageSquare, Pin, X, ChevronRight, Search, GraduationCap, Scale } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -11,6 +11,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import ShortcutsModal from './components/ShortcutsModal';
 import GraphMap from './components/GraphMap';
+import AuthView from './components/AuthView';
+import { supabase } from '../shared/supabaseClient';
 import './styles/design-tokens.css';
 
 // Lazy load heavy components for better initial load
@@ -19,6 +21,7 @@ const SessionList = lazy(() => import('./components/SessionList'));
 const SavedPagesView = lazy(() => import('./components/SavedPagesView')); // [NEW] Saved Pages View
 const EvolutionTimeline = lazy(() => import('./components/EvolutionTimeline'));
 const ResearchPathMap = lazy(() => import('./components/ResearchPathMap'));
+const BatchCaptureView = lazy(() => import('./components/BatchCaptureView'));
 import MermaidChart from './components/MermaidChart';
 
 // Custom Markdown Components
@@ -27,11 +30,16 @@ import MermaidChart from './components/MermaidChart';
 
 
 
-const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight }) => {
+const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight, children }) => {
   // Find block content
-  const block = blocks?.find(b => b.id === citation.blockId);
-  const text = block ? block.text : "Content not available.";
-  const preview = text.length > 200 ? text.substring(0, 200) + "..." : text;
+  // Find block content with robust prefix-agnostic matching
+  const normalizeId = (id) => id?.toLowerCase().replace(/^(bi|nb|db|br|block)-block-/i, '');
+  const targetId = normalizeId(citation.blockId);
+  const block = blocks?.find(b => b.id === citation.blockId || normalizeId(b.id) === targetId);
+  const credScore = block?.credibility_score;
+  const credTier = block?.credibility_tier;
+  const text = block ? (block.text || block.content || "Content not available.") : "Content not available.";
+  const preview = typeof text === 'string' && text.length > 200 ? text.substring(0, 200) + "..." : (text || "");
 
   // [NEW] YouTube Parsing — prefer pre-computed metadata from backend, fall back to regex
   const isYouTube = block?.source_type === 'youtube' || block?.url?.includes('youtube.com') || block?.url?.includes('youtu.be');
@@ -58,115 +66,129 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
   return (
     <HoverCard.Root openDelay={200} closeDelay={100}>
       <HoverCard.Trigger asChild>
-        <button
-          onClick={async () => {
-            console.log("Clicked citation:", citation.blockId);
-            const targetUrl = block?.url || block?.sourceURL;
+        {children ? (
+          <span className="inline-flex items-baseline">
+            {children}
+          </span>
+        ) : (
+          <button
+            onClick={async () => {
+              console.log("Clicked citation:", citation.blockId);
+              const targetUrl = block?.url || block?.sourceURL;
 
-            if (isYouTube && (youtubeTimestamp || youtubeUrl)) {
-              // Prefer pre-computed deep-link URL from backend
-              const targetYtUrl = youtubeUrl || (block?.url ? `${block.url.split('?')[0]}?t=${youtubeSeconds}s` : null);
-              chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                const activeTabUrl = tabs[0]?.url || "";
-                if (activeTabUrl.includes('youtube.com/watch') || activeTabUrl.includes('youtu.be/')) {
+              if (isYouTube && (youtubeTimestamp || youtubeUrl)) {
+                // Prefer pre-computed deep-link URL from backend
+                const targetYtUrl = youtubeUrl || (block?.url ? `${block.url.split('?')[0]}?t=${youtubeSeconds}s` : null);
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                  const activeTabUrl = tabs[0]?.url || "";
+                  if (activeTabUrl.includes('youtube.com/watch') || activeTabUrl.includes('youtu.be/')) {
+                    if (tabs[0]?.id) {
+                      chrome.tabs.sendMessage(tabs[0].id, {
+                        type: 'SEEK_YOUTUBE',
+                        seconds: youtubeSeconds
+                      });
+                    }
+                  } else if (targetYtUrl) {
+                    chrome.tabs.create({ url: targetYtUrl });
+                  } else {
+                    const vIdMatch = block?.url?.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
+                    const videoId = vIdMatch ? vIdMatch[1] : '';
+                    if (videoId) {
+                      chrome.tabs.create({ url: `https://youtube.com/watch?v=${videoId}&t=${youtubeSeconds}s` });
+                    }
+                  }
+                });
+              } else if (targetUrl) {
+                const highlightUrl = citation.highlightUrl || targetUrl;
+
+                // [FIX] Clean markdown from snippet and take a longer, robust window
+                const cleanSnippetText = (text) => {
+                  if (!text) return '';
+                  let cleaned = text.replace(/\[((?:bi|nb|db|br|block)-block-[\d-]+|pin-[a-zA-Z0-9-]+-\d+)\]/gi, '')
+                    .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
+                    .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
+                    .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
+                    .replace(/\s+/g, ' ')                 // Collapse whitespace
+                    .trim();
+
+                  if (cleaned.length > 150) {
+                    const lastSpace = cleaned.lastIndexOf(' ', 150);
+                    cleaned = cleaned.substring(0, lastSpace > 30 ? lastSpace : 150);
+                  }
+                  return cleaned;
+                };
+
+                // Prefer clean highlight_snippet from backend, fall back to raw text cleaning
+                const rawText = block?.text || block?.content || '';
+                const snippet = block?.highlight_snippet || (rawText ? cleanSnippetText(rawText) : '');
+                console.log(`[Citation] Highlighting ${citation.blockId} with snippet: "${snippet.substring(0, 50)}..."`);
+
+                const pageNum = block?.metadata?.page || block?.page;
+                onHighlight(citation.blockId, highlightUrl, snippet, pageNum);
+              } else {
+                // Local/Active tab fallback (same page)
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                   if (tabs[0]?.id) {
+                    const cleanSnippetText = (text) => {
+                      if (!text) return '';
+                      let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)\]/gi, '')
+                        .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
+                        .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
+                        .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
+                        .replace(/\s+/g, ' ')                 // Collapse whitespace
+                        .trim();
+                      if (cleaned.length > 150) {
+                        const lastSpace = cleaned.lastIndexOf(' ', 150);
+                        cleaned = cleaned.substring(0, lastSpace > 30 ? lastSpace : 150);
+                      }
+                      return cleaned;
+                    };
+                    // Prefer highlight_snippet from backend, fall back to raw text
+                    const rawText = block?.text || block?.content || '';
+                    const snippet = block?.highlight_snippet || (rawText ? cleanSnippetText(rawText) : '');
                     chrome.tabs.sendMessage(tabs[0].id, {
-                      type: 'SEEK_YOUTUBE',
-                      seconds: youtubeSeconds
+                      type: 'HIGHLIGHT_CITATION',
+                      blockId: citation.blockId,
+                      text: snippet
+                    }, (resp) => {
+                      if (chrome.runtime.lastError) {
+                        console.warn("Highlight msg failed:", chrome.runtime.lastError);
+                        toast.error("Highlight failed: Please refresh the target page and try again.", { duration: 3000 });
+                      }
                     });
                   }
-                } else if (targetYtUrl) {
-                  chrome.tabs.create({ url: targetYtUrl });
-                } else {
-                  const vIdMatch = block?.url?.match(/(?:v=|\/)([0-9A-Za-z_-]{11}).*/);
-                  const videoId = vIdMatch ? vIdMatch[1] : '';
-                  if (videoId) {
-                    chrome.tabs.create({ url: `https://youtube.com/watch?v=${videoId}&t=${youtubeSeconds}s` });
-                  }
-                }
-              });
-            } else if (targetUrl) {
-              const highlightUrl = citation.highlightUrl || targetUrl;
-
-              // [FIX] Clean markdown from snippet and take a longer, robust window
-              const cleanSnippetText = (text) => {
-                if (!text) return '';
-                let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[\d-]+|pin-[a-zA-Z0-9-]+-\d+)\]/gi, '')
-                  .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
-                  .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
-                  .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
-                  .replace(/\s+/g, ' ')                 // Collapse whitespace
-                  .trim();
-
-                if (cleaned.length > 150) {
-                  const lastSpace = cleaned.lastIndexOf(' ', 150);
-                  cleaned = cleaned.substring(0, lastSpace > 30 ? lastSpace : 150);
-                }
-                return cleaned;
-              };
-
-              // Prefer clean highlight_snippet from backend, fall back to raw text cleaning
-              const snippet = block?.highlight_snippet || (block?.text ? cleanSnippetText(block.text) : '');
-              console.log(`[Citation] Highlighting ${citation.blockId} with snippet: "${snippet.substring(0, 50)}..."`);
-
-              const pageNum = block?.metadata?.page || block?.page;
-              onHighlight(citation.blockId, highlightUrl, snippet, pageNum);
-            } else {
-              // Local/Active tab fallback (same page)
-              chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                if (tabs[0]?.id) {
-                  const cleanSnippetText = (text) => {
-                    if (!text) return '';
-                    let cleaned = text.replace(/\[((?:bi|nb|db|br)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+-\d+)\]/gi, '')
-                      .replace(/https?:\/\/[^\s\)]+/g, '') // Strip URLs
-                      .replace(/[*_~`#>\\]/g, '')           // Strip markdown formatting chars
-                      .replace(/[\[\]\(\)]/g, ' ')          // Convert ANY brackets/parens to spaces
-                      .replace(/\s+/g, ' ')                 // Collapse whitespace
-                      .trim();
-                    if (cleaned.length > 150) {
-                      const lastSpace = cleaned.lastIndexOf(' ', 150);
-                      cleaned = cleaned.substring(0, lastSpace > 30 ? lastSpace : 150);
-                    }
-                    return cleaned;
-                  };
-                  // Prefer highlight_snippet from backend
-                  const snippet = block?.highlight_snippet || (block?.text ? cleanSnippetText(block.text) : '');
-                  chrome.tabs.sendMessage(tabs[0].id, {
-                    type: 'HIGHLIGHT_CITATION',
-                    blockId: citation.blockId,
-                    text: snippet
-                  }, (resp) => {
-                    if (chrome.runtime.lastError) {
-                      console.warn("Highlight msg failed:", chrome.runtime.lastError);
-                      toast.error("Highlight failed: Please refresh the target page and try again.", { duration: 3000 });
-                    }
-                  });
-                }
-              });
-            }
-          }}
-          className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition-all cursor-pointer ${isYouTube
-            ? 'bg-rose-50/90 text-rose-700 border-rose-200 hover:bg-rose-100 shadow-sm'
-            : isBookmarked
-              ? 'bg-amber-100/80 text-amber-800 border-amber-300 shadow-sm'
-              : 'bg-amber-50/50 text-amber-700 hover:bg-amber-100 border-amber-200/60'
-            }`}
-        >
-          {isYouTube ? (
-            <Youtube className="w-3.5 h-3.5 text-rose-600" />
-          ) : (
-            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${isBookmarked ? 'bg-amber-600' : 'bg-amber-400 group-hover:bg-amber-500'}`}></span>
-          )}
-          {isYouTube ? (
-            <span className="flex items-center gap-1">
-              <span className="font-semibold truncate max-w-[80px]">{block?.title || 'YouTube'}</span>
-              {youtubeTimestamp && <span className="opacity-75 font-mono">{youtubeTimestamp}</span>}
-            </span>
-          ) : (
-            (isBookmarked ? 'Saved' :
-              (citation.blockId?.startsWith?.('pin-') ? 'Source' : 'Source'))
-          )} {!isYouTube ? (citation.blockId?.match?.(/\d+$/)?.[0] || citation.blockId?.replace?.(/^(bi-block-|nb-block-|db-block-|pin-[a-zA-Z0-9-]+-)/i, '') || 'Link') : ''}
-        </button>
+                });
+              }
+            }}
+            className={`group flex items-center gap-1.5 px-2.5 py-1.5 border rounded-lg text-[11px] font-medium transition-all cursor-pointer ${isYouTube
+              ? 'bg-rose-50/90 text-rose-700 border-rose-200 hover:bg-rose-100 shadow-sm'
+              : isBookmarked
+                ? 'bg-amber-100/80 text-amber-800 border-amber-300 shadow-sm'
+                : 'bg-amber-50/50 text-amber-700 hover:bg-amber-100 border-amber-200/60'
+              }`}
+          >
+            {isYouTube ? (
+              <Youtube className="w-3.5 h-3.5 text-rose-600" />
+            ) : block?.url ? (
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${getSafeHostname(block.url)}&sz=32`}
+                className="w-3 h-3 rounded-sm"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
+            ) : null}
+            {isYouTube ? (
+              <span className="flex items-center gap-1">
+                <span className="font-semibold truncate max-w-[80px]">{block?.title || 'YouTube'}</span>
+                {youtubeTimestamp && <span className="opacity-75 font-mono">{youtubeTimestamp}</span>}
+              </span>
+            ) : (
+              <>
+                <span className="truncate max-w-[100px] font-semibold">{isBookmarked ? 'Saved' : 'Source'}</span>
+                <span className="opacity-50 font-mono">[{citation.blockId?.match?.(/\d+$/)?.[0] || citation.blockId?.replace?.(/^(bi-block-|nb-block-|db-block-|pin-[a-zA-Z0-9-]+-)/i, '') || 'Link'}]</span>
+              </>
+            )}
+          </button>
+        )}
       </HoverCard.Trigger>
       <HoverCard.Portal>
         <HoverCard.Content
@@ -212,8 +234,18 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
           <HoverCard.Arrow className="fill-white" />
         </HoverCard.Content>
       </HoverCard.Portal>
-    </HoverCard.Root>
+    </HoverCard.Root >
   );
+};
+
+const getSafeHostname = (url) => {
+  try {
+    if (!url) return 'Unknown Site';
+    return new URL(url).hostname;
+  } catch (e) {
+    console.warn("Invalid URL encountered:", url);
+    return 'Invalid URL';
+  }
 };
 
 const getFlagEmoji = (langCode) => {
@@ -314,10 +346,10 @@ const SiteList = ({ onContextSelect, onWidgetCreate, onViewTimeline }) => {
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col min-w-0 flex-1">
               <h3 className="text-sm font-semibold text-slate-800 truncate">
-                {site.title || new URL(site.url).hostname}
+                {site.title || getSafeHostname(site.url)}
               </h3>
               <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5 truncate">
-                <span className="truncate">{new URL(site.url).hostname}</span>
+                <span className="truncate">{getSafeHostname(site.url)}</span>
                 {site.original_lang && site.original_lang !== 'unknown' && site.original_lang !== 'en' && (
                   <span className="flex items-center gap-1.5 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-medium rounded-md border border-indigo-100 flex-shrink-0">
                     {getFlagEmoji(site.original_lang)} {site.original_lang.toUpperCase()}
@@ -326,7 +358,7 @@ const SiteList = ({ onContextSelect, onWidgetCreate, onViewTimeline }) => {
                 )}
               </div>
             </div>
-            
+
             {/* Delete Button */}
             <button
               onClick={(e) => {
@@ -345,7 +377,7 @@ const SiteList = ({ onContextSelect, onWidgetCreate, onViewTimeline }) => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if(onViewTimeline) onViewTimeline(site.url);
+                if (onViewTimeline) onViewTimeline(site.url);
               }}
               className="flex flex-[0.8] items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg text-[11px] uppercase tracking-wider font-bold transition-colors border border-slate-200"
             >
@@ -356,7 +388,7 @@ const SiteList = ({ onContextSelect, onWidgetCreate, onViewTimeline }) => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if(onWidgetCreate) onWidgetCreate(site);
+                if (onWidgetCreate) onWidgetCreate(site);
               }}
               className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-lg text-[11px] uppercase tracking-wider font-bold transition-colors border border-indigo-100 hover:border-transparent"
             >
@@ -399,7 +431,7 @@ const BookmarkList = ({ bookmarks, loading, onDelete }) => {
                 className="text-[10px] text-indigo-500 hover:underline flex items-center gap-1"
               >
                 <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                {new URL(b.source_url).hostname}
+                {getSafeHostname(b.source_url)}
               </a>
             )}
             <div className="flex items-center justify-between mt-1 text-[9px] text-slate-400 font-medium">
@@ -418,6 +450,31 @@ const BookmarkList = ({ bookmarks, loading, onDelete }) => {
           </div>
         </div>
       ))}
+    </div>
+  );
+};
+
+const ReasoningDisplay = ({ thoughts }) => {
+  if (!thoughts || thoughts.length === 0) return null;
+  return (
+    <div className="mb-3 p-3 bg-indigo-50/10 rounded-xl border border-indigo-100/30 animate-in fade-in slide-in-from-top-1 backdrop-blur-sm">
+      <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-indigo-600/80 uppercase tracking-widest">
+        <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+        Researching & Analyzing
+      </div>
+      <ul className="space-y-2 list-none m-0 p-0">
+        {thoughts.map((t, i) => (
+          <li key={i} className="text-[11px] text-slate-600/90 flex items-center gap-2 font-medium">
+            <div className={`w-1.5 h-1.5 rounded-full ${t.status === 'completed' ? 'bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.5)]' : 'bg-slate-300 animate-pulse'}`}></div>
+            <span className="truncate">{t.query || t.step || "Executing sub-search..."}</span>
+            {t.status === 'completed' && (
+              <span className="flex items-center gap-1 text-[9px] text-indigo-600 font-bold ml-auto bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-100/50">
+                FOUND
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 };
@@ -452,6 +509,9 @@ function App() {
   // [NEW] Feature 10: Cross-Tab Intelligence
   const [pinnedTabs, setPinnedTabs] = useState([]); // Array of { title, url, blocks }
 
+  const [workspaces, setWorkspaces] = useState([]); // List of available isolated workspaces
+  const [currentWorkspace, setCurrentWorkspace] = useState(null); // Active workspace
+
   const [selectedSiteId, setSelectedSiteId] = useState(null); // Phase 3: Site Context
   const [sites, setSites] = useState([]); // Available sites for context switching
   const [currentSessionId, setCurrentSessionId] = useState(null); // Phase 5: Session management
@@ -471,6 +531,9 @@ function App() {
   const [bookmarksLoading, setBookmarksLoading] = useState(false);
   const [githubIngesting, setGithubIngesting] = useState(false); // [NEW] Phase 23: GitHub ingestion status
   const [githubJobId, setGithubJobId] = useState(null); // [NEW] Phase 23: Job polling
+  const [activeThoughts, setActiveThoughts] = useState([]); // [PHASE 7] Multi-hop thoughts
+  const [scholarMode, setScholarMode] = useState('general'); // [NEW] Phase 19: Research Mode ("general", "scholar", "legal")
+  const [researchDropdownOpen, setResearchDropdownOpen] = useState(false); // Toggle for floating dropdown
 
   // [NEW] Chatbot Widget Generator State
   const [isWidgetModalOpen, setIsWidgetModalOpen] = useState(false);
@@ -484,64 +547,92 @@ function App() {
   const inputRef = useRef(null); // For Ctrl+K focus
   const fileInputRef = useRef(null); // Used by manual generic file clicks
 
-  const handleCitationHighlight = (blockId, url, snippet = "", pageNum = null) => {
+  const handleCitationHighlight = async (blockId, url, snippet = "", pageNum = null) => {
     if (!url) {
       console.warn("handleCitationHighlight: No URL for block", blockId);
       return;
     }
 
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const activeTab = tabs[0];
+    // Helper: Ping a tab to see if content script is alive
+    const pingTab = (tabId) => {
+      return new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { type: 'PING' }, (resp) => {
+          if (chrome.runtime.lastError || !resp) resolve(false);
+          else resolve(true);
+        });
+      });
+    };
+
+    // Helper: Inject content script manually
+    const injectContentScript = async (tabId) => {
+      console.log(`[Highlighter] Manually injecting content script into tab ${tabId}...`);
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content.js']
+        });
+        // Give it a moment to initialize
+        await new Promise(r => setTimeout(r, 200));
+        return true;
+      } catch (err) {
+        console.error("[Highlighter] Manual injection failed:", err);
+        return false;
+      }
+    };
+
+    // Helper: Send highlight message with retry/wait logic
+    const sendHighlightWithRetry = async (tabId, blockId, text, retries = 5) => {
+      for (let i = 0; i < retries; i++) {
+        const isAlive = await pingTab(tabId);
+        if (!isAlive) {
+          const injected = await injectContentScript(tabId);
+          if (!injected && i === retries - 1) {
+            console.error("[Highlighter] Failed to establish connection after re-injection attempts.");
+            return false;
+          }
+        }
+
+        const success = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(tabId, {
+            type: 'HIGHLIGHT_CITATION',
+            blockId,
+            text
+          }, (resp) => {
+            if (chrome.runtime.lastError) resolve(false);
+            else resolve(true);
+          });
+        });
+
+        if (success) return true;
+        await new Promise(r => setTimeout(r, 300)); // Wait before retry
+      }
+      return false;
+    };
+
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       let highlightUrl = url;
 
       // [NEW] PDF Page Navigation
       if (url.toLowerCase().endsWith('.pdf') && pageNum) {
-        // Append #page=N to PDF URL for direct navigation
         highlightUrl = url.includes('#') ? url.split('#')[0] : url;
         highlightUrl += `#page=${pageNum}`;
         console.log(`[Citation] PDF detected, navigating to page ${pageNum}: ${highlightUrl}`);
       }
 
-      // Helper: wait for a tab to finish loading, then send highlight
-      const sendHighlightAfterLoad = (tabId) => {
-        const onUpdated = (updatedTabId, changeInfo) => {
-          if (updatedTabId === tabId && changeInfo.status === 'complete') {
-            chrome.tabs.onUpdated.removeListener(onUpdated);
-            setTimeout(() => {
-              chrome.tabs.sendMessage(tabId, {
-                type: 'HIGHLIGHT_CITATION',
-                blockId: blockId,
-                text: snippet
-              }, (resp) => {
-                if (chrome.runtime.lastError) console.warn("Highlight message failed:", chrome.runtime.lastError);
-              });
-            }, 800);
-          }
-        };
-        chrome.tabs.onUpdated.addListener(onUpdated);
-        setTimeout(() => chrome.tabs.onUpdated.removeListener(onUpdated), 15000);
-      };
-
-      chrome.tabs.query({}, (tabs) => {
+      chrome.tabs.query({}, async (tabs) => {
         let highlightUrlObj;
         try {
           highlightUrlObj = new URL(highlightUrl);
         } catch (e) {
-          // Fallback for relative URLs or malformed strings
           console.warn("Failed to parse URL:", highlightUrl, e);
-          if (highlightUrl.startsWith('http')) {
-            // Probably okay to just use chrome.tabs.create with it anyway
-          } else {
-            return;
-          }
+          if (!highlightUrl.startsWith('http')) return;
         }
 
-        // [NEW] Prioritize exact URL match for multi-tab accuracy
-        let existingTab = tabs.find(t => t.url === highlightUrl);
-
-        if (!existingTab) {
+        // 1. Find or Create Tab
+        let targetTab = tabs.find(t => t.url === highlightUrl);
+        if (!targetTab) {
           const highlightBase = highlightUrlObj ? (highlightUrlObj.origin + highlightUrlObj.pathname) : highlightUrl.split('#')[0];
-          existingTab = tabs.find(t => {
+          targetTab = tabs.find(t => {
             if (!t.url) return false;
             try {
               const tabUrlObj = new URL(t.url);
@@ -550,47 +641,38 @@ function App() {
           });
         }
 
-        if (existingTab) {
-          // Tab already open (at least the same base page)
-          chrome.tabs.update(existingTab.id, { active: true });
-          chrome.windows.update(existingTab.windowId, { focused: true });
+        if (targetTab) {
+          // Focus the tab
+          chrome.tabs.update(targetTab.id, { active: true });
+          chrome.windows.update(targetTab.windowId, { focused: true });
 
-          const isSameExactUrl = existingTab.url === highlightUrl;
+          const isSameExactUrl = targetTab.url === highlightUrl;
+          if (!isSameExactUrl) {
+            // Update URL if base matched but fragment/query differs (e.g. PDF page)
+            chrome.tabs.update(targetTab.id, { url: highlightUrl });
 
-          if (isSameExactUrl) {
-            // Already there, just highlight
-            setTimeout(() => {
-              chrome.tabs.sendMessage(existingTab.id, {
-                type: 'HIGHLIGHT_CITATION',
-                blockId: blockId,
-                text: snippet
-              }, (resp) => {
-                if (chrome.runtime.lastError) console.warn("Highlight msg failed:", chrome.runtime.lastError);
-              });
-            }, 500);
+            // Wait for load and then highlight
+            const onUpdated = (updatedId, changeInfo) => {
+              if (updatedId === targetTab.id && changeInfo.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                setTimeout(() => sendHighlightWithRetry(targetTab.id, blockId, snippet), 500);
+              }
+            };
+            chrome.tabs.onUpdated.addListener(onUpdated);
           } else {
-            // Same page, but maybe different fragment. 
-            // Only update URL if it actually changed the base or something significant
-            chrome.tabs.update(existingTab.id, { url: highlightUrl });
-
-            // Wait for potential fragment-based scroll/load
-            setTimeout(() => {
-              chrome.tabs.sendMessage(existingTab.id, {
-                type: 'HIGHLIGHT_CITATION',
-                blockId: blockId,
-                text: snippet
-              }, (resp) => {
-                if (chrome.runtime.lastError) {
-                  // If it fails (maybe the page reloaded), retry with full listener
-                  sendHighlightAfterLoad(existingTab.id);
-                }
-              });
-            }, 600);
+            // Already on page, highlight immediately (with self-healing)
+            await sendHighlightWithRetry(targetTab.id, blockId, snippet);
           }
         } else {
-          // Open new tab and highlight after load
+          // Open new tab
           chrome.tabs.create({ url: highlightUrl }, (newTab) => {
-            sendHighlightAfterLoad(newTab.id);
+            const onUpdated = (updatedId, changeInfo) => {
+              if (updatedId === newTab.id && changeInfo.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                setTimeout(() => sendHighlightWithRetry(newTab.id, blockId, snippet), 800);
+              }
+            };
+            chrome.tabs.onUpdated.addListener(onUpdated);
           });
         }
       });
@@ -782,7 +864,7 @@ function App() {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         if (tab?.url) {
           setCurrentUrl(tab.url);
-          setCurrentTabTitle(tab.title || new URL(tab.url).hostname);
+          setCurrentTabTitle(tab.title || getSafeHostname(tab.url));
           // If no active context is set, or if it's a URL context, update it to the new tab URL.
           setActiveContext(prev => {
             if (!prev || prev.type === 'url') {
@@ -809,13 +891,20 @@ function App() {
     };
   }, []);
 
-  // Load sites on mount
+  // Load sites and workspaces on mount
   useEffect(() => {
-    const loadSites = async () => {
+    const loadSitesAndWorkspaces = async () => {
       const data = await apiClient.getSites();
       setSites(data);
+
+      // Load specific workspaces
+      const wsResponse = await apiClient.getWorkspaces();
+      if (wsResponse.success && wsResponse.data?.length > 0) {
+        setWorkspaces(wsResponse.data);
+        setCurrentWorkspace(wsResponse.data[0]); // Auto-select first workspace (or None)
+      }
     };
-    loadSites();
+    loadSitesAndWorkspaces();
   }, []);
 
   // Load conversation history on mount
@@ -1343,7 +1432,7 @@ function App() {
           </div>
           
           <div style="display: flex; flex-direction: column; gap: 12px;">
-            <button id="single-page-btn" style="width: 100%; position: relative; padding: 16px; border-radius: 12px; border: 2px solid #f1f5f9; background: white; text-align: left; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#6366f1'; this.style.backgroundColor='#eef2ff'; this.querySelector('.icon-bg').style.backgroundColor='#4f46e5'; this.querySelector('.icon-bg').style.color='white';" onmouseout="this.style.borderColor='#f1f5f9'; this.style.backgroundColor='white'; this.querySelector('.icon-bg').style.backgroundColor='#e0e7ff'; this.querySelector('.icon-bg').style.color='#4f46e5';">
+            <button id="single-page-btn" style="width: 100%; position: relative; padding: 16px; border-radius: 12px; border: 2px solid #f1f5f9; background: white; text-align: left; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; transition: all 0.2s;">
               <div class="icon-bg" style="width: 40px; height: 40px; border-radius: 8px; background: #e0e7ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></polyline><polyline points="10 9 9 9 8 9"></polyline></svg>
               </div>
@@ -1353,7 +1442,7 @@ function App() {
               </div>
             </button>
             
-            <button id="multi-page-btn" style="width: 100%; position: relative; padding: 16px; border-radius: 12px; border: 2px solid #f1f5f9; background: white; text-align: left; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#10b981'; this.style.backgroundColor='#ecfdf5'; this.querySelector('.icon-bg').style.backgroundColor='#059669'; this.querySelector('.icon-bg').style.color='white';" onmouseout="this.style.borderColor='#f1f5f9'; this.style.backgroundColor='white'; this.querySelector('.icon-bg').style.backgroundColor='#d1fae5'; this.querySelector('.icon-bg').style.color='#059669';">
+            <button id="multi-page-btn" style="width: 100%; position: relative; padding: 16px; border-radius: 12px; border: 2px solid #f1f5f9; background: white; text-align: left; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; transition: all 0.2s;">
               <div class="icon-bg" style="width: 40px; height: 40px; border-radius: 8px; background: #d1fae5; color: #059669; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
               </div>
@@ -1362,9 +1451,19 @@ function App() {
                 <div style="font-size: 12px; color: #64748b;">Find and index subpages (~60s)</div>
               </div>
             </button>
+
+            <button id="batch-btn" style="width: 100%; position: relative; padding: 16px; border-radius: 12px; border: 2px solid #f1f5f9; background: white; text-align: left; display: flex; align-items: flex-start; gap: 16px; cursor: pointer; transition: all 0.2s;">
+              <div class="icon-bg" style="width: 40px; height: 40px; border-radius: 8px; background: #fee2e2; color: #ef4444; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+              </div>
+              <div>
+                <div style="font-weight: 600; color: #0f172a; margin-bottom: 2px; font-size: 14px;">Batch Scan</div>
+                <div style="font-size: 12px; color: #64748b;">Index multiple open tabs at once</div>
+              </div>
+            </button>
           </div>
           
-          <button id="cancel-btn" style="margin-top: 20px; width: 100%; padding: 10px; font-size: 14px; font-weight: 500; color: #64748b; background: #f8fafc; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.backgroundColor='#f1f5f9'; this.style.color='#1e293b';" onmouseout="this.style.backgroundColor='#f8fafc'; this.style.color='#64748b';">
+          <button id="cancel-btn" style="margin-top: 20px; width: 100%; padding: 10px; font-size: 14px; font-weight: 500; color: #64748b; background: #f8fafc; border: none; border-radius: 8px; cursor: pointer; transition: all 0.2s;">
             Cancel
           </button>
         </div>
@@ -1374,30 +1473,98 @@ function App() {
 
       const singleBtn = dialog.querySelector('#single-page-btn');
       const multiBtn = dialog.querySelector('#multi-page-btn');
+      const batchBtn = dialog.querySelector('#batch-btn');
       const cancelBtn = dialog.querySelector('#cancel-btn');
 
-      // Hover effects
-      [singleBtn, multiBtn].forEach(btn => {
-        btn.addEventListener('mouseenter', () => {
-          btn.style.transform = 'translateY(-1px)';
-          btn.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
-        });
-        btn.addEventListener('mouseleave', () => {
-          btn.style.transform = 'translateY(0)';
-          btn.style.boxShadow = 'none';
-        });
+      // CSP-compliant Hover Effects for Single Button
+      singleBtn.addEventListener('mouseenter', () => {
+        singleBtn.style.borderColor = '#6366f1';
+        singleBtn.style.backgroundColor = '#eef2ff';
+        const iconBg = singleBtn.querySelector('.icon-bg');
+        if (iconBg) {
+          iconBg.style.backgroundColor = '#4f46e5';
+          iconBg.style.color = 'white';
+        }
+        singleBtn.style.transform = 'translateY(-1px)';
+      });
+      singleBtn.addEventListener('mouseleave', () => {
+        singleBtn.style.borderColor = '#f1f5f9';
+        singleBtn.style.backgroundColor = 'white';
+        const iconBg = singleBtn.querySelector('.icon-bg');
+        if (iconBg) {
+          iconBg.style.backgroundColor = '#e0e7ff';
+          iconBg.style.color = '#4f46e5';
+        }
+        singleBtn.style.transform = 'translateY(0)';
       });
 
+      // CSP-compliant Hover Effects for Multi Button
+      multiBtn.addEventListener('mouseenter', () => {
+        multiBtn.style.borderColor = '#10b981';
+        multiBtn.style.backgroundColor = '#ecfdf5';
+        const iconBg = multiBtn.querySelector('.icon-bg');
+        if (iconBg) {
+          iconBg.style.backgroundColor = '#059669';
+          iconBg.style.color = 'white';
+        }
+        multiBtn.style.transform = 'translateY(-1px)';
+      });
+      multiBtn.addEventListener('mouseleave', () => {
+        multiBtn.style.borderColor = '#f1f5f9';
+        multiBtn.style.backgroundColor = 'white';
+        const iconBg = multiBtn.querySelector('.icon-bg');
+        if (iconBg) {
+          iconBg.style.backgroundColor = '#d1fae5';
+          iconBg.style.color = '#059669';
+        }
+        multiBtn.style.transform = 'translateY(0)';
+      });
+
+      // CSP-compliant Hover Effects for Batch Button
+      batchBtn.addEventListener('mouseenter', () => {
+        batchBtn.style.borderColor = '#ef4444';
+        batchBtn.style.backgroundColor = '#fef2f2';
+        const iconBg = batchBtn.querySelector('.icon-bg');
+        if (iconBg) {
+          iconBg.style.backgroundColor = '#dc2626';
+          iconBg.style.color = 'white';
+        }
+        batchBtn.style.transform = 'translateY(-1px)';
+      });
+      batchBtn.addEventListener('mouseleave', () => {
+        batchBtn.style.borderColor = '#f1f5f9';
+        batchBtn.style.backgroundColor = 'white';
+        const iconBg = batchBtn.querySelector('.icon-bg');
+        if (iconBg) {
+          iconBg.style.backgroundColor = '#fee2e2';
+          iconBg.style.color = '#ef4444';
+        }
+        batchBtn.style.transform = 'translateY(0)';
+      });
+
+      // Cancel Button Hover
+      cancelBtn.addEventListener('mouseenter', () => {
+        cancelBtn.style.backgroundColor = '#f1f5f9';
+        cancelBtn.style.color = '#1e293b';
+      });
+      cancelBtn.addEventListener('mouseleave', () => {
+        cancelBtn.style.backgroundColor = '#f8fafc';
+        cancelBtn.style.color = '#64748b';
+      });
+
+      // Click logic
       singleBtn.onclick = () => {
         document.body.removeChild(dialog);
         resolve({ mode: 'single' });
       };
-
       multiBtn.onclick = () => {
         document.body.removeChild(dialog);
         resolve({ mode: 'multi', max_pages: 10, max_depth: 3 });
       };
-
+      batchBtn.onclick = () => {
+        document.body.removeChild(dialog);
+        resolve({ mode: 'batch' });
+      };
       cancelBtn.onclick = () => {
         document.body.removeChild(dialog);
         resolve(null);
@@ -1414,6 +1581,12 @@ function App() {
   };
 
   const performIngest = async (url, crawlOptions) => {
+    if (crawlOptions.mode === 'batch') {
+      setView('batch-capture');
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     const toastId = toast.loading(
       crawlOptions.mode === 'multi'
@@ -1455,7 +1628,8 @@ function App() {
         },
         crawlOptions.mode,
         crawlOptions.max_pages || 10,
-        crawlOptions.max_depth || 3
+        crawlOptions.max_depth || 3,
+        currentWorkspace?.id // Isolates to the active workspace
       );
 
       if (response.success && response.status !== 'failed') {
@@ -1531,7 +1705,7 @@ function App() {
 
   const handleInjectLive = async () => {
     if (!widgetScript) return;
-    
+
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) {
@@ -1542,7 +1716,7 @@ function App() {
       // Check URL match to avoid confusion
       const siteOrigin = new URL(activeWidgetSite.url).origin;
       const tabOrigin = new URL(tab.url).origin;
-      
+
       if (siteOrigin !== tabOrigin) {
         toast.warning("The active tab does not match the site URL. Switch to the correct tab first.");
         return;
@@ -1550,7 +1724,7 @@ function App() {
 
       const baseUrl = await apiClient.getBaseUrl();
       const scriptUrl = `${baseUrl}/static/snapmind-widget.js`;
-      
+
       // Use scripting.executeScript for more robust injection (bypasses "Receiving end does not exist")
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -1641,7 +1815,11 @@ function App() {
               progress: progressEvent.progress || 50
             });
           }
-        }
+        },
+        "single",
+        50,
+        3,
+        currentWorkspace?.id // Workspace isolation
       );
 
       if (ingestResponse.success && ingestResponse.status !== 'failed') {
@@ -1661,6 +1839,62 @@ function App() {
         id: Date.now().toString(),
         role: 'assistant',
         text: `**Visual Indexing Error**: ${e.message}`
+      }]);
+    }
+    setIsLoading(false);
+  };
+
+  const handleBrowserSync = async (url) => {
+    setIsLoading(true);
+    setMessages(prev => [...prev, {
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      text: ` **Syncing via Browser**: Opening ${new URL(url).hostname} and extracting profile data...`
+    }]);
+
+    try {
+      // 1. Open tab
+      const tab = await chrome.tabs.create({ url, active: false });
+
+      // 2. Wait for it to load (stateless bridge)
+      await new Promise(r => setTimeout(r, 5000)); // Give LinkedIn time to load
+
+      // 3. Extract content via content script
+      const response = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_CONTENT' });
+
+      if (response && response.data) {
+        // 4. Ingest into session
+        // Convert blocks to raw text for simpler ingestion
+        const rawText = response.data.blocks.map(b => b.text).join('\n\n');
+        const ingestResp = await apiClient.streamIngest(
+          url,
+          rawText,
+          currentSessionId,
+          () => { },
+          "single",
+          50,
+          3,
+          currentWorkspace?.id
+        );
+
+        if (ingestResp.success) {
+          setMessages(prev => [...prev, {
+            id: (Date.now() + 2).toString(),
+            role: 'assistant',
+            text: `✅ **Sync Complete**: Profile data retrieved using your session. Resuming investigation...`
+          }]);
+
+          // 5. Automatically re-query to finish dossier
+          const originalQuery = [...messages].reverse().find(m => m.role === 'user')?.text || "this person";
+          setTimeout(() => handleSend(`Finalize the research for: "${originalQuery}". The primary LinkedIn profile has been successfully synced via my browser. Now synthesize all data and follow any discovered links.`, 'browser'), 1000);
+        }
+      }
+    } catch (e) {
+      console.error("Sync error:", e);
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        text: `❌ **Sync Failed**: ${e.message}. Please make sure you are logged into LinkedIn in this browser.`
       }]);
     }
     setIsLoading(false);
@@ -1819,6 +2053,7 @@ function App() {
           const response = await apiClient.queryBrowserMode(userMsg.text, currentSessionId, {
             outputLang,
             queryNotebook,
+            research_mode: scholarMode, // [NEW] Phase 19: "general", "scholar", or "legal"
             imagePayload
           });
 
@@ -1831,7 +2066,14 @@ function App() {
 
           setMessages(currentMessages => [
             ...currentMessages,
-            { id: (Date.now() + 1).toString(), role: 'assistant', text: response.answer, citations: response.citations }
+            {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              text: response.answer,
+              citations: response.citations,
+              status: response.status, // Capture clarification status
+              locked_url: response.locked_url // [NEW] Link to protected resource
+            }
           ]);
         } catch (e) {
           setMessages(currentMessages => [
@@ -1896,6 +2138,7 @@ function App() {
 
         let fullText = "";
         let isFirstToken = true;
+        setActiveThoughts([]); // Reset thoughts for new query
 
         // Determine site_id based on activeContext
         // 2. Identify Context (Filtered by Sidebar or Global Mode)
@@ -1957,7 +2200,7 @@ function App() {
             } else {
               fullText += token;
               setMessages(currentMessages =>
-                currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m)
+                currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText, reasoningChain: activeThoughts } : m)
               );
             }
           },
@@ -1982,7 +2225,13 @@ function App() {
               console.log("[Stream] Updated message with contextBlocks");
             }
           },
-          targetSiteId, currentSessionId, search_query, query_lang, outputLang, queryNotebook);
+          targetSiteId, currentSessionId, search_query, query_lang, outputLang, queryNotebook,
+          (thought) => {
+            console.log("[Stream] Received thought:", thought);
+            setActiveThoughts(prev => [...prev, thought]);
+          },
+          currentWorkspace?.id // Workspace isolation
+        );
 
         // 3.5 Handle empty or failed stream
         if (!streamResult.success || isFirstToken) {
@@ -1994,19 +2243,32 @@ function App() {
         console.log("[Stream] Generation complete. Extracting citations from text...");
         console.log("[Stream] Full response text:", fullText);
         // [FIX] Support source-URL and pin-tX- citation extraction
-        const citationRegex = /((?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)/gi;
+        const citationRegex = /((?:bi|nb|db|br|source|block)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)/gi;
         const citations = [];
         let match;
         console.log("[Stream] Looking for citations with regex...");
+        // Determine the pool of blocks to search for URLs/metadata
+        const localBlocks = streamResult.blocks || [];
+        const blockPool = [...localBlocks, ...contentBlocks, ...pinnedTabs.flatMap(t => t.blocks || [])];
+
         while ((match = citationRegex.exec(fullText)) !== null) {
           const blockId = match[1];
           console.log("[Stream] Found citation:", blockId);
           if (!citations.find(c => c.blockId === blockId)) {
-            // Descriptive snippet for pinned tabs and sources
-            let snippet = `Source ${blockId.replace(/^(bi-block-|nb-block-|db-block-|br-block-|source-block-)/, '')}`;
+            // [FIX] Find the matching source block to extract its URL - prioritize local message context
+            const sourceBlock = blockPool.find(b => b.id === blockId);
+            const blockUrl = sourceBlock?.url || sourceBlock?.sourceURL || "";
+
+            // [NEW] Use hostname for descriptive labels
+            let label = "Source";
+            if (blockUrl) {
+              label = getSafeHostname(blockUrl);
+            }
+
+            // Descriptive snippet override for special types
+            let snippet = label;
 
             if (blockId.startsWith('pin-')) {
-              // Format: pin-t0-5 or pin-t0-bi-block-5
               const parts = blockId.split('-');
               const tabIdx = parts[1].replace('t', '');
               const blockIdx = parts[parts.length - 1];
@@ -2015,8 +2277,13 @@ function App() {
               snippet = "Site Header";
             }
 
-            citations.push({ blockId, snippet });
-            console.log("[Stream] Added citation - ID:", blockId, "Snippet:", snippet);
+            citations.push({
+              blockId,
+              label: label, // [NEW] Store the pretty label
+              snippet: snippet,
+              url: blockUrl || (blockId.startsWith('source-') ? blockId.replace('source-', '') : "")
+            });
+            console.log("[Stream] Added citation - ID:", blockId, "Label:", label);
           }
         }
         console.log("[Stream] Total citations extracted:", citations.length, citations);
@@ -2035,6 +2302,7 @@ function App() {
           tabId: tab.id,
           windowId: tab.windowId,
           imageData: imagePayload,
+          activeContext: activeContext,
           outputLang: outputLang
         });
 
@@ -2107,6 +2375,70 @@ function App() {
     );
   }
 
+  const handleBatchIngest = async (selectedTabs, options) => {
+    if (!selectedTabs || selectedTabs.length === 0) return;
+
+    setView('chat'); // Go back to chat to see progress
+    const total = selectedTabs.length;
+    const toastId = toast.loading(`📦 Starting Batch Indexing of ${total} tabs...`);
+
+    for (let i = 0; i < selectedTabs.length; i++) {
+      const tab = selectedTabs[i];
+      const url = tab.url;
+      const progressMessage = `[Batch ${i + 1}/${total}] Indexing: ${tab.title.substring(0, 30)}...`;
+      toast.loading(progressMessage, { id: toastId });
+
+      try {
+        const response = await apiClient.streamIngest(
+          url,
+          null,
+          currentSessionId,
+          (progressEvent) => {
+            if (progressEvent.status === 'processing' || progressEvent.status === 'completed') {
+              setIngestStatus({
+                status: 'processing',
+                message: `[Batch ${i + 1}/${total}] ${progressEvent.message}`,
+                progress: Math.floor((i / total) * 100 + (progressEvent.progress || 0) / total)
+              });
+            }
+          },
+          'single',
+          50,
+          3,
+          currentWorkspace?.id
+        );
+
+        if (response.success && options.autoClose && tab.id) {
+          try {
+            await chrome.tabs.remove(tab.id);
+            console.log(`[Batch] Closed successfully indexed tab: ${tab.id}`);
+          } catch (e) {
+            console.warn(`[Batch] Failed to close tab ${tab.id}:`, e);
+          }
+        }
+      } catch (err) {
+        console.error(`Batch ingest failed for ${url}:`, err);
+      }
+    }
+
+    toast.success(`Successfully indexed ${total} pages!`, { id: toastId });
+    setIngestStatus(null);
+  };
+
+  if (view === 'batch-capture') {
+    return (
+      <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-indigo-600" /></div>}>
+        <BatchCaptureView
+          onBack={() => setView('chat')}
+          onBatchStart={(selectedTabs, options) => {
+            handleBatchIngest(selectedTabs, options);
+          }}
+          currentWorkspace={currentWorkspace}
+          currentSessionId={currentSessionId}
+        />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="flex flex-col bg-gradient-to-br from-slate-50 via-white to-indigo-50/50 text-sm font-sans antialiased text-slate-900 selection:bg-indigo-100 overflow-hidden max-w-full" style={{ position: 'fixed', inset: 0, height: '100dvh', width: '100vw' }}>
@@ -2189,9 +2521,26 @@ function App() {
               {new URL(currentUrl).hostname}
             </a>
           )}
-
-          {/* Right: Icon Navigation */}
+          {/* Right: Workspaces & Icon Navigation */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Workspace Selector */}
+            {workspaces.length > 0 && (
+              <select
+                value={currentWorkspace?.id || ''}
+                onChange={(e) => {
+                  const ws = workspaces.find(w => w.id === e.target.value);
+                  setCurrentWorkspace(ws);
+                  if (ws) toast.success(`Switched to workspace: ${ws.name}`);
+                }}
+                className="bg-transparent border border-slate-200 text-xs text-slate-600 rounded-md py-1 px-2 focus:ring-2 focus:ring-indigo-500/50 cursor-pointer hover:bg-slate-50 transition-colors"
+                style={{ maxWidth: '120px' }}
+                title="Select Active Workspace"
+              >
+                {workspaces.map(ws => (
+                  <option key={ws.id} value={ws.id}>{ws.name}</option>
+                ))}
+              </select>
+            )}
             {/* Index Button */}
             <button
               onClick={handleIngest}
@@ -2220,7 +2569,7 @@ function App() {
                 }
               }}
             >
-              <Database className="w-4 h-4" />
+              <Database className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -2250,7 +2599,7 @@ function App() {
                 }
               }}
             >
-              <Bookmark className="w-4 h-4" />
+              <Bookmark className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -2272,7 +2621,7 @@ function App() {
                 e.currentTarget.style.color = 'var(--text-tertiary)';
               }}
             >
-              <History className="w-4 h-4" />
+              <History className="w-3.5 h-3.5" />
             </button>
 
             <button
@@ -2294,7 +2643,7 @@ function App() {
                 e.currentTarget.style.color = 'var(--text-tertiary)';
               }}
             >
-              <SettingsIcon className="w-4 h-4" />
+              <SettingsIcon className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -2302,7 +2651,7 @@ function App() {
 
       {/* Modern Pill-Style Mode Tabs */}
       <div style={{
-        padding: 'var(--space-2)',
+        padding: '8px 16px', // Standardized with header px-4
         background: 'var(--bg-primary)',
         borderBottom: '1px solid var(--border-light)'
       }}>
@@ -2318,15 +2667,16 @@ function App() {
             onClick={() => { setMode('rag'); setView('chat'); setCropPreview(null); }}
             style={{
               flex: 1,
-              padding: '10px 12px',
+              minWidth: 0,
+              padding: '10px 8px', // Increased from 4px
               borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
+              fontSize: '12px', // Increased from 11px
+              fontWeight: 'var(--font-bold)',
               transition: 'var(--transition-fast)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
+              gap: '6px', // Restored to 6px
               border: 'none',
               cursor: 'pointer',
               background: mode === 'rag' && view === 'chat' ? 'var(--tab-active-bg)' : 'transparent',
@@ -2346,7 +2696,7 @@ function App() {
               }
             }}
           >
-            <FileText className="w-4 h-4" />
+            <FileText style={{ width: 14, height: 14, flexShrink: 0 }} />
             <span>RAG</span>
           </button>
 
@@ -2357,15 +2707,16 @@ function App() {
             }}
             style={{
               flex: 1,
-              padding: '10px 12px',
+              minWidth: 0,
+              padding: '10px 8px', // Increased from 4px
               borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
+              fontSize: '12px', // Increased from 11px
+              fontWeight: 'var(--font-bold)',
               transition: 'var(--transition-fast)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '6px',
+              gap: '6px', // Restored to 6px
               border: 'none',
               cursor: 'pointer',
               background: mode === 'visual' && view === 'chat' ? 'var(--tab-active-bg)' : 'transparent',
@@ -2385,7 +2736,7 @@ function App() {
               }
             }}
           >
-            <Crop className="w-4 h-4" />
+            <Crop style={{ width: 14, height: 14, flexShrink: 0 }} />
             <span>Visual</span>
           </button>
 
@@ -2393,10 +2744,11 @@ function App() {
             onClick={() => { setView('memory'); }}
             style={{
               flex: 1,
-              padding: '10px 12px',
+              minWidth: 0,
+              padding: '10px 8px',
               borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
+              fontSize: '12px',
+              fontWeight: 'var(--font-bold)',
               transition: 'var(--transition-fast)',
               display: 'flex',
               alignItems: 'center',
@@ -2421,7 +2773,7 @@ function App() {
               }
             }}
           >
-            <Database className="w-4 h-4" />
+            <Database style={{ width: 14, height: 14, flexShrink: 0 }} />
             <span>Memory</span>
           </button>
 
@@ -2429,10 +2781,11 @@ function App() {
             onClick={() => { setMode('browser'); setView('chat'); setCropPreview(null); }}
             style={{
               flex: 1,
-              padding: '10px 12px',
+              minWidth: 0,
+              padding: '10px 8px',
               borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 'var(--font-semibold)',
+              fontSize: '12px',
+              fontWeight: 'var(--font-bold)',
               transition: 'var(--transition-fast)',
               display: 'flex',
               alignItems: 'center',
@@ -2457,62 +2810,65 @@ function App() {
               }
             }}
           >
-            <Globe className="w-4 h-4" />
+            <Globe style={{ width: 14, height: 14, flexShrink: 0 }} />
             <span>Browser</span>
           </button>
-
         </div>
 
-
-        {/* [NEW] External URL Input for Background Scraping */}
-        {mode === 'rag' && view === 'chat' && (
-          <div className="flex flex-col gap-2 mt-3 px-1">
-            <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/60 p-1.5 rounded-xl transition-all focus-within:bg-white focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-500/10">
-              <input
-                type="url"
-                placeholder="Or index any external URL..."
-                value={externalUrl}
-                onChange={(e) => setExternalUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && externalUrl.trim() && !isLoading) {
-                    handleIngest(externalUrl.trim());
-                  }
-                }}
-                className="flex-1 bg-transparent px-3 py-2 outline-none text-[13px] text-slate-700 placeholder:text-slate-400 font-medium"
-              />
-              <button
-                onClick={() => {
-                  if (externalUrl.trim() && !isLoading) {
-                    handleIngest(externalUrl.trim());
-                  }
-                }}
-                disabled={!externalUrl.trim() || isLoading}
-                className={`flex items-center gap-2 px-4 py-2 flex-shrink-0 rounded-lg font-semibold text-[13px] transition-all duration-200 ${externalUrl.trim() && !isLoading
-                  ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-indigo-600 hover:to-indigo-700 active:scale-95 cursor-pointer'
-                  : 'bg-slate-100/80 text-slate-400 cursor-not-allowed'
-                  }`}
-              >
-                <div className={`flex items-center justify-center w-4 h-4 rounded-full ${externalUrl.trim() && !isLoading ? 'bg-white/20' : 'bg-slate-200/50'}`}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                </div>
-                Scrape
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* [NEW] Report Generation Button for Browser Mode REMOVED as per user request */}
       </div>
+
+
+      {/* [NEW] External URL Input for Background Scraping */}
+      {mode === 'rag' && view === 'chat' && (
+        <div className="flex flex-col gap-2 mt-3 px-4">
+          <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200/60 p-1.5 rounded-xl transition-all focus-within:bg-white focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-500/10">
+            <input
+              type="url"
+              placeholder="Or index any external URL..."
+              value={externalUrl}
+              onChange={(e) => setExternalUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && externalUrl.trim() && !isLoading) {
+                  handleIngest(externalUrl.trim());
+                }
+              }}
+              className="flex-1 bg-transparent px-3 py-2 outline-none text-[13px] text-slate-700 placeholder:text-slate-400 font-medium"
+            />
+            <button
+              onClick={() => {
+                if (externalUrl.trim() && !isLoading) {
+                  handleIngest(externalUrl.trim());
+                }
+              }}
+              disabled={!externalUrl.trim() || isLoading}
+              className={`flex items-center gap-2 px-4 py-2 flex-shrink-0 rounded-lg font-semibold text-[13px] transition-all duration-200 ${externalUrl.trim() && !isLoading
+                ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-sm hover:shadow-md hover:from-indigo-600 hover:to-indigo-700 active:scale-95 cursor-pointer'
+                : 'bg-slate-100/80 text-slate-400 cursor-not-allowed'
+                }`}
+            >
+              <div className={`flex items-center justify-center w-4 h-4 rounded-full ${externalUrl.trim() && !isLoading ? 'bg-white/20' : 'bg-slate-200/50'}`}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              </div>
+              Scrape
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* [NEW] Report Generation Button for Browser Mode REMOVED as per user request */}
 
       {/* Modern Memory View */}
       {
         view === 'memory' && (
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: 'var(--space-2)',
-            background: 'var(--bg-secondary)'
-          }}>
+          <div
+            className="scrollbar-hide"
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: 'var(--space-2)',
+              background: 'var(--bg-secondary)'
+            }}
+          >
             {/* Tab Switcher */}
             <div className="flex p-1 bg-slate-100 rounded-xl mb-4 border border-slate-200/60 shadow-inner">
               <button
@@ -2541,7 +2897,7 @@ function App() {
                 className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${memoryTab === 'bookmarks' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-indigo-500'}`}
               >
                 <Bookmark className="w-3.5 h-3.5" />
-                Notebook
+                Book
               </button>
             </div>
 
@@ -2579,13 +2935,13 @@ function App() {
             {memoryTab === 'saved' ? (
               <SavedPagesView />
             ) : memoryTab === 'sites' ? (
-              <SiteList 
-                onBack={() => setView('chat')} 
+              <SiteList
+                onBack={() => setView('chat')}
                 onWidgetCreate={(site) => {
                   setActiveWidgetSite(site);
                   setIsWidgetModalOpen(true);
                   setWidgetScript('');
-                }} 
+                }}
                 onViewTimeline={(url) => {
                   setShowEvolutionUrl(url);
                   setView('evolution');
@@ -2693,7 +3049,7 @@ function App() {
                   border: msg.role === 'user' ? 'none' : '1px solid var(--border-light)',
                   color: msg.role === 'user' ? 'white' : 'var(--primary-600)'
                 }}>
-                  {msg.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                  {msg.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
                 </div>
 
                 {/* Message Card */}
@@ -2729,6 +3085,9 @@ function App() {
                     wordBreak: 'break-word',
                     overflowWrap: 'anywhere'
                   }}>
+                    {msg.role === 'assistant' && (
+                      <ReasoningDisplay thoughts={msg.reasoningChain || (msg.isLoading ? activeThoughts : [])} />
+                    )}
                     {msg.role === 'user' ? (
                       <div>{msg.text}</div>
                     ) : (
@@ -2738,45 +3097,30 @@ function App() {
                           a: ({ href, children }) => {
                             const blockId = href?.replace('#snap-cite-', '');
                             if (href?.startsWith('#snap-cite-')) {
+                              const citeData = msg.citations?.find(c => c.blockId === blockId);
+                              const allAvailableBlocks = [
+                                ...(msg.contextBlocks || []),
+                                ...(contentBlocks || []),
+                                ...pinnedTabs.flatMap(t => t.blocks || [])
+                              ];
+
                               return (
-                                <span
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-
-                                    console.log("[Citation] Intercepted click for block:", blockId);
-
-                                    // 1. [FIX] EXCLUSIVELY use this message's blocks
-                                    let block = msg.contextBlocks?.find(b => b.id === blockId);
-
-                                    // 2. Fallback to global context pools (pinned tabs, active tab)
-                                    if (!block) {
-                                      const globalBlocks = [
-                                        ...(contentBlocks || []),
-                                        ...pinnedTabs.flatMap(t => t.blocks || [])
-                                      ];
-                                      block = globalBlocks.find(b => b.id === blockId);
-                                    }
-                                    const citeData = msg.citations?.find(c => c.blockId === blockId);
-
-                                    if (block || citeData) {
-                                      const url = block?.url || block?.sourceURL || citeData?.url;
-                                      const snippet = block?.highlight_snippet || block?.text || "";
-
-                                      if (url) {
-                                        const pageNum = block?.metadata?.page || block?.page || citeData?.page;
-                                        handleCitationHighlight(blockId, url, snippet, pageNum);
-                                      } else {
-                                        console.warn("[Markdown] No URL found for citation:", blockId);
-                                      }
-                                    } else {
-                                      console.warn("[Markdown] No metadata found for citation:", blockId);
-                                    }
-                                  }}
-                                  className="citation-dot cursor-pointer transition-all hover:scale-125 select-none text-indigo-500 font-serif font-bold align-super ml-0.5 text-sm"
+                                <CitationHoverCard
+                                  citation={citeData || { blockId }}
+                                  blocks={allAvailableBlocks}
+                                  onSave={handleSaveBookmark}
+                                  onHighlight={handleCitationHighlight}
+                                  isBookmarked={bookmarks.some(b => {
+                                    const blk = allAvailableBlocks.find(cb => cb.id === blockId);
+                                    return b.content === blk?.text;
+                                  })}
                                 >
-                                  {children || '●'}
-                                </span>
+                                  <span
+                                    className="citation-dot cursor-pointer transition-all hover:scale-125 select-none text-indigo-600 dark:text-indigo-400 font-serif font-bold align-super ml-0.5 text-[11px] hover:text-indigo-500"
+                                  >
+                                    [{Array.isArray(children) ? children[0] : (children || '●')}]
+                                  </span>
+                                </CitationHoverCard>
                               );
                             }
                             return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
@@ -2790,16 +3134,21 @@ function App() {
                             }
 
                             return !inline ? (
-                              <div className="relative group/code">
-                                <pre className={`${className} p-4 rounded-xl overflow-x-auto bg-slate-900/50 backdrop-blur-sm border border-slate-800 text-[13px] leading-relaxed shadow-lg mb-4`} {...props}>
-                                  <code>{children}</code>
+                              <div className="relative group/code my-4 rounded-xl overflow-hidden shadow-sm bg-[#1e1e1e] border border-slate-700/50">
+                                <div className="flex items-center px-4 py-2 bg-black/40 border-b border-white/5">
+                                  <span className="text-xs font-medium text-slate-400 capitalize">{match?.[1] || 'code'}</span>
+                                </div>
+                                <pre className={`${className} p-4 overflow-x-auto text-[13px] leading-relaxed text-slate-100 m-0`} {...props}>
+                                  <code className={match?.[1] ? `language-${match[1]}` : ''}>
+                                    {String(children).replace(/\n$/, '')}
+                                  </code>
                                 </pre>
                                 <button
                                   onClick={() => {
                                     navigator.clipboard.writeText(String(children));
                                     toast.success("Code copied to clipboard!");
                                   }}
-                                  className="absolute top-3 right-3 p-2 bg-slate-800/80 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-lg opacity-0 group-hover/code:opacity-100 transition-all border border-slate-700/50 backdrop-blur-sm"
+                                  className="absolute top-2 right-2 p-1.5 bg-slate-700/50 hover:bg-indigo-500 text-slate-300 hover:text-white rounded-lg opacity-0 group-hover/code:opacity-100 transition-all border border-slate-600/50"
                                   title="Copy Code"
                                 >
                                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2808,7 +3157,7 @@ function App() {
                                 </button>
                               </div>
                             ) : (
-                              <code className="px-1.5 py-0.5 bg-slate-100 text-indigo-600 rounded-md font-medium" {...props}>
+                              <code className="px-1.5 py-0.5 mx-0.5 bg-indigo-50/50 dark:bg-slate-800/80 text-indigo-700 dark:text-indigo-300 rounded font-mono text-[13px] border border-indigo-100 dark:border-slate-700 !bg-transparent" {...props}>
                                 {children}
                               </code>
                             );
@@ -2860,6 +3209,65 @@ function App() {
                         );
                       })()
                     )}
+
+                    {/* [NEW] Person Intelligence Sync UI (Bypass Auth Wall) */}
+                    {msg.role === 'assistant' && msg.status === 'needs_browser_sync' && (
+                      <div className="mt-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Globe className="w-4 h-4 text-indigo-500" />
+                          <span className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Sync via Browser Session</span>
+                        </div>
+                        <p className="text-[11px] text-indigo-800/80 mb-4 leading-relaxed font-medium">
+                          LinkedIn is blocking automated access. Since you are logged in, I can index this profile directly from a browser tab to complete your dossier.
+                        </p>
+                        <button
+                          onClick={() => handleBrowserSync(msg.locked_url)}
+                          className="w-full bg-indigo-600 text-white rounded-xl py-2.5 text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20 active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <Pin className="w-3.5 h-3.5" />
+                          Open Profile & Sync
+                        </button>
+                      </div>
+                    )}
+
+                    {/* [NEW] Person Intelligence Refinement UI */}
+                    {msg.role === 'assistant' && msg.status === 'needs_more_info' && (
+                      <div className="mt-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2 mb-3">
+                          <UserCheck className="w-4 h-4 text-indigo-500" />
+                          <span className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Refine Identity Research</span>
+                        </div>
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            placeholder="Add Company (e.g. Google, OpenAI)"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all font-medium"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && e.target.value.trim()) {
+                                handleSend(`Research person with company: ${e.target.value}`, 'browser');
+                              }
+                            }}
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              placeholder="Location"
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all font-medium"
+                            />
+                            <button
+                              onClick={(e) => {
+                                const inputs = e.currentTarget.parentElement.parentElement.querySelectorAll('input');
+                                const details = Array.from(inputs).map(i => i.value).filter(Boolean).join(', ');
+                                if (details) handleSend(`Add context for this research: ${details}`, 'browser');
+                              }}
+                              className="bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-sm"
+                            >
+                              Refine
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Citations Grid */}
@@ -2880,9 +3288,6 @@ function App() {
                           ...pinnedTabs.flatMap(t => t.blocks || [])
                         ];
 
-                        console.log("[Citations] Available blocks:", allAvailableBlocks.map(b => ({ id: b.id, url: b.url })));
-                        console.log("[Citations] Extracted citations:", msg.citations?.map(c => c.blockId));
-
                         // [FIX] Deduplicate citations by blockId to avoid showing the same citation twice
                         const seenBlockIds = new Set();
                         const uniqueCitations = msg.citations.filter(cite => {
@@ -2897,7 +3302,6 @@ function App() {
                             if (mode === 'rag' || mode === 'browser') {
                               const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
                               if (!block) {
-                                console.warn(`[Citations] Block not found for citation: ${cite.blockId}, but showing anyway in RAG mode`);
                                 // Show citation even if block not found - it might be from pinned tabs or other sources
                                 return true;
                               }
@@ -2906,7 +3310,6 @@ function App() {
 
                             const block = allAvailableBlocks.find(cb => cb.id === cite.blockId);
                             if (!block) {
-                              console.warn(`[Citations] Block not found for citation: ${cite.blockId}`);
                               return false;
                             }
 
@@ -2993,7 +3396,9 @@ function App() {
                 </div>
                 <div className="flex items-center gap-2 text-slate-400 bg-white/50 px-4 py-2 rounded-full border border-slate-100">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-                  <span className="text-xs font-medium tracking-wide">AI is thinking...</span>
+                  <span className="text-xs font-medium tracking-wide">
+                    {mode === 'browser' && scholarMode ? "Searching & Ingesting Research Papers..." : "AI is thinking..."}
+                  </span>
                 </div>
               </div>
             )}
@@ -3005,14 +3410,14 @@ function App() {
       {/* Manual Suggestion Trigger (Only when autoSuggest is OFF) - Floating */}
       {
         view === 'chat' && mode === 'rag' && messages.length <= 1 && !autoSuggest && !isSuggesting && suggestions.length === 0 && (
-            <button
-              onClick={fetchSuggestions}
-              className="fixed bottom-[160px] left-4 z-[40] flex items-center gap-2 px-5 py-2.5 text-indigo-600 rounded-full text-xs font-bold backdrop-blur-xl bg-white/80 border border-indigo-100/80 shadow-lg shadow-indigo-500/8 hover:shadow-xl hover:shadow-indigo-500/12 hover:-translate-y-0.5 transition-all active:scale-95 group"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 group-hover:scale-110 transition-all" />
-              Get AI Page Summary
-              <svg className="w-3 h-3 text-indigo-400 group-hover:translate-x-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
-            </button>
+          <button
+            onClick={fetchSuggestions}
+            className="fixed bottom-[160px] left-4 z-[40] flex items-center gap-2 px-5 py-2.5 text-indigo-600 rounded-full text-xs font-bold backdrop-blur-xl bg-white/80 border border-indigo-100/80 shadow-lg shadow-indigo-500/8 hover:shadow-xl hover:shadow-indigo-500/12 hover:-translate-y-0.5 transition-all active:scale-95 group"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 group-hover:scale-110 transition-all" />
+            Get AI Page Summary
+            <svg className="w-3 h-3 text-indigo-400 group-hover:translate-x-0.5 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+          </button>
         )
       }
 
@@ -3137,6 +3542,53 @@ function App() {
                 ))}
               </div>
             )}
+
+            {/* Floating Research Mode Selector — Browser mode only */}
+            {mode === 'browser' && view === 'chat' && (
+              <div className="relative pointer-events-auto" style={{ position: 'relative' }}>
+                {/* Upward-opening dropdown menu */}
+                {researchDropdownOpen && (
+                  <div className="absolute bottom-[42px] right-0 backdrop-blur-xl bg-white/95 border border-indigo-100/80 rounded-2xl shadow-xl shadow-indigo-500/10 p-1.5 flex flex-col gap-1 animate-in slide-in-from-bottom-2 duration-200 z-50 min-w-[140px]">
+                    {[
+                      { key: 'general', label: 'General', Icon: Search },
+                      { key: 'scholar', label: 'Scholar', Icon: GraduationCap },
+                      { key: 'legal', label: 'Legal', Icon: Scale },
+                      { key: 'person', label: 'Entity', Icon: UserCheck }
+                    ].map(opt => (
+                      <button
+                        key={opt.key}
+                        onClick={() => {
+                          setScholarMode(opt.key);
+                          setResearchDropdownOpen(false);
+                        }}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wide transition-all ${scholarMode === opt.key
+                          ? 'bg-indigo-100 text-indigo-800 shadow-sm'
+                          : 'text-slate-500 hover:bg-slate-50 hover:text-indigo-700'
+                          }`}
+                      >
+                        <opt.Icon style={{ width: 14, height: 14 }} className={scholarMode === opt.key ? 'text-indigo-600' : 'text-slate-400'} />
+                        <span>{opt.label}</span>
+                        {scholarMode === opt.key && <span className="ml-auto text-indigo-500 text-xs">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Trigger pill — styled like Pin Tab */}
+                <div
+                  className={`backdrop-blur-xl bg-white/80 border px-4 py-2 rounded-full flex items-center justify-center gap-2 shadow-lg cursor-pointer hover:-translate-y-0.5 hover:shadow-xl transition-all w-fit group active:scale-95 ${scholarMode !== 'general'
+                    ? 'border-indigo-300/80 shadow-indigo-500/12'
+                    : 'border-indigo-100/80 shadow-indigo-500/8'
+                    }`}
+                  onClick={() => setResearchDropdownOpen(!researchDropdownOpen)}
+                >
+                  {scholarMode === 'scholar' ? <GraduationCap style={{ width: 14, height: 14 }} className="text-indigo-600" /> : scholarMode === 'legal' ? <Scale style={{ width: 14, height: 14 }} className="text-indigo-600" /> : scholarMode === 'person' ? <UserCheck style={{ width: 14, height: 14 }} className="text-indigo-600" /> : <Search style={{ width: 14, height: 14 }} className="text-indigo-600" />}
+                  <span className={`text-[12px] font-bold uppercase tracking-wide ${scholarMode !== 'general' ? 'text-indigo-700' : 'text-indigo-800'}`}>
+                    {scholarMode === 'general' ? 'General' : scholarMode === 'scholar' ? 'Scholar' : scholarMode === 'legal' ? 'Legal' : 'Entity'}
+                  </span>
+                  <ChevronRight className="w-3 h-3 text-indigo-400 -rotate-90 group-hover:translate-y-[-1px] transition-transform" style={{ width: 12, height: 12 }} />
+                </div>
+              </div>
+            )}
           </div>
           {/* Preview Area for Crop */}
           {cropPreview && (
@@ -3225,158 +3677,158 @@ function App() {
                       ? 'bg-amber-100 text-amber-600 shadow-md shadow-amber-100 scale-105 ring-2 ring-amber-50'
                       : 'bg-slate-50 text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                       }`}
-                    >
-                    <Bookmark className="w-4 h-4" />
+                  >
+                    <Bookmark className="w-3.5 h-3.5" />
                   </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const domainId = new URL(currentUrl).hostname.replace(/[^a-z0-9]/gi, '-').toLowerCase();
-                    setActiveWidgetSite({
-                      url: currentUrl,
-                      id: domainId,
-                      title: currentTabTitle
-                    });
-                    setIsWidgetModalOpen(true);
-                    setWidgetScript('');
-                  }}
-                  title="Create Chatbot Widget"
-                  className="p-2.5 ml-1 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 hover:scale-110 active:scale-95 transition-all shadow-sm border border-indigo-100/50"
-                >
-                  <Bot className="w-4 h-4" />
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const domainId = new URL(currentUrl).hostname.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+                      setActiveWidgetSite({
+                        url: currentUrl,
+                        id: domainId,
+                        title: currentTabTitle
+                      });
+                      setIsWidgetModalOpen(true);
+                      setWidgetScript('');
+                    }}
+                    title="Create Chatbot Widget"
+                    className="p-2.5 ml-1 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 hover:scale-110 active:scale-95 transition-all shadow-sm border border-indigo-100/50"
+                  >
+                    <Bot className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             )}
 
-          <form
-            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-            className="relative flex items-center group mt-2"
-          >
-            <input
-              autoFocus
-              type="text"
-              className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
-              placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+              className="relative flex items-center group mt-2"
             >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
-        </div>
-        </footer>
-  )
-}
-<Toaster richColors position="top-center" />
-
-{/* Save Folder Modal */ }
-{
-  isSaveFolderModalOpen && (
-    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-white/50 animate-in zoom-in-95 duration-300">
-        <h3 className="font-extrabold text-lg text-slate-800 mb-1 flex items-center gap-2">
-          <Bookmark className="w-5 h-5 text-indigo-500" />
-          Save to Folder
-        </h3>
-        <p className="text-xs text-slate-500 mb-5 font-medium ml-7">Group related websites together.</p>
-
-        <input
-          type="text"
-          autoFocus
-          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all font-semibold text-sm text-slate-800 placeholder:text-slate-400 mb-4"
-          placeholder="e.g. Research, Python Docs"
-          value={saveFolderName}
-          onChange={(e) => setSaveFolderName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && saveFolderName.trim()) {
-              setIsSaveFolderModalOpen(false);
-              handleSaveWebPage(saveFolderName.trim());
-            }
-          }}
-        />
-
-        <div className="flex flex-wrap gap-2 mb-6">
-          {['General', 'Docs', 'Research', 'Tech'].map(f => (
-            <button
-              key={f}
-              onClick={() => setSaveFolderName(f)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform hover:scale-105 ${saveFolderName === f ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            className="flex-1 py-2.5 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors"
-            onClick={() => setIsSaveFolderModalOpen(false)}
-          >
-            Cancel
-          </button>
-          <button
-            className="flex-1 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all hover:scale-[1.02]"
-            onClick={() => {
-              if (saveFolderName.trim()) {
-                setIsSaveFolderModalOpen(false);
-                handleSaveWebPage(saveFolderName.trim());
-              }
-            }}
-          >
-            Save Page
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-{/* Keyboard Shortcuts Modal */ }
-{ showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} /> }
-
-{/* Chatbot Widget Modal */ }
-{isWidgetModalOpen && (
-  <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
-    <div className="bg-white rounded-[28px] w-full max-w-sm overflow-hidden shadow-2xl border border-white/50 animate-in zoom-in-95 duration-200">
-      {/* Premium Header */}
-      <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-7 text-white relative">
-        <div className="absolute top-6 right-6">
-          <button
-            onClick={() => setIsWidgetModalOpen(false)}
-            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all hover:rotate-90"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-4 ring-1 ring-white/20">
-          <Bot className="w-6 h-6 text-white" />
-        </div>
-        <h3 className="text-xl font-bold tracking-tight leading-tight">
-          Chatbot Generator
-        </h3>
-        <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest text-indigo-100">
-          {new URL(activeWidgetSite?.url || "http://site.com").hostname}
-        </div>
-      </div>
-
-      <div className="p-7 space-y-6">
-        {/* Color Customization */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <div className="w-1 h-1 rounded-full bg-indigo-500"></div>
-              Brand Identity
-            </label>
-            <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Primary Color</span>
+              <input
+                autoFocus
+                type="text"
+                className="w-full bg-slate-100/50 border border-slate-200 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:bg-white transition-all placeholder:text-slate-400 text-[13px] text-slate-700"
+                placeholder={cropPreview ? "Ask about this selection..." : (queryNotebook ? "Ask about Research Notebook..." : (mode === 'rag' ? "Ask about page content..." : "Ask about the screen..."))}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || isLoading}
+                className="absolute right-2 p-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl transition-all shadow-md hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95"
+              >
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </form>
           </div>
-          
+        </footer>
+      )
+      }
+      <Toaster richColors position="top-center" />
+
+      {/* Save Folder Modal */}
+      {
+        isSaveFolderModalOpen && (
+          <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-white/50 animate-in zoom-in-95 duration-300">
+              <h3 className="font-extrabold text-lg text-slate-800 mb-1 flex items-center gap-2">
+                <Bookmark className="w-5 h-5 text-indigo-500" />
+                Save to Folder
+              </h3>
+              <p className="text-xs text-slate-500 mb-5 font-medium ml-7">Group related websites together.</p>
+
+              <input
+                type="text"
+                autoFocus
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all font-semibold text-sm text-slate-800 placeholder:text-slate-400 mb-4"
+                placeholder="e.g. Research, Python Docs"
+                value={saveFolderName}
+                onChange={(e) => setSaveFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && saveFolderName.trim()) {
+                    setIsSaveFolderModalOpen(false);
+                    handleSaveWebPage(saveFolderName.trim());
+                  }
+                }}
+              />
+
+              <div className="flex flex-wrap gap-2 mb-6">
+                {['General', 'Docs', 'Research', 'Tech'].map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setSaveFolderName(f)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-transform hover:scale-105 ${saveFolderName === f ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  className="flex-1 py-2.5 rounded-xl font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors"
+                  onClick={() => setIsSaveFolderModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="flex-1 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/20 transition-all hover:scale-[1.02]"
+                  onClick={() => {
+                    if (saveFolderName.trim()) {
+                      setIsSaveFolderModalOpen(false);
+                      handleSaveWebPage(saveFolderName.trim());
+                    }
+                  }}
+                >
+                  Save Page
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcuts && <ShortcutsModal onClose={() => setShowShortcuts(false)} />}
+
+      {/* Chatbot Widget Modal */}
+      {isWidgetModalOpen && (
+        <div className="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex justify-center items-center px-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-[28px] w-full max-w-sm overflow-hidden shadow-2xl border border-white/50 animate-in zoom-in-95 duration-200">
+            {/* Premium Header */}
+            <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-7 text-white relative">
+              <div className="absolute top-6 right-6">
+                <button
+                  onClick={() => setIsWidgetModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-all hover:rotate-90"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-4 ring-1 ring-white/20">
+                <Bot className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl font-bold tracking-tight leading-tight">
+                Chatbot Generator
+              </h3>
+              <div className="mt-2 inline-flex items-center px-2 py-0.5 rounded-full bg-white/10 border border-white/10 text-[9px] font-black uppercase tracking-widest text-indigo-100">
+                {new URL(activeWidgetSite?.url || "http://site.com").hostname}
+              </div>
+            </div>
+
+            <div className="p-7 space-y-6">
+              {/* Color Customization */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <div className="w-1 h-1 rounded-full bg-indigo-500"></div>
+                    Brand Identity
+                  </label>
+                  <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Primary Color</span>
+                </div>
+
                 <div className="space-y-3">
                   <div className="flex items-center gap-4 bg-slate-50/50 p-2 rounded-2xl border border-slate-100">
                     <div
@@ -3391,7 +3843,7 @@ function App() {
                       placeholder="#6366f1"
                     />
                   </div>
-                  
+
                   <div className="flex flex-wrap gap-2 px-1">
                     {['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#0f172a'].map(c => (
                       <button
@@ -3403,93 +3855,93 @@ function App() {
                     ))}
                   </div>
                 </div>
-        </div>
-
-        {/* Crawler Config */}
-        <div className="space-y-4">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <div className="w-1 h-1 rounded-full bg-emerald-500"></div>
-            Crawler Strategy
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl px-4 py-3 group hover:border-indigo-500/30 transition-all">
-              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-1">Max Pages</div>
-              <div className="flex items-center justify-between">
-                <input
-                  type="number"
-                  value={widgetMaxPages}
-                  onChange={(e) => setWidgetMaxPages(parseInt(e.target.value))}
-                  className="w-full bg-transparent outline-none font-bold text-slate-700 text-sm"
-                />
-                <ChevronRight className="w-3 h-3 text-slate-300 group-hover:text-indigo-500 transition-colors" />
               </div>
-            </div>
-            <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl px-4 py-3 flex flex-col justify-center">
-              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-1">Engine</div>
-              <div className="text-emerald-600 font-black text-[10px] tracking-tight uppercase">Firecrawl AI</div>
-            </div>
-          </div>
-        </div>
 
-        {/* Script Output */}
-        {widgetScript && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
-                <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse"></div>
-                Script Ready
-              </label>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(widgetScript);
-                  toast.success("Script copied to clipboard");
-                }}
-                className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-[0.1em] transition-colors"
-              >
-                Copy Script
-              </button>
-            </div>
-              <div className="relative group">
-                <pre className="bg-slate-900/95 backdrop-blur-sm rounded-2xl p-5 text-[10px] text-indigo-300 font-mono overflow-hidden break-all whitespace-pre-wrap leading-relaxed shadow-xl border border-indigo-500/10 ring-1 ring-white/5">
-                  {widgetScript}
-                </pre>
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent pointer-events-none rounded-2xl"></div>
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex gap-2.5 pt-2">
-            <button
-              disabled={isWidgetIngesting || !widgetScript}
-              onClick={handleInjectLive}
-              className={`flex-1 py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${isWidgetIngesting || !widgetScript
-                ? 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
-                : 'bg-emerald-600/90 text-white shadow-lg shadow-emerald-500/10 hover:bg-emerald-600 hover:-translate-y-0.5 active:scale-95'}`}
-            >
-              Test Live
-            </button>
-            <button
-              disabled={isWidgetIngesting}
-              onClick={handleGenerateWidget}
-              className={`flex-[1.5] py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${isWidgetIngesting
-                ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500 hover:-translate-y-0.5 active:scale-95 ring-1 ring-white/10'}`}
-            >
-              {isWidgetIngesting ? (
-                <div className="flex items-center justify-center gap-3">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Ingesting...
+              {/* Crawler Config */}
+              <div className="space-y-4">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1 h-1 rounded-full bg-emerald-500"></div>
+                  Crawler Strategy
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl px-4 py-3 group hover:border-indigo-500/30 transition-all">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-1">Max Pages</div>
+                    <div className="flex items-center justify-between">
+                      <input
+                        type="number"
+                        value={widgetMaxPages}
+                        onChange={(e) => setWidgetMaxPages(parseInt(e.target.value))}
+                        className="w-full bg-transparent outline-none font-bold text-slate-700 text-sm"
+                      />
+                      <ChevronRight className="w-3 h-3 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                    </div>
+                  </div>
+                  <div className="bg-slate-50/80 border border-slate-200/60 rounded-2xl px-4 py-3 flex flex-col justify-center">
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-1">Engine</div>
+                    <div className="text-emerald-600 font-black text-[10px] tracking-tight uppercase">Apify Engine</div>
+                  </div>
                 </div>
-              ) : (
-                widgetScript ? 'Regenerate' : 'Create Chatbot'
+              </div>
+
+              {/* Script Output */}
+              {widgetScript && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
+                      <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse"></div>
+                      Script Ready
+                    </label>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(widgetScript);
+                        toast.success("Script copied to clipboard");
+                      }}
+                      className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-[0.1em] transition-colors"
+                    >
+                      Copy Script
+                    </button>
+                  </div>
+                  <div className="relative group">
+                    <pre className="bg-slate-900/95 backdrop-blur-sm rounded-2xl p-5 text-[10px] text-indigo-300 font-mono overflow-hidden break-all whitespace-pre-wrap leading-relaxed shadow-xl border border-indigo-500/10 ring-1 ring-white/5">
+                      {widgetScript}
+                    </pre>
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/40 to-transparent pointer-events-none rounded-2xl"></div>
+                  </div>
+                </div>
               )}
-            </button>
-          </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  disabled={isWidgetIngesting || !widgetScript}
+                  onClick={handleInjectLive}
+                  className={`flex-1 py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${isWidgetIngesting || !widgetScript
+                    ? 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed'
+                    : 'bg-emerald-600/90 text-white shadow-lg shadow-emerald-500/10 hover:bg-emerald-600 hover:-translate-y-0.5 active:scale-95'}`}
+                >
+                  Test Live
+                </button>
+                <button
+                  disabled={isWidgetIngesting}
+                  onClick={handleGenerateWidget}
+                  className={`flex-[1.5] py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all ${isWidgetIngesting
+                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-xl shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500 hover:-translate-y-0.5 active:scale-95 ring-1 ring-white/10'}`}
+                >
+                  {isWidgetIngesting ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Ingesting...
+                    </div>
+                  ) : (
+                    widgetScript ? 'Regenerate' : 'Create Chatbot'
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
 
       {/* Render Evolution Timeline */}
       {view === 'evolution' && showEvolutionUrl && (
@@ -3522,6 +3974,32 @@ function App() {
 }
 
 export default function AppWithErrorBoundary() {
+  const [session, setSession] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsInitializing(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (isInitializing) {
+    return <div className="flex h-screen items-center justify-center bg-[#F9FAFB]"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>;
+  }
+
+  if (!session) {
+    return <AuthView onAuthSuccess={(s) => setSession(s)} />;
+  }
+
   return (
     <ErrorBoundary>
       <App />
