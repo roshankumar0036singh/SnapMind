@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Union, Optional
 class BrowserRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
+    workspace_id: Optional[str] = None # [NEW]
     output_lang: str = "auto"
     query_notebook: bool = False
     image_data: Optional[str] = None
@@ -17,12 +18,14 @@ class IngestRequest(BaseModel):
     max_depth: int = 3   # For multi-page crawling
     target_lang: str = "auto"  # [NEW] Language for Lingo.dev translation
     session_id: Optional[str] = None # [NEW] Phase 25: Conversation-Scoped Graph
+    workspace_id: Optional[str] = None # [NEW]
     stream: bool = False # [NEW] Stream progress via NDJSON
 
 class RepoIngestRequest(BaseModel):
     repo_url: str
     target_lang: str = "auto"
     session_id: Optional[str] = None # [NEW] Phase 25: Conversation-Scoped Graph
+    workspace_id: Optional[str] = None # [NEW]
 
 class ChatRequest(BaseModel):
     query: str
@@ -31,6 +34,7 @@ class ChatRequest(BaseModel):
     output_lang: str = "auto"       # [NEW] Forced Output Language (Feature 5)
     context_url: Optional[str] = None
     session_id: Optional[str] = None   # [NEW] Phase 5: Semantic Chat Memory
+    workspace_id: Optional[str] = None # [NEW]
     site_id: Optional[str] = None      # [NEW] Phase 3: Context Switching (UUID)
     history: Optional[List[Dict[str, Any]]] = None # [NEW] Conversational History
     page_content: Optional[str] = None  # [NEW] Allow direct text context
@@ -39,6 +43,7 @@ class ChatRequest(BaseModel):
 class WidgetIngestRequest(BaseModel):
     url: str
     widget_id: str
+    workspace_id: Optional[str] = None # [NEW]
     max_pages: int = 50
     max_depth: int = 3
     api_key: Optional[str] = None
@@ -46,6 +51,7 @@ class WidgetIngestRequest(BaseModel):
 class WidgetChatRequest(BaseModel):
     query: str
     widget_id: str
+    workspace_id: Optional[str] = None # [NEW]
     session_id: Optional[str] = None # [NEW] Phase 5: Semantic Chat Memory
     page_content: Optional[str] = None  # [NEW] Allow direct text context
     content_blocks: Optional[List[Dict[str, Any]]] = None # [NEW] Structured blocks for citation
@@ -58,6 +64,7 @@ class WidgetChatRequest(BaseModel):
 class SuggestRequest(BaseModel):
     page_content: Optional[str] = None
     url: Optional[str] = None
+    workspace_id: Optional[str] = None # [NEW]
     site_id: Optional[str] = None
 
 class TranslateRequest(BaseModel):
@@ -67,15 +74,18 @@ class TranslateRequest(BaseModel):
 class BookmarkRequest(BaseModel):
     content: str
     source_url: Optional[str] = None
+    workspace_id: Optional[str] = None # [NEW]
     metadata: Optional[Dict[str, Any]] = None
 
 class SavePageRequest(BaseModel):
     url: str
     text: str
+    workspace_id: Optional[str] = None # [NEW]
     folder_name: str = "General"
 
 class WatchlistRequest(BaseModel):
     url: str
+    workspace_id: Optional[str] = None # [NEW]
 
 class ReverseEngineerRequest(BaseModel):
     html: str
@@ -84,23 +94,29 @@ class ReverseEngineerRequest(BaseModel):
 
 class ResearchRequest(BaseModel):
     session_id: Optional[str] = None
+    workspace_id: Optional[str] = None # [NEW]
     query: str
     output_lang: str = "auto"
     query_notebook: bool = False
     image_data: Optional[str] = None
     visible: bool = False # [NEW] For Desktop Browser Agent
+    research_mode: str = "general" # [NEW] Phase 18/19: "general", "scholar", or "legal"
 
 class ReportRequest(BaseModel):
-    session_id: str
+    session_ids: List[str]  # [MOD] Support multiple sessions
     query: str
-    source_urls: Optional[List[str]] = None # [NEW] Support selective synthesis
+    workspace_id: Optional[str] = None # [NEW]
+    output_lang: str = "auto" # [NEW]
+    source_urls: Optional[List[str]] = None # Support selective synthesis
 
 class PersonaRequest(BaseModel):
     name: str
+    workspace_id: Optional[str] = None # [NEW]
     system_prompt_addon: str
 
 class GlobalSearchRequest(BaseModel):
     query: str
+    workspace_id: Optional[str] = None # [NEW]
     limit: int = 20
 
 class AnalyzeImageRequest(BaseModel):
@@ -108,6 +124,7 @@ class AnalyzeImageRequest(BaseModel):
     prompt: Optional[str] = None
     mode: str = "qa" # [NEW] "qa" or "extraction"
     target_lang: str = "auto" # [NEW] Support for translation
+    active_context: Optional[Dict[str, Any]] = None # [NEW] { type: 'url'|'file', id: string, name: string }
 
 class ResearchActionItem(BaseModel):
     action_type: str
