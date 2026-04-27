@@ -91,3 +91,5 @@ async def chat_stream_endpoint(
         event_generator(),
         media_type="text/event-stream"
     )
+
+# [LOGGING] Standardized production logs for search endpoint
