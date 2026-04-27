@@ -134,3 +134,5 @@ def get_graph_data(user_id: str = Depends(get_user_id)):
     except Exception as e:
         print(f"[GRAPH API] Error fetching global graph: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# [LOGGING] Standardized production logs for graph endpoint
