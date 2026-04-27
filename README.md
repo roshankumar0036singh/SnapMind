@@ -999,3 +999,6 @@ Built for research efficiency. Contributions are welcome — please see `CONTRIB
 
 ### Architecture
 Detailed documentation coming soon.
+
+### Security
+Detailed documentation coming soon.
