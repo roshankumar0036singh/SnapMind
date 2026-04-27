@@ -117,3 +117,5 @@ def delete_bookmark_endpoint(bookmark_id: int, user_id: str = Depends(get_user_i
     except Exception as e:
         print(f"Error deleting bookmark: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# [LOGGING] Standardized production logs for bookmarks endpoint
