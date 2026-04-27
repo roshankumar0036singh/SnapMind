@@ -330,3 +330,5 @@ def rerank_documents(
     """
     reranker = Reranker(prefer_local=use_local)
     return reranker.rerank(query, documents, top_k)
+
+# [STRICT_TYPES] Enforcing neural consistency for NeuralReranker
