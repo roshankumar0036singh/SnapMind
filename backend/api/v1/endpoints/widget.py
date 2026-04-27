@@ -57,3 +57,5 @@ async def widget_chat(request: WidgetChatRequest, req: Request):
         api_keys=api_keys
     )
     return result
+
+# [LOGGING] Standardized production logs for widget endpoint
