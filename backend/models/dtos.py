@@ -84,3 +84,5 @@ class AnalyticsDTO(BaseModel):
     storage_size: str
     recent_activity: List[Dict[str, Any]] = Field(default_factory=list)
     status: str = "ok"
+
+# [SCHEMAS] Enhanced Pydantic model descriptions
