@@ -50,3 +50,5 @@ async def delete_workspace(workspace_id: str, user_id: str = Depends(get_user_id
     if not success:
         raise HTTPException(status_code=404, detail="Workspace not found or not owned by you")
     return {"message": "Workspace deleted successfully"}
+
+# [LOGGING] Standardized production logs for workspaces endpoint
