@@ -9,8 +9,44 @@ import chalk from 'chalk';
 import { SnapMindError } from './errors.js';
 import { routeModel } from './router.js';
 import { recordUsage } from './monitor.js';
+import { apiClient } from './api_client.js';
 
 let overrideProvider = null;
+
+class RemoteLLM {
+  constructor(options = {}) {
+    this.options = options;
+  }
+
+  async invoke(messages) {
+    // Format LangChain messages to standard role/content for backend
+    const formattedMessages = messages.map(m => {
+      // Handle tuple [role, content] or object { role, content }
+      if (Array.isArray(m)) return { role: m[0], content: m[1] };
+      return { role: m.role || (m._getType?.() === 'human' ? 'user' : 'assistant'), content: m.content || m.text };
+    });
+
+    const response = await apiClient.chat(
+      formattedMessages.pop().content, // Last message as query
+      this.options.session_id,
+      {
+        history: formattedMessages,
+        persona: this.options.persona,
+        temperature: this.options.temperature
+      }
+    );
+
+    return { content: response.response };
+  }
+
+  async stream(messages) {
+    // Basic streaming wrapper - calls invoke for now as CLI streamer expects an async iterator
+    // We would need a real NDJSON streaming client for CLI streaming
+    console.log(chalk.gray('(Remote streaming initialized...)'));
+    const result = await this.invoke(messages);
+    return (async function* () { yield { content: result.content }; })();
+  }
+}
 
 async function checkOllama(airgap) {
   try {
@@ -97,6 +133,11 @@ export async function getLLM(options = {}) {
   const airgap = options.airgap || false;
   const temperature = options.temperature || config.get('temperature');
   const model = options.model || config.get('model');
+  const mode = config.get('mode') || 'local';
+
+  if (mode === 'remote') {
+    return new RemoteLLM({ ...options, temperature, model });
+  }
 
   // 1. Force Airgap (Local Only)
   if (!overrideProvider && (airgap || provider === 'ollama')) {

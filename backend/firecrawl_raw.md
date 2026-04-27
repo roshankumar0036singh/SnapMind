@@ -268,7 +268,7 @@ One of the most popular VCS tools was a system called RCS, which is still distri
 
 ### Centralized Version Control Systems
 
-The next major issue that people encounter is that they need to collaborate with developers on other systems.
+The next major issue that encounter is that they need to collaborate with developers on other systems.
 To deal with this problem, Centralized Version Control Systems (CVCSs) were developed.
 These systems (such as CVS, Subversion, and Perforce) have a single server that contains all the versioned files, and a number of clients that check out files from that central place.
 For many years, this has been the standard for version control.

@@ -17,6 +17,16 @@ const schema = {
     type: 'boolean',
     default: false,
   },
+  // Phase 4: Intelligence Bridge
+  mode: {
+    type: 'string',
+    default: 'local', // 'local' (LanceDB) or 'remote' (FastAPI backend)
+    enum: ['local', 'remote'],
+  },
+  backendUrl: {
+    type: 'string',
+    default: 'http://localhost:8000',
+  },
 };
 
 const config = new Conf({

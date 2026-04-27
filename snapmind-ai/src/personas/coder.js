@@ -87,8 +87,20 @@ export async function startCoder(options = {}) {
       if (resume) history = existingHistory;
     }
 
+    const mode = config.get('mode') || 'local';
+
     if (!vectorStore.table) {
-      if (repoUrl) {
+      if (repoUrl && mode === 'remote') {
+        const remoteSpinner = ora(`[Remote] Delegating GitHub synthesis to Neural Core...`).start();
+        try {
+          await apiClient.ingestGithub(repoUrl, 'auto');
+          remoteSpinner.succeed('Neural Core is now synthesizing the repository. Status available in Atlas.');
+          targetPath = repoUrl;
+        } catch (e) {
+          remoteSpinner.fail('Remote delegation failed.');
+          throw e;
+        }
+      } else if (repoUrl) {
         const repoName = repoUrl.split('/').pop().replace('.git', '');
         targetPath = path.join(process.cwd(), 'snapmind_repos', repoName);
         
@@ -103,50 +115,52 @@ export async function startCoder(options = {}) {
         spinner.succeed(`Clone complete: ${repoName}`);
       }
 
-      const indexSpinner = ora('Indexing codebase...').start();
-      
-      const loader = new DirectoryLoader(targetPath, {
-        '.js': (p) => new TextLoader(p),
-        '.ts': (p) => new TextLoader(p),
-        '.py': (p) => new TextLoader(p),
-        '.md': (p) => new TextLoader(p),
-        '.json': (p) => new TextLoader(p),
-      }, true, 'ignore');
-      
-        const docs = await loader.load();
-        const filteredDocs = docs.filter(d => 
-          !d.metadata.source.includes('node_modules') && 
-          !d.metadata.source.includes('.git') &&
-          !d.metadata.source.includes('.snapmind_cache') &&
-          !d.metadata.source.includes('snapmind_repos')
-        );
-
-        if (filteredDocs.length === 0) throw new SnapMindError('No supported code files found.', 'EMPTY_CODEBASE');
-
-        const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
-        const finalDocs = [];
-
-        for (const doc of filteredDocs) {
-          const isJS = doc.metadata.source.endsWith('.js') || doc.metadata.source.endsWith('.ts');
-          if (isJS) {
-            const blocks = extractCodeBlocks(doc.pageContent, doc.metadata.source);
-            if (blocks.length > 0) {
-              blocks.forEach(block => {
-                finalDocs.push({
-                  pageContent: block.content,
-                  metadata: { ...doc.metadata, blockName: block.name, blockType: block.type }
-                });
-              });
-              continue;
-            }
-          }
-          // Fallback to text splitting
-          const chunks = await splitter.splitDocuments([doc]);
-          finalDocs.push(...chunks);
-        }
+      if (mode !== 'remote') {
+        const indexSpinner = ora('Indexing codebase locally...').start();
         
-        await vectorStore.addDocuments(finalDocs);
-        indexSpinner.succeed(`Analyzed ${filteredDocs.length} files (${finalDocs.length} snippets).`);
+        const loader = new DirectoryLoader(targetPath, {
+          '.js': (p) => new TextLoader(p),
+          '.ts': (p) => new TextLoader(p),
+          '.py': (p) => new TextLoader(p),
+          '.md': (p) => new TextLoader(p),
+          '.json': (p) => new TextLoader(p),
+        }, true, 'ignore');
+        
+          const docs = await loader.load();
+          const filteredDocs = docs.filter(d => 
+            !d.metadata.source.includes('node_modules') && 
+            !d.metadata.source.includes('.git') &&
+            !d.metadata.source.includes('.snapmind_cache') &&
+            !d.metadata.source.includes('snapmind_repos')
+          );
+
+          if (filteredDocs.length === 0) throw new SnapMindError('No supported code files found.', 'EMPTY_CODEBASE');
+
+          const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
+          const finalDocs = [];
+
+          for (const doc of filteredDocs) {
+            const isJS = doc.metadata.source.endsWith('.js') || doc.metadata.source.endsWith('.ts');
+            if (isJS) {
+              const blocks = extractCodeBlocks(doc.pageContent, doc.metadata.source);
+              if (blocks.length > 0) {
+                blocks.forEach(block => {
+                  finalDocs.push({
+                    pageContent: block.content,
+                    metadata: { ...doc.metadata, blockName: block.name, blockType: block.type }
+                  });
+                });
+                continue;
+              }
+            }
+            // Fallback to text splitting
+            const chunks = await splitter.splitDocuments([doc]);
+            finalDocs.push(...chunks);
+          }
+          
+          await vectorStore.addDocuments(finalDocs);
+          indexSpinner.succeed(`Analyzed ${filteredDocs.length} files (${finalDocs.length} snippets).`);
+      }
     }
 
     if (options.watch) {

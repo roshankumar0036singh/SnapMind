@@ -41,16 +41,33 @@ export async function startWriter(options = {}) {
   if (action === 'exit') return;
 
   let docs = [];
+  const mode = config.get('mode') || 'local';
+
   if (action === 'urls') {
     const { urls } = await inquirer.prompt([{ type: 'input', name: 'urls', message: 'Enter URLs (space separated):' }]);
     const urlList = urls.split(' ').filter(u => u.startsWith('http'));
-    const scrapeSpinner = ora('Scraping web content...').start();
-    for (const url of urlList) {
-      const loader = new CheerioWebBaseLoader(url);
-      docs.push(...await loader.load());
+    
+    if (mode === 'remote') {
+      const remoteSpinner = ora(`[Remote] Triggering backend pulse for ${urlList.length} sources...`).start();
+      try {
+        for (const url of urlList) {
+          await apiClient.ingestWebsite(url, 'auto');
+        }
+        remoteSpinner.succeed('Backend ingestion synchronized. Live updates will reflect in the Atlas.');
+        targetPath = 'remote_session';
+      } catch (e) {
+        remoteSpinner.fail('Remote ingestion request failed.');
+        throw e;
+      }
+    } else {
+      const scrapeSpinner = ora('Scraping web content locally...').start();
+      for (const url of urlList) {
+        const loader = new CheerioWebBaseLoader(url);
+        docs.push(...await loader.load());
+      }
+      scrapeSpinner.succeed(`Scraped ${docs.length} pages.`);
+      targetPath = urls;
     }
-    scrapeSpinner.succeed(`Scraped ${docs.length} pages.`);
-    targetPath = urls;
   }
 
   const { tone } = await inquirer.prompt([

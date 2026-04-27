@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-keys = ["DATABASE_URL", "GOOGLE_API_KEY", "MISTRAL_API_KEY", "FIRECRAWL_API_KEY"]
+keys = ["DATABASE_URL", "GOOGLE_API_KEY", "MISTRAL_API_KEY", "APIFY_API_TOKEN"]
 
 print("Checking Environment Variables:")
 for key in keys:

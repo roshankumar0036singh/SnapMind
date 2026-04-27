@@ -103,7 +103,7 @@ graph TD
     AGENTS -->|"Analyze + Rank"| LLM
     TRANS -->|"Translate"| LINGO
     RAG -->|"Embed"| LLM
-    VISION -->|"Llama 4"| LLM
+    VISION -->|" 4"| LLM
 
     style SP fill:#1a1a2e,stroke:#e94560,color:#fff
     style BG fill:#1a1a2e,stroke:#e94560,color:#fff

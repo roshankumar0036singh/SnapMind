@@ -1,4 +1,6 @@
 import { LanceStore } from './lance_store.js';
+import { apiClient } from './api_client.js';
+import config from './config.js';
 import * as lancedb from '@lancedb/lancedb';
 import path from 'path';
 
@@ -10,7 +12,29 @@ export async function getVectorStore(namespace, embeddings) {
   return store;
 }
 
-export async function globalSearch(query, embeddings, k = 5) {
+export async function globalSearch(query, embeddings, k = 5, session_id = null) {
+  const mode = config.get('mode') || 'local';
+
+  if (mode === 'remote') {
+    console.log(`\n☁️  Performing Remote Neural Search (via Backend)...`);
+    const response = await apiClient.search(query, k, session_id);
+    if (!response.success) {
+      throw new Error(response.error || 'Remote search failed');
+    }
+    // Transform backend results to match CLI format
+    // Backend returns list of dicts with source_url, content, etc.
+    return response.results.map(r => ({
+      pageContent: r.content,
+      metadata: {
+        source: r.source_url,
+        score: r.score,
+        ...r.metadata
+      },
+      namespace: r.site_id || 'remote'
+    }));
+  }
+
+  // Fallback to Local Search (LanceDB)
   const db = await lancedb.connect(DB_DIR);
   const tables = await db.tableNames();
   let allResults = [];
@@ -23,7 +47,7 @@ export async function globalSearch(query, embeddings, k = 5) {
   }
 
   return allResults
-    .sort((a, b) => b.score - a.score) // Sort if score is available (LanceDB returns distances usually)
+    .sort((a, b) => b.score - a.score) 
     .slice(0, k);
 }
 
