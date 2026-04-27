@@ -10,7 +10,7 @@ import hashlib
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from config import CacheConfig
+from config import settings
 import threading
 
 
@@ -35,9 +35,9 @@ class SemanticCache:
     def __init__(self):
         """Initialize semantic cache"""
         self.cache: Dict[str, CacheEntry] = {}
-        self.similarity_threshold = CacheConfig.CACHE_SIMILARITY_THRESHOLD
-        self.ttl_general = CacheConfig.CACHE_TTL_GENERAL
-        self.ttl_indexed = CacheConfig.CACHE_TTL_INDEXED
+        self.similarity_threshold = settings.cache.similarity_threshold
+        self.ttl_general = settings.cache.ttl_general
+        self.ttl_indexed = settings.cache.ttl_indexed
         self.lock = threading.Lock()
         
         # Statistics
@@ -292,7 +292,7 @@ def cache_query(
     Returns:
         Cached results or None
     """
-    if not CacheConfig.CACHE_ENABLED:
+    if not settings.cache.enabled:
         return None
     
     cache = get_cache()
@@ -314,7 +314,7 @@ def store_in_cache(
         results: Results to cache
         site_id: Optional site filter
     """
-    if not CacheConfig.CACHE_ENABLED:
+    if not settings.cache.enabled:
         return
     
     cache = get_cache()

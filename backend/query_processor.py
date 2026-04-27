@@ -11,7 +11,7 @@ Implements advanced query processing techniques:
 import os
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from config import QueryConfig, GenerationConfig
+from config import settings
 
 
 @dataclass
@@ -75,7 +75,7 @@ class QueryProcessor:
         HyDE: Instead of embedding the query directly, generate a hypothetical
         answer and embed that. This often retrieves better results.
         """
-        if not self.mistral_client or not QueryConfig.HYDE_ENABLED:
+        if not self.mistral_client or not settings.query.hyde_enabled:
             return None
         
         try:
@@ -87,7 +87,7 @@ Question: {query}
 Answer:"""
             
             response = self.mistral_client.chat.complete(
-                model=GenerationConfig.GENERATION_MODEL,
+                model=settings.models.mistral_small,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,  # Lower temperature for more focused answers
                 max_tokens=200
@@ -107,11 +107,11 @@ Answer:"""
         
         This helps capture different phrasings and aspects of the question.
         """
-        if not self.mistral_client or not QueryConfig.MULTI_QUERY_ENABLED:
+        if not self.mistral_client or not settings.query.multi_query_enabled:
             return [query]
         
         if num_variations is None:
-            num_variations = QueryConfig.QUERY_VARIATIONS
+            num_variations = settings.query.query_variations
         
         try:
             prompt = f"""Generate {num_variations} different ways to ask the following question. 
@@ -123,7 +123,7 @@ Original question: {query}
 Variations:"""
             
             response = self.mistral_client.chat.complete(
-                model=GenerationConfig.GENERATION_MODEL,
+                model=settings.models.mistral_small,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
                 max_tokens=150
@@ -184,9 +184,9 @@ Variations:"""
         """
         # Determine which enhancements to use
         if use_hyde is None:
-            use_hyde = QueryConfig.HYDE_ENABLED
+            use_hyde = settings.query.hyde_enabled
         if use_multi_query is None:
-            use_multi_query = QueryConfig.MULTI_QUERY_ENABLED
+            use_multi_query = settings.query.multi_query_enabled
         
         # Classify query
         query_type = self.classify_query(query)

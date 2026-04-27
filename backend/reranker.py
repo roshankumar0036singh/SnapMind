@@ -8,7 +8,7 @@ Supports Cohere Rerank API with local cross-encoder fallback.
 import os
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from config import RerankingConfig
+from config import settings
 
 
 @dataclass
@@ -256,10 +256,10 @@ class Reranker:
         
         # Use configured top_k if not specified
         if top_k is None:
-            top_k = RerankingConfig.RERANK_TOP_K
+            top_k = settings.reranking.top_k
         
         # Limit candidates to configured maximum
-        candidates = documents[:RerankingConfig.RERANK_CANDIDATES]
+        candidates = documents[:settings.reranking.candidates]
         
         print(f"[RERANK] Reranking {len(candidates)} candidates → top {top_k}")
         

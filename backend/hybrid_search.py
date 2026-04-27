@@ -9,7 +9,7 @@ import os
 from typing import List, Dict, Any, Tuple, Union
 from google import genai
 from psycopg_pool import ConnectionPool
-from config import SearchConfig
+from config import settings
 
 
 class HybridSearcher:
@@ -20,9 +20,9 @@ class HybridSearcher:
     def __init__(self, db_pool: ConnectionPool, api_keys: dict = None):
         self.db_pool = db_pool
         self.api_keys = api_keys
-        self.search_mode = SearchConfig.SEARCH_MODE
-        self.vector_weight = SearchConfig.VECTOR_WEIGHT
-        self.keyword_weight = SearchConfig.KEYWORD_WEIGHT
+        self.search_mode = settings.search.mode
+        self.vector_weight = settings.search.vector_weight
+        self.keyword_weight = settings.search.keyword_weight
         # Vector search parameters
         # The instruction implies lowering the threshold to 0.2.
         # Assuming SearchConfig.MATCH_THRESHOLD is updated, or we override it here.
@@ -33,8 +33,8 @@ class HybridSearcher:
         # self.match_threshold = 0.2
         # However, the snippet provided is a bit ambiguous in its placement and syntax.
         # Sticking to the most likely interpretation given the context of `SearchConfig`.
-        self.match_threshold = SearchConfig.MATCH_THRESHOLD
-        self.match_count = SearchConfig.MATCH_COUNT
+        self.match_threshold = settings.search.match_threshold
+        self.match_count = settings.search.match_count
     
     def search(
         self,
@@ -261,8 +261,7 @@ class HybridSearcher:
         Generate embedding for query text using same model as ingestion.
         """
         try:
-            from config import EmbeddingConfig
-            model_name = EmbeddingConfig.EMBEDDING_MODEL
+            model_name = settings.models.mistral_embed
             
             # 1. Mistral Embedding Flow
             if "mistral" in model_name.lower():

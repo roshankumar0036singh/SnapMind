@@ -11,7 +11,7 @@ Implements techniques to optimize context before sending to LLM:
 import re
 from typing import List, Dict, Any, Set
 from dataclasses import dataclass
-from config import ContextConfig
+from config import settings
 
 
 @dataclass
@@ -34,9 +34,9 @@ class ContextOptimizer:
     
     def __init__(self):
         """Initialize context optimizer"""
-        self.max_context_length = ContextConfig.MAX_CONTEXT_LENGTH
-        self.enable_compression = ContextConfig.ENABLE_COMPRESSION
-        self.enable_deduplication = ContextConfig.ENABLE_DEDUPLICATION
+        self.max_context_length = settings.context.max_context_length
+        self.enable_compression = settings.context.enable_compression
+        self.enable_deduplication = settings.context.enable_deduplication
     
     def estimate_tokens(self, text: str) -> int:
         """
@@ -159,7 +159,7 @@ class ContextOptimizer:
             min_score: Minimum relevance score (uses config default if None)
         """
         if min_score is None:
-            min_score = ContextConfig.MIN_RELEVANCE_SCORE
+            min_score = settings.context.min_relevance_score
         
         # Filter by score
         filtered = []

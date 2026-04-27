@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 from api_clients import get_groq_key, get_hf_token, get_gemini_client, get_openai_client
-from config import ModelRegistry
+from config import settings
 
 # --- Vision Cache Configuration ---
 CACHE_DIR = Path("data/vision_cache")
@@ -31,11 +31,21 @@ def save_to_cache(img_hash: str, mode: str, prompt: str, result: dict):
     cache_file = CACHE_DIR / f"{img_hash}_{mode}_{prompt_hash}.json"
     cache_file.write_text(json.dumps(result))
 
-def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str = "qa", api_keys: dict = None, target_lang: str = "auto") -> dict:
+def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str = "qa", api_keys: dict = None, target_lang: str = "auto", active_context: dict = None) -> dict:
     """
     Analyzes an image using high-performance Vision models.
     Priority: Gemini 2.0 Flash -> GPT-4o -> Groq (Llama Scout)
     """
+    
+    # 0. Context Awareness
+    context_hint = ""
+    if active_context:
+        ctx_type = active_context.get("type", "")
+        ctx_name = active_context.get("name", "")
+        if ctx_type == "file":
+            context_hint = f" This is a direct file/document ({ctx_name}). "
+        elif ctx_type == "url":
+            context_hint = f" This is a screenshot of a web page ({ctx_name}). "
     
     final_prompt = user_prompt or "Describe this image in detail."
     
@@ -49,8 +59,8 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
             system_instruction = "Answer the user's question directly and conversationally based ONLY on the visual evidence. Suggest 2 follow-ups at the end."
             user_message_text = f"Question: {user_prompt}"
         else:
-            system_instruction = "Provide a structured, detailed description of this web/app screen. List key actions and sections. Suggest 2 follow-ups."
-            user_message_text = "Describe this screen content."
+            system_instruction = f"Provide a structured, detailed description of this visual content.{context_hint} List key sections and notable details. Suggest 2 follow-ups."
+            user_message_text = "Describe this content."
 
     # Check Cache
     img_hash = get_image_hash(image_bytes)
@@ -65,14 +75,48 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
     elif image_bytes.startswith(b"GIF"): mime_type = "image/gif"
     elif image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP": mime_type = "image/webp"
 
-    # 1. Primary: Gemini 2.0 Flash
+    # 1. Primary: Groq (Llama Scout) - User Preferred
+    groq_key = get_groq_key(api_keys)
+    if groq_key:
+        print("[VISION] Attempting Groq (Primary Choice)...")
+        try:
+            base64_image = base64.b64encode(image_bytes).decode('utf-8')
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                    "messages": [
+                        {"role": "system", "content": system_instruction},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}},
+                                {"type": "text", "text": user_message_text}
+                            ]
+                        }
+                    ]
+                },
+                timeout=20
+            )
+            if res.status_code == 200:
+                answer = res.json()["choices"][0]["message"]["content"]
+                result = {"answer": answer, "success": True, "model_used": "llama-4-scout"}
+                save_to_cache(img_hash, mode, final_prompt, result)
+                return result
+            else:
+                print(f"[VISION] Groq API returned {res.status_code}: {res.text}")
+        except Exception as e:
+            print(f"[VISION] Groq error: {e}")
+
+    # 2. Secondary: Gemini 2.0 Flash (Fallback)
     try:
         client = get_gemini_client(api_keys)
-        print("[VISION] Attempting Gemini 2.0 Flash Vision...")
+        print("[VISION] Attempting Gemini 2.0 Flash (Fallback)...")
         from google.genai import types
         
         response = client.models.generate_content(
-            model=ModelRegistry.GEMINI_FLASH,
+            model=settings.models.gemini_flash,
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
                 types.Part.from_text(text=f"{system_instruction}\n\n{user_message_text}")
@@ -80,20 +124,20 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
         )
         
         if response.text:
-            result = {"answer": response.text, "success": True, "model_used": ModelRegistry.GEMINI_FLASH}
+            result = {"answer": response.text, "success": True, "model_used": settings.models.gemini_flash}
             save_to_cache(img_hash, mode, final_prompt, result)
             return result
     except Exception as e:
         print(f"[VISION] Gemini error: {e}")
 
-    # 2. Secondary: GPT-4o
+    # 3. Tertiary: GPT-4o (Fallback)
     try:
         base64_image = base64.b64encode(image_bytes).decode('utf-8')
         client = get_openai_client(api_keys)
-        print("[VISION] Attempting GPT-4o Vision...")
+        print("[VISION] Attempting GPT-4o Vision (Fallback)...")
         
         response = client.chat.completions.create(
-            model=ModelRegistry.GPT_4O,
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_instruction},
                 {
@@ -113,38 +157,6 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
             return result
     except Exception as e:
         print(f"[VISION] GPT-4o error: {e}")
-
-    # 3. Tertiary: Groq (Llama Scout) - Fallback
-    groq_key = get_groq_key(api_keys)
-    if groq_key:
-        print("[VISION] Attempting Groq (Fallback Tier 3)...")
-        try:
-            base64_image = base64.b64encode(image_bytes).decode('utf-8')
-            res = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-                json={
-                    "model": ModelRegistry.LLAMA_SCOUT,
-                    "messages": [
-                        {"role": "system", "content": system_instruction},
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}},
-                                {"type": "text", "text": user_message_text}
-                            ]
-                        }
-                    ]
-                },
-                timeout=20
-            )
-            if res.status_code == 200:
-                answer = res.json()["choices"][0]["message"]["content"]
-                result = {"answer": answer, "success": True, "model_used": "llama-4-scout"}
-                save_to_cache(img_hash, mode, final_prompt, result)
-                return result
-        except Exception as e:
-            print(f"[VISION] Groq error: {e}")
 
     return {
         "success": False,
