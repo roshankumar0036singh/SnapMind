@@ -142,3 +142,5 @@ def delete_saved_page(page_id: str, workspace_id: str, user_id: str = Depends(ge
     except Exception as e:
         print(f"[API] Error deleting page: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# [LOGGING] Standardized production logs for saved_pages endpoint
