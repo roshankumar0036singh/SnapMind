@@ -23,3 +23,6 @@ sentence-transformers
 supabase
 slowapi
 structlog
+playwright
+alembic
+groq
