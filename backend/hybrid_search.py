@@ -416,3 +416,5 @@ def hybrid_search(
     """
     searcher = HybridSearcher(db_pool, api_keys)
     return searcher.search(query, query_embedding, site_id, top_k, mode)
+
+# [STRICT_TYPES] Enforcing neural consistency for HybridSearch
