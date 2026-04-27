@@ -2,12 +2,8 @@ name: Build and Push SnapMind Backend
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   workflow_dispatch:
-
-env:
-  REGISTRY: ghcr.io
-  # We will dynamically set the lowercase image name in a step
 
 jobs:
   build-and-push:
@@ -20,14 +16,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set lowercase image name
-        run: |
-          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}-backend" >> $GITHUB_ENV
-
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -35,7 +27,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Force lowercase repository name directly in the metadata step
+          images: ghcr.io/${{ github.repository_owner }}/snapmind-backend
           tags: |
             type=raw,value=latest
             type=sha,format=short
@@ -47,6 +40,6 @@ jobs:
           push: true
           tags: ${{ id.meta.outputs.tags }}
           labels: ${{ id.meta.outputs.labels }}
-          # Optimization: Cache layers to make subsequent builds faster
+          # Use GitHub Actions cache for faster builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
