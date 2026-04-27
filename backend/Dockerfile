@@ -1,34 +1,54 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim
+# Use an optimized Python runtime
+FROM python:3.11-slim
 
 # Set environment variables
-# Pythondontwritebytecode: Prevents Python from writing pyc files to disc
-# Pythonunbuffered: Prevents Python from buffering stdout and stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/pw-browsers
 
-# Set the working directory in the container
+# Set the working directory
 WORKDIR /app
 
-# Install system dependencies
-# gcc and libpq-dev are often needed for psychopg2 (PostgreSQL) if you use it
+# Install critical system dependencies for PostgreSQL, Git, and Playwright
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     git \
+    curl \
+    # Playwright system dependencies
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    librandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container at /app
+# Copy requirements and install
 COPY requirements.txt .
-
-# Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the current directory contents into the container at /app
+# Install Playwright and Chromium specifically
+RUN playwright install chromium --with-deps
+
+# Copy application code
 COPY . .
 
-# Make port 7860 available (Hugging Face Spaces default)
-EXPOSE 7860
+# Make the start script executable
+RUN chmod +x /app/start.sh
 
-# Run app.py when the container launches
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860"]
+# Use Port 10000 (Render default) or 8080 (Railway default)
+EXPOSE 10000
+
+# Use the start script to handle migrations and startup
+CMD ["/app/start.sh"]
