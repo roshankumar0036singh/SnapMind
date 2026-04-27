@@ -43,7 +43,7 @@ def get_db_pool():
         if _db_pool is None:
             try:
                 if not DATABASE_URL:
-                    print("❌ Missing DATABASE_URL")
+                    print("[DB] Missing DATABASE_URL")
                     return None
                 
                 print("[DATABASE] Creating shared ConnectionPool...")
@@ -82,9 +82,10 @@ def get_db_pool():
                     timeout=60.0,     
                     kwargs=kwargs_dict
                 )
-                print(f"✅ Database Pool Initialized Successfully (Local Mode: {is_local})")
+                logger_info = f"[DB] Pool Initialized: min={_db_pool.min_size}, max={_db_pool.max_size}, mode={'Local' if is_local else 'Cloud'}"
+                print(logger_info)
             except Exception as e:
-                print(f"❌ Database Pool Failed to Initialize: {e}")
+                print(f"[DB] Database Pool Failed to Initialize: {e}")
                 import traceback
                 traceback.print_exc()
     
