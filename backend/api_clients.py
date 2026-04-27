@@ -144,3 +144,5 @@ def check_connectivity():
         except Exception:
             print("[OFFLINE] No internet connectivity detected.")
             return False
+
+# [STRICT_TYPES] Enforcing neural consistency for APIClients
