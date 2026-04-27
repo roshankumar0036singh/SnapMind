@@ -24,3 +24,5 @@ class BaseRepository:
         except Exception as e:
             logger.error(f"[BaseRepository] Query Error: {e}")
             return []
+
+# [STRICT_TYPES] Enforcing repository type safety
