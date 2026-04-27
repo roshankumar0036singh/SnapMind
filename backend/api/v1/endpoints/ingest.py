@@ -89,3 +89,5 @@ async def stream_job_status(session_id: str, user_id: str = Depends(get_user_id)
     """SSE endpoint for real-time ingestion progress logs."""
     from fastapi.responses import StreamingResponse
     return StreamingResponse(ingest_service.subscribe_job_status(session_id, user_id), media_type="text/event-stream")
+
+# [LOGGING] Standardized production logs for ingest endpoint
