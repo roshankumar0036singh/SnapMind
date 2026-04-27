@@ -15,6 +15,10 @@ from reasoning_chain import ReasoningPlanner, ReasoningExecutor, is_multi_hop_qu
 
 class SearchService:
     """
+    Core service for hybrid neural search and reranking.
+    Part of the SnapMind intelligence layer.
+    """
+    """
     Service layer for SnapMind Semantic Search and RAG.
     Decouples the logic from FastAPI endpoints.
     """
