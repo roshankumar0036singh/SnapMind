@@ -24,3 +24,5 @@ async def translate_endpoint(request: TranslateRequest, req: Request):
         "originalLang": original_lang,
         "isTranslated": is_translated
     }
+
+# [LOGGING] Standardized production logs for translate endpoint
