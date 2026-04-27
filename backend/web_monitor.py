@@ -33,7 +33,7 @@ def is_web_monitor_enabled():
 async def generate_diff_summary(old_content: str, new_content: str) -> str:
     """Use Mistral Small to summarize what changed."""
     from api_clients import get_mistral_client
-    from config import ModelRegistry
+    from config import settings
     client = get_mistral_client({})
     if not client:
         return "Content changed (Hash mismatch)"
@@ -50,7 +50,7 @@ Output ONLY the bullet-point changes. Be specific about what was added, removed,
     
     try:
         response = client.chat.complete(
-            model=ModelRegistry.MISTRAL_SMALL,
+            model=settings.models.mistral_small,
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
@@ -99,9 +99,9 @@ async def check_for_updates():
                         from api_clients import get_firecrawl_key
                         from browser_agents import FirecrawlScraper
                         
-                        scraper = FirecrawlScraper(get_firecrawl_key({}))
+                        scraper = FirecrawlScraper({"firecrawlKey": get_firecrawl_key({})})
 
-                        content = scraper.extract(url)
+                        content = await scraper.scrape(url)
                         
                         if not content or "Error" in content or "Exception" in content:
                             print(f"[WEB-MONITOR] Scraping failed for {url}: {content[:50] if content else 'None'}...")

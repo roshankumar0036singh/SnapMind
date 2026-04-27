@@ -3,7 +3,8 @@ import os
 import time
 import requests
 import json
-from typing import Tuple
+from typing import Tuple, List, Dict, Any
+from api_clients import get_firecrawl_key
 
 # Global DNS Cache to avoid redundant DoH lookups
 DNS_CACHE = {}
@@ -21,8 +22,15 @@ def vtt_time_to_seconds(time_str: str) -> float:
         sec += float(part) * (60 ** i)
     return sec
 
-def get_youtube_transcript(url: str) -> Tuple[bool, str, str, str | None]:
-    """Wrapper to handle network issues robustly, including DNS failures on certain environments."""
+def get_youtube_transcript(url: str, api_keys: dict = None) -> Tuple[bool, str, str, str | None]:
+    """
+    Orchestrates YouTube transcript extraction:
+    1. Primary: Internal robust hybrid logic (yt-dlp, pytubefix, InnerTube)
+    2. Fallback: Embedded player scraping
+    """
+    # Orchestrate local and hybrid logic
+
+    # Fallback to local logic
     import socket
     import sys
     
@@ -95,6 +103,7 @@ def get_youtube_transcript(url: str) -> Tuple[bool, str, str, str | None]:
         return _get_youtube_transcript_internal(url)
     finally:
         socket.getaddrinfo = old_getaddrinfo
+
 
 def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | None]:
     """

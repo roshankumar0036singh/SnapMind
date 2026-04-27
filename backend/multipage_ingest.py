@@ -1,21 +1,24 @@
-async def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3) -> Dict[str, Any]:
+import json
+import asyncio
+import uuid
+from typing import Dict, Any, List
+from database import get_db_pool
+from chunking import chunk_text
+from config import settings
+from utils import normalize_url
+from services.crawler_service import CrawlerService
+from services.ingest_service import IngestService
+
+async def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int = 3, api_keys: dict = None) -> Dict[str, Any]:
     """
-    Crawl and ingest multiple pages from a website.
-    
-    Args:
-        url: Starting URL
-        max_pages: Maximum pages to crawl
-        max_depth: Maximum crawl depth
-        
-    Returns:
-        Dict with success status and statistics
+    Crawl and ingest multiple pages from a website for general RAG usage.
     """
     try:
         # Normalize URL
         normalized_url = normalize_url(url)
         
-        # Crawl multiple pages
-        pages = crawl_website_firecrawl(normalized_url, max_pages, max_depth)
+        # Crawl multiple pages using CrawlerService (Firecrawl)
+        pages = CrawlerService.crawl_site(normalized_url, max_pages, max_depth, api_keys=api_keys)
         
         if not pages:
             return {
@@ -38,31 +41,33 @@ async def ingest_multipage_logic(url: str, max_pages: int = 50, max_depth: int =
             
             try:
                 # Use semantic chunking
-                if FeatureFlags.PHASE_1_SEMANTIC_CHUNKING and ChunkingConfig.SEMANTIC_CHUNKING_ENABLED:
-                    chunks = chunk_text(content)
-                else:
-                    # Legacy chunking
-                    chunk_size = 1000
-                    chunks = [{'content': content[i:i+chunk_size]} for i in range(0, len(content), chunk_size)]
+                # In current settings, we assume semantic chunking is prioritized if enabled
+                chunks = chunk_text(content, use_semantic=getattr(settings.chunking, 'use_semantic', True))
                 
                 # Embed chunks
-                embedded_chunks = parallel_embed_chunks(
+                ingest_svc = IngestService(api_keys=api_keys)
+                embedded_chunks = ingest_svc._parallel_embed(
                     chunks,
-                    max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
-                    source_url=page_url
+                    source_url=page_url,
+                    api_keys=api_keys
                 )
                 
                 # Store in database
                 if embedded_chunks:
-                    from database import get_db_pool
-                    import json
                     db_pool = get_db_pool()
                     if db_pool:
                         with db_pool.connection() as conn:
                             with conn.cursor() as cur:
-                                args_list = [(d.get("content"), d.get("source_url"), d.get("embedding"), json.dumps(d.get("metadata", {}))) for d in embedded_chunks]
+                                args_list = [
+                                    (
+                                        d.get("content"), 
+                                        d.get("source_url"), 
+                                        d.get("embedding"), 
+                                        json.dumps(d.get("metadata", {}))
+                                    ) for d in embedded_chunks
+                                ]
                                 
-                                # [FIX] Batch insertion to prevent SSL bad length errors
+                                # Batch insertion
                                 BATCH_SIZE = 50
                                 for i in range(0, len(args_list), BATCH_SIZE):
                                     batch = args_list[i : i + BATCH_SIZE]

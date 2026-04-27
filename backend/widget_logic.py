@@ -2,9 +2,11 @@ import json
 import asyncio
 from typing import Dict, Any, List
 from database import get_db_pool
-from rag_pipeline import parallel_embed_chunks, chunk_text
-from config import EmbeddingConfig, FeatureFlags, ChunkingConfig
-from custom_crawler import crawl_website_firecrawl, normalize_url
+from chunking import chunk_text
+from config import settings
+from utils import normalize_url
+from services.crawler_service import CrawlerService
+from services.ingest_service import IngestService
 
 async def ingest_widget_multipage(url: str, widget_id: str, max_pages: int = 50, max_depth: int = 3, api_keys: dict = None) -> Dict[str, Any]:
     """
@@ -16,7 +18,7 @@ async def ingest_widget_multipage(url: str, widget_id: str, max_pages: int = 50,
         normalized_url = normalize_url(url)
         
         # Crawl multiple pages
-        pages = crawl_website_firecrawl(normalized_url, max_pages, max_depth, api_keys=api_keys)
+        pages = await CrawlerService.crawl_site(normalized_url, max_pages, max_depth, api_keys=api_keys)
         
         if not pages:
             return {
@@ -47,7 +49,7 @@ async def ingest_widget_multipage(url: str, widget_id: str, max_pages: int = 50,
             
             try:
                 # Use semantic chunking
-                if FeatureFlags.PHASE_1_SEMANTIC_CHUNKING and ChunkingConfig.SEMANTIC_CHUNKING_ENABLED:
+                if settings.chunking.enabled:
                     chunks = chunk_text(content)
                 else:
                     # Legacy chunking
@@ -55,9 +57,9 @@ async def ingest_widget_multipage(url: str, widget_id: str, max_pages: int = 50,
                     chunks = [{'content': content[i:i+chunk_size]} for i in range(0, len(content), chunk_size)]
                 
                 # Embed chunks
-                embedded_chunks = parallel_embed_chunks(
+                ingest_svc = IngestService(api_keys=api_keys)
+                embedded_chunks = ingest_svc._parallel_embed(
                     chunks,
-                    max_workers=EmbeddingConfig.MAX_EMBEDDING_WORKERS,
                     source_url=page_url,
                     api_keys=api_keys
                 )
@@ -120,14 +122,13 @@ async def widget_chat_logic(query: str, widget_id: str, session_id: str = None, 
     """
     RAG Chat logic for the widget using widget_documents table.
     """
-    from config import ModelRegistry
+    from config import settings
     import os
     
     try:
         # 1. Get embedding for query
-        # Correct import from search - using inner import to minimize circularity issues
-        from search import get_embedding_standalone
-        query_embedding = await get_embedding_standalone(query, api_keys=api_keys)
+        ingest_svc = IngestService(api_keys=api_keys)
+        query_embedding = ingest_svc.get_embedding(query)
         
         # 2. Hybrid Search in widget_documents
         db_pool = get_db_pool()
@@ -155,7 +156,7 @@ async def widget_chat_logic(query: str, widget_id: str, session_id: str = None, 
         # Attempt 1: Gemini
         try:
             from api_clients import get_gemini_client
-            model_name = ModelRegistry.GEMINI_FLASH
+            model_name = settings.models.gemini_flash
             client = get_gemini_client(api_keys=api_keys)
             
             system_prompt = f"""You are a helpful AI assistant integrated into a website via a widget. 
@@ -183,7 +184,7 @@ CONTEXT FROM WEBSITE:
                     mistral_client = get_mistral_client(api_keys=api_keys)
                     if mistral_client:
                         mistral_response = mistral_client.chat.complete(
-                            model=ModelRegistry.MISTRAL_SMALL,
+                            model=settings.models.mistral_small,
                             messages=[
                                 {"role": "system", "content": f"You are a helpful AI assistant integrated into a website via a widget. Answer questions accurately based ONLY on the provided context. If the answer is not in the context, politely say you don't know.\n\nCONTEXT FROM WEBSITE:\n{context_text}"},
                                 {"role": "user", "content": query}
