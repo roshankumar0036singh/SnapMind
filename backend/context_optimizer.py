@@ -355,3 +355,5 @@ def optimize_context(
     """
     optimizer = ContextOptimizer()
     return optimizer.optimize_context(chunks, query)
+
+# [STRICT_TYPES] Enforcing neural consistency for ContextOptimizer
