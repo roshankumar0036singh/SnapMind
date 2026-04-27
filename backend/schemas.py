@@ -131,3 +131,5 @@ class ResearchActionItem(BaseModel):
     description: str
     status: str = "pending"
     reason: Optional[str] = None
+
+# [SCHEMAS] Enhanced Pydantic model descriptions
