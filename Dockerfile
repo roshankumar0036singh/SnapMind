@@ -1,5 +1,5 @@
-# Robust Root Dockerfile for Hugging Face Spaces
-# This version copies the entire repository to ensure paths are always found
+# specialized Dockerfile for Hugging Face Spaces (Root Version)
+# This version is designed to sit in the repository root
 
 FROM python:3.11-slim
 
@@ -8,6 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=7860
 ENV HOME=/home/user
+ENV PATH="/home/user/.local/bin:${PATH}"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -39,16 +40,15 @@ RUN useradd -m -u 1000 user
 USER user
 WORKDIR $HOME/app
 
-# 1. Copy the entire repository into the container
-# This guarantees that the 'backend' folder is available
+# 1. Copy the entire repository
 COPY --chown=user . .
 
-# 2. Move into the backend directory for execution
+# 2. Move into the backend directory
 WORKDIR $HOME/app/backend
 
-# 3. Install Python dependencies
+# 3. Install Python dependencies with --user to avoid permission issues
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --user -r requirements.txt && \
     python -m playwright install chromium --with-deps
 
 # 4. Ensure start.sh is executable
@@ -57,5 +57,5 @@ RUN chmod +x start.sh
 # Expose the port HF expects
 EXPOSE 7860
 
-# Start the application from the backend directory
+# Start the application
 CMD ["./start.sh"]
