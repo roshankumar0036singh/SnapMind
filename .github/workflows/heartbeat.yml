@@ -11,6 +11,6 @@ jobs:
     steps:
       - name: Ping Hugging Face Space
         run: |
-          # Replace the URL below with your actual Hugging Face Space URL
-          # Format: https://<username>-<space-name>.hf.space/api/v1/health
-          curl -f -s https://roshan123478-snapmindai.hf.space/api/v1/health || echo "Ping failed"
+          # Ping your Cloudflare Worker URL instead of direct HF Space
+          # The Worker will automatically add the HF_TOKEN for you.
+          curl -f -s https://snapmind-gateway.roshankumar30080.workers.dev/api/v1/health || echo "Ping failed"
