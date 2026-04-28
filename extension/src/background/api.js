@@ -63,20 +63,18 @@ export const apiClient = {
             // 1. Get Supabase Auth Session
             const { data: { session } } = await supabase.auth.getSession();
 
-            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey', 'hfToken'], (res) => {
+            chrome.storage.local.get(['geminiApiKey', 'mistralApiKey', 'lingodevApiKey', 'firecrawlApiKey', 'groqApiKey'], (res) => {
                 const headers = {};
                 if (res.geminiApiKey) headers['x-gemini-key'] = res.geminiApiKey;
                 if (res.mistralApiKey) headers['x-mistral-key'] = res.mistralApiKey;
                 if (res.lingodevApiKey) headers['x-lingodev-key'] = res.lingodevApiKey;
                 if (res.firecrawlApiKey) headers['x-firecrawl-key'] = res.firecrawlApiKey;
 
-                // 2. Set Authorization Header for Backend Security
+                // 2. Set Authorization Header for Backend Security (Supabase Token)
+                // Note: The Cloudflare Proxy will add its own HF_TOKEN Authorization header 
+                // but it will forward this one as well if needed.
                 if (session && session.access_token) {
                     headers['Authorization'] = `Bearer ${session.access_token}`;
-                }
-
-                if (res.hfToken) {
-                    headers['x-hf-token'] = res.hfToken;
                 }
 
                 if (res.groqApiKey) headers['x-groq-key'] = res.groqApiKey;

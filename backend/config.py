@@ -100,7 +100,11 @@ class SnapMindSettings(BaseSettings):
         description="Comma-separated list of allowed origins for CORS"
     )
     rate_limit_per_minute: int = Field(5, env="RATE_LIMIT_PER_MINUTE")
-    server_url: str = Field("http://localhost:8000", env="SERVER_URL") # Used for self-ping
+    server_url: str = Field(
+        default="https://roshan123478-snapmindai.hf.space", 
+        env="SERVER_URL",
+        description="The external URL of the server (e.g. HF Space URL)"
+    )
     
     @property
     def context_limit(self) -> int:

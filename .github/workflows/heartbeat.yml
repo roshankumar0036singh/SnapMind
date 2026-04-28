@@ -13,4 +13,4 @@ jobs:
         run: |
           # Replace the URL below with your actual Hugging Face Space URL
           # Format: https://<username>-<space-name>.hf.space/api/v1/health
-          curl -f -s https://roshankumar0036singh-snapmind-backend.hf.space/api/v1/health || echo "Ping failed"
+          curl -f -s https://roshan123478-snapmindai.hf.space/api/v1/health || echo "Ping failed"
