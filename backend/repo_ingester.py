@@ -42,7 +42,7 @@ async def ingest_repository(repo_url: str, target_lang: str = "auto", api_keys: 
     Updates the job row (if job_id is provided) when finished.
     """
     # [FIX] Quick sanity check to catch non-repo URLs before cloning
-    if "docs.github.com" in repo_url.lower() or "/site-policy/" in repo_url.lower():
+    if not repo_url or "docs.github.com" in repo_url.lower() or "/site-policy/" in repo_url.lower():
         msg = f"Rejected non-repository URL: {repo_url}. Only base GitHub repository URLs are supported for repo ingestion."
         print(f"[REPO_INGEST] {msg}")
         _update_job_status(job_id, "failed", msg, user_id=user_id)
