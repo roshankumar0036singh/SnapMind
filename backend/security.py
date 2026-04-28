@@ -25,17 +25,25 @@ async def get_current_user(request: Request):
     """
     # 1. Try to get token from 'x-supabase-auth' first (Our custom header for proxy cases)
     token_str = request.headers.get("x-supabase-auth")
+    source = "x-supabase-auth"
     
     # 2. Fallback to standard Authorization header
     if not token_str:
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
-            token_str = auth_header.split(" ")[1]
+            potential_token = auth_header.split(" ")[1]
+            # [CRITICAL] If this is a Hugging Face token (starts with hf_), SKIP IT.
+            # It's an infrastructure token and NOT a user token.
+            if potential_token.startswith("hf_"):
+                print("[SECURITY] Found hf_ token in Authorization header, skipping to avoid malformed JWT error.")
+            else:
+                token_str = potential_token
+                source = "Authorization"
 
     try:
         # [DEBUG] Log token presence
         if not token_str:
-            print("[SECURITY] No authentication token found in x-supabase-auth or Authorization header")
+            print(f"[SECURITY] No valid authentication token found. Headers present: {list(request.headers.keys())}")
             raise HTTPException(status_code=401, detail="No credentials provided")
 
         # Verify token with Supabase Auth
