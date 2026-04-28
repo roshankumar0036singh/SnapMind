@@ -40,3 +40,19 @@ HF provides a direct URL: `https://<username>-<space-name>.hf.space`.
 
 ## 5. Environment Secrets
 Add your keys (GEMINI_API_KEY, etc.) in the Space's **Settings -> Variables and Secrets** tab. Do NOT put them in the Dockerfile.
+
+## 6. Code Privacy (Private Source / Public API)
+If you want to keep your code private but have a public API:
+1. **Private Registry**: Build your Docker image in a Private GitHub repository and push it to **GitHub Container Registry (GHCR)** as a private image.
+2. **HF Image Pull**: In your Public Hugging Face Space's `Dockerfile`, simply use:
+   ```dockerfile
+   FROM ghcr.io/<your-username>/snapmind-backend:latest
+   ```
+3. **HF Secret**: Add a secret named `GHCR_PAT` (GitHub Personal Access Token) in HF to allow it to pull from your private registry.
+This way, the public can see the 1-line Dockerfile, but your **actual source code remains 100% hidden** in your private repo.
+
+## 7. Eliminating Cold Starts
+By using the **Ping Bot** (Cron-job.org or GitHub Actions) to request the `/health` endpoint every 15 minutes:
+- Hugging Face detects constant traffic.
+- The container remains in memory.
+- **Result**: Zero cold starts. The extension will get instant responses every time.
