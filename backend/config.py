@@ -107,6 +107,24 @@ class SnapMindSettings(BaseSettings):
         """Legacy alias for context.max_context_length used by some agents"""
         return self.context.max_context_length
 
+    @property
+    def is_configured(self) -> bool:
+        """Returns True if essential AI keys are set."""
+        return all([
+            os.getenv("GEMINI_API_KEY"),
+            os.getenv("GROQ_API_KEY"),
+            os.getenv("MISTRAL_API_KEY") or os.getenv("MISTRAL_SMALL_MODEL") # Depending on which is used
+        ])
+
+    def get_missing_keys(self) -> List[str]:
+        """Returns a list of missing essential keys."""
+        missing = []
+        if not os.getenv("GEMINI_API_KEY"): missing.append("GEMINI_API_KEY")
+        if not os.getenv("GROQ_API_KEY"): missing.append("GROQ_API_KEY")
+        if not os.getenv("MISTRAL_API_KEY"): missing.append("MISTRAL_API_KEY")
+        if not os.getenv("DATABASE_URL"): missing.append("DATABASE_URL")
+        return missing
+
 # Global Settings Instance
 settings = SnapMindSettings()
 
