@@ -1,6 +1,6 @@
 import os
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -17,31 +17,38 @@ supabase: Client = create_client(supabase_url or "", supabase_key or "")
 
 auth_scheme = HTTPBearer()
 
-async def get_current_user(token: HTTPAuthorizationCredentials = Depends(auth_scheme)):
+async def get_current_user(request: Request):
     """
     Validates the Supabase JWT and returns the user object.
-    Enforces that a valid 'user_id' is present for all protected routes.
+    Supports both standard 'Authorization' header and 'x-supabase-auth' 
+    to handle cases where the primary header is used by infrastructure proxies (like HF).
     """
+    # 1. Try to get token from 'x-supabase-auth' first (Our custom header for proxy cases)
+    token_str = request.headers.get("x-supabase-auth")
+    
+    # 2. Fallback to standard Authorization header
+    if not token_str:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token_str = auth_header.split(" ")[1]
+
     try:
-        # [DEBUG] Log token presence (not content)
-        if not token or not token.credentials:
-            print("[SECURITY] No credentials provided in Authorization header")
+        # [DEBUG] Log token presence
+        if not token_str:
+            print("[SECURITY] No authentication token found in x-supabase-auth or Authorization header")
             raise HTTPException(status_code=401, detail="No credentials provided")
 
         # Verify token with Supabase Auth
-        # This call verifies the JWT with Supabase's API
-        res = supabase.auth.get_user(token.credentials)
+        res = supabase.auth.get_user(token_str)
         
         if not res or not res.user:
-            print(f"[SECURITY] Invalid token or user not found. Response: {res}")
+            print(f"[SECURITY] Invalid token or user not found.")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired authentication token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # [DEBUG] Successful Auth
-        # print(f"[SECURITY] User {res.user.id} authenticated successfully")
         return res.user
     except Exception as e:
         # Check for common Supabase auth errors
