@@ -8,7 +8,10 @@ Hugging Face (HF) Spaces is a powerful, free way to host the SnapMind backend. B
 3. Choose the **Blank** template or **FastAPI**.
 
 ## 2. Dockerfile Configuration
-HF Spaces require a specific non-root user setup. I have already optimized your `Dockerfile` for this, but ensure your Space's `Settings` -> `Variables and Secrets` has the correct environment variables.
+Hugging Face Spaces require a specific non-root user setup. I have created a specialized file for this: **[Dockerfile.hf](file:///d:/Rag/backend/Dockerfile.hf)**.
+
+- **Setup**: In your HF Space settings, ensure the Dockerfile path is set to `backend/Dockerfile.hf`.
+- **User UID**: This file uses UID 1000, which is required for HF persistent storage and permissions.
 
 ## 3. Keep-Alive (The "Ping Bot" Strategy)
 Free HF Spaces go to sleep after 48 hours. To keep SnapMind awake 24/7:
