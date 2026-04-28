@@ -1,6 +1,5 @@
-# Proxy Dockerfile for Hugging Face Spaces
-# This file sits in the root to satisfy HF's default "Missing App File" check
-# It builds the SnapMind backend from the backend/ directory context
+# Robust Root Dockerfile for Hugging Face Spaces
+# This version copies the entire repository to ensure paths are always found
 
 FROM python:3.11-slim
 
@@ -40,20 +39,23 @@ RUN useradd -m -u 1000 user
 USER user
 WORKDIR $HOME/app
 
-# Install Python dependencies from the backend folder
-COPY --chown=user backend/requirements.txt .
+# 1. Copy the entire repository into the container
+# This guarantees that the 'backend' folder is available
+COPY --chown=user . .
+
+# 2. Move into the backend directory for execution
+WORKDIR $HOME/app/backend
+
+# 3. Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     python -m playwright install chromium --with-deps
 
-# Copy backend code
-COPY --chown=user backend/ .
-
-# Ensure start.sh is executable
+# 4. Ensure start.sh is executable
 RUN chmod +x start.sh
 
 # Expose the port HF expects
 EXPOSE 7860
 
-# Start the application
+# Start the application from the backend directory
 CMD ["./start.sh"]
