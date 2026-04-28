@@ -75,6 +75,7 @@ export const apiClient = {
                 // but it will forward this one as well if needed.
                 if (session && session.access_token) {
                     headers['Authorization'] = `Bearer ${session.access_token}`;
+                    headers['x-supabase-auth'] = session.access_token;
                 }
 
                 if (res.groqApiKey) headers['x-groq-key'] = res.groqApiKey;
