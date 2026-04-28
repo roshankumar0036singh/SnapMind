@@ -65,7 +65,37 @@ By using the **Ping Bot** (Cron-job.org or GitHub Actions) to request the `/heal
 - The container remains in memory.
 - **Result**: Zero cold starts. The extension will get instant responses every time.
 
-## 8. Troubleshooting: 'Missing App File'
+## 8. Private Space Authentication
+If you set your Space to **Private**, Hugging Face will block all anonymous requests. Your Chrome extension must authenticate using an HF Token.
+
+### Security Warning
+**NEVER hardcode your HF Token in the extension's source code.** Extension code is easily readable by users.
+
+### The Secure Strategy: Bring Your Own Token (BYOT)
+1. **Extension Settings**: Add a "Hugging Face Token" field in the extension's settings UI.
+2. **Local Storage**: Save this token in `chrome.storage.local`.
+3. **Request Header**: Update your API client to include the token in the headers:
+   ```javascript
+   const response = await fetch(URL, {
+     method: 'POST',
+     headers: {
+       'Content-Type': 'application/json',
+       'Authorization': `Bearer ${userStoredToken}`
+     },
+     body: JSON.stringify(data)
+   });
+   ```
+
+## 9. Troubleshooting: 'Missing App File'
 If you see this error, it means Hugging Face is looking for a file named `Dockerfile` in the root and can't find it.
 - **The Fix**: Go to **Settings** -> **Dockerfile path** and set it to `backend/Dockerfile.hf`.
 - **Alternative**: Ensure you selected **Docker** as the SDK when creating the Space. If you selected FastAPI/Streamlit, you must recreate the Space or change the SDK in settings.
+
+### Advanced Security: The Middleware Proxy (Gold Standard)
+If you want to be 100% secure (so the token never reaches the user's computer):
+1. **Host a Proxy**: Create a simple **Cloudflare Worker** or a tiny script on a free VPS.
+2. **Secret Storage**: Store your `HF_TOKEN` in the **Proxy's Environment Variables**.
+3. **Flow**: 
+   - *Extension* ? *Proxy* (Sends request over HTTPS, no token).
+   - *Proxy* ? *Private HF Space* (Adds `Authorization: Bearer <SECRET_TOKEN>` in flight).
+4. **Benefit**: The token is **Server-Side only**. It is impossible for anyone to extract it from the extension code or local storage.
