@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing import List, Optional
 
 class ModelSettings(BaseSettings):
@@ -99,6 +99,13 @@ class SnapMindSettings(BaseSettings):
         env="ALLOWED_ORIGINS",
         description="Comma-separated list of allowed origins for CORS"
     )
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v):
+        if isinstance(v, str):
+            return [i.strip() for i in v.split(",")]
+        return v
     rate_limit_per_minute: int = Field(5, env="RATE_LIMIT_PER_MINUTE")
     server_url: str = Field(
         default="https://roshan123478-snapmindai.hf.space", 

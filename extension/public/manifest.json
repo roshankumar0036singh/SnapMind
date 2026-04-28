@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "SnapMind Context Intelligence",
+    "name": "SnapMind — AI Research & Knowledge Assistant",
     "version": "1.0.0",
-    "description": "Browser RAG Assistant with Visual and Text modes",
+    "description": "AI research assistant. Chat with any webpage, ingest documents, build knowledge graphs, and get cited answers in your sidebar.",
     "permissions": [
         "sidePanel",
         "activeTab",
@@ -15,7 +15,8 @@
         "<all_urls>",
         "http://localhost/*",
         "http://127.0.0.1/*",
-        "https://hscptdibreqxgnlubopc.supabase.co/*"
+        "https://hscptdibreqxgnlubopc.supabase.co/*",
+        "https://snapmind-gateway.roshankumar30080.workers.dev/*"
     ],
     "side_panel": {
         "default_path": "src/sidepanel/index.html"
@@ -36,11 +37,16 @@
         }
     ],
     "action": {
-        "default_title": "Open Assistant"
+        "default_title": "Open SnapMind Assistant",
+        "default_icon": {
+            "16": "icon16.png",
+            "48": "icon48.png",
+            "128": "icon128.png"
+        }
     },
     "icons": {
-        "16": "vite.svg",
-        "48": "vite.svg",
-        "128": "vite.svg"
+        "16": "icon16.png",
+        "48": "icon48.png",
+        "128": "icon128.png"
     }
 }

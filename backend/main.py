@@ -4,9 +4,9 @@ import uuid
 import httpx
 import sys
 
+import asyncio
 # [FIX] Windows Asyncio Subprocess Support
 if sys.platform == 'win32':
-    import asyncio
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 import structlog
 from contextlib import asynccontextmanager
