@@ -57,11 +57,34 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # Get the URL from environment or fallback to config
+    url = os.getenv("DATABASE_URL")
+    if url:
+        # SQLAlchemy requires postgresql:// instead of postgres://
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        
+        # We need to ensure we use the psycopg driver
+        if "postgresql://" in url and "+psycopg" not in url:
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+            
+        config_dict = config.get_section(config.config_ini_section, {})
+        config_dict["sqlalchemy.url"] = url
+        connectable = engine_from_config(
+            config_dict,
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
+    else:
+        connectable = engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
 
     with connectable.connect() as connection:
         context.configure(
