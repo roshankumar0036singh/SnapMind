@@ -64,3 +64,8 @@ By using the **Ping Bot** (Cron-job.org or GitHub Actions) to request the `/heal
 - Hugging Face detects constant traffic.
 - The container remains in memory.
 - **Result**: Zero cold starts. The extension will get instant responses every time.
+
+## 8. Troubleshooting: 'Missing App File'
+If you see this error, it means Hugging Face is looking for a file named `Dockerfile` in the root and can't find it.
+- **The Fix**: Go to **Settings** -> **Dockerfile path** and set it to `backend/Dockerfile.hf`.
+- **Alternative**: Ensure you selected **Docker** as the SDK when creating the Space. If you selected FastAPI/Streamlit, you must recreate the Space or change the SDK in settings.
