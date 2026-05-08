@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
+from pydantic import Field
 from typing import List, Optional
+import os
 
 class ModelSettings(BaseSettings):
     """Configuration for LLM models"""
@@ -99,19 +100,8 @@ class SnapMindSettings(BaseSettings):
         env="ALLOWED_ORIGINS",
         description="Comma-separated list of allowed origins for CORS"
     )
-
-    @field_validator("allowed_origins", mode="before")
-    @classmethod
-    def parse_allowed_origins(cls, v):
-        if isinstance(v, str):
-            return [i.strip() for i in v.split(",")]
-        return v
     rate_limit_per_minute: int = Field(5, env="RATE_LIMIT_PER_MINUTE")
-    server_url: str = Field(
-        default="https://roshan123478-snapmindai.hf.space", 
-        env="SERVER_URL",
-        description="The external URL of the server (e.g. HF Space URL)"
-    )
+    server_url: str = Field("http://localhost:8000", env="SERVER_URL") # Used for self-ping
     
     @property
     def context_limit(self) -> int:

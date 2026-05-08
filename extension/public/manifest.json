@@ -2,6 +2,7 @@
     "manifest_version": 3,
     "name": "SnapMind — AI Research & Knowledge Assistant",
     "version": "1.0.0",
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjwphYub3TPstB3c8CDR1ykkQtMy51KBWR4vVHEADN2nNrEb0LPZ7rOq/AooXydLtj8HZvx5yHv+03tPMmdQwvRTjbzSZWzOLh89MJ3x4SPavqPi9qakfYZwYjYoZImq4O914Ei1B/FlBRNzFtMxuYt9xD7tIUp+rmJimv0c5/eLjLXBmZGmgwJD08ebG3BRvkqqVJxFj0q0YJX/lg243H/SBTQ1dq+qT6MZSRLEZ/uHnG7bhlblH9EIQDwK+4BPWnVAuo9YZcgHDYhytvybTk9I/+OZgT4SweX0xc2MrW2fwAoAzse6JZ1eqo7H/qi3tit0v2CDU8lB374fOXqTJIwIDAQAB",
     "description": "AI research assistant. Chat with any webpage, ingest documents, build knowledge graphs, and get cited answers in your sidebar.",
     "permissions": [
         "sidePanel",

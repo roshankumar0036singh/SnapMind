@@ -43,7 +43,9 @@ async def server_ping_loop():
     # Wait a bit for startup to finish
     await asyncio.sleep(60)
     
-    url = f"{settings.server_url}/api/v1/health"
+    # Use localhost:7860 (default HF Space port) for internal self-ping
+    # This bypasses the external HF proxy which requires Auth for private spaces.
+    url = "http://127.0.0.1:7860/api/v1/health"
     logger.info("Starting self-ping keep-alive loop", interval="5m", target=url)
     
     async with httpx.AsyncClient(timeout=10.0) as client:

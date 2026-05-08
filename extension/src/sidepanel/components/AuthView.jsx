@@ -7,6 +7,7 @@ export default function AuthView({ onAuthSuccess }) {
   const [isLoading, setIsLoading] = useState(false);
   const [providerLoading, setProviderLoading] = useState(null);
   const [mounted, setMounted] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   useEffect(() => {
     setMounted(true);
@@ -40,14 +41,19 @@ export default function AuthView({ onAuthSuccess }) {
           if (chrome.runtime.lastError) {
             const msg = chrome.runtime.lastError.message;
             console.warn("[AUTH] Identity popup error:", msg);
-
-            // Fallback: open in a regular tab if the popup is blocked (Brave)
+            
+            let errorDetail = msg;
             if (msg.includes("could not be loaded") || msg.includes("blocked")) {
-              chrome.tabs.create({ url: authUrl });
-              toast.info("Opening login in a new tab...");
-            } else {
-              toast.error(`Auth popup failed: ${msg}`);
+              errorDetail = "The authentication popup was blocked or failed to load. Ensure your Extension ID is added to the allowed Redirect URIs in your Supabase/OAuth dashboard.";
             }
+            
+            setAuthError({
+              title: "Connection Failed",
+              message: errorDetail,
+              id: chrome.runtime.id
+            });
+            
+            toast.error("Auth popup failed");
             setIsLoading(false);
             setProviderLoading(null);
             return;
@@ -234,6 +240,36 @@ export default function AuthView({ onAuthSuccess }) {
             <ArrowRight className="w-3.5 h-3.5 text-slate-500 absolute right-4 opacity-0 -translate-x-1.5 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300" />
           </button>
         </div>
+
+        {/* Error State Diagnostic */}
+        {authError && (
+          <div className="mt-5 p-4 rounded-xl bg-red-50 border border-red-100 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 p-1 bg-red-100 rounded-md">
+                <BrainCircuit className="w-3.5 h-3.5 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-[13px] font-bold text-red-900 leading-tight">
+                  {authError.title}
+                </p>
+                <p className="text-[12px] text-red-700 mt-1 leading-normal font-medium">
+                  {authError.message}
+                </p>
+                <div className="mt-2.5 flex items-center justify-between gap-2">
+                  <code className="px-1.5 py-0.5 bg-white border border-red-200 rounded text-[10px] font-mono text-red-600 truncate max-w-[180px]">
+                    ID: {authError.id}
+                  </code>
+                  <button 
+                    onClick={() => setAuthError(null)}
+                    className="text-[11px] font-bold text-red-800 hover:underline"
+                  >
+                    Try again
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Tagline Pill ── */}
