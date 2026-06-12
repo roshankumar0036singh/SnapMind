@@ -24,7 +24,7 @@ configSchema:
     SNAPMIND_BACKEND_URL:
       type: string
       description: The URL of your SnapMind backend instance.
-      default: http://localhost:8000
+      default: https://roshan123478-snapmind-backend.hf.space
     HF_TOKEN:
       type: string
       description: (Optional) Hugging Face token if your backend is deployed in a private Space.
