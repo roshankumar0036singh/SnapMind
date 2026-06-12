@@ -1,8 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
+import { CACHE_DIR } from './constants.js';
 
-const STATS_FILE = path.join(process.cwd(), '.snapmind_cache', 'usage_stats.json');
+const STATS_FILE = path.join(CACHE_DIR, 'usage_stats.json');
 
 const PRICES = {
   'gpt-4o': { input: 0.005, output: 0.015 }, // per 1k tokens

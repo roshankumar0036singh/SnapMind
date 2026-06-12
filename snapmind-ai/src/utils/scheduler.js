@@ -2,7 +2,8 @@ import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
 
-const CACHE_DIR = path.join(process.cwd(), '.snapmind_cache');
+import { CACHE_DIR } from './constants.js';
+
 const SCHEDULE_FILE = path.join(CACHE_DIR, 'schedules.json');
 const REPORTS_DIR = path.join(
   process.env.HOME || process.env.USERPROFILE,
@@ -52,7 +53,6 @@ export async function removeSchedule(id) {
  * @param {object} options - { llm, vectorStore }
  */
 export async function runScheduledReport(schedule, { llm, vectorStore }) {
-  const { streamToTerminal } = await import('./streamer.js');
   const { query, id, persona } = schedule;
 
   console.log(chalk.cyan(`\n[Scheduler] Running report: "${query}" (id: ${id})`));
@@ -63,12 +63,12 @@ export async function runScheduledReport(schedule, { llm, vectorStore }) {
       .map((r, i) => `[Source ${i + 1}]: ${r.pageContent}`)
       .join('\n\n---\n\n');
 
-    const stream = await llm.stream([
+    const response = await llm.invoke([
       ['system', `You are SnapMind ${persona}. Generate a comprehensive intelligence report from the context below. Use markdown headers.`],
       ['user', `Context:\n${context}\n\nQuery: ${query}`],
     ]);
 
-    const fullReport = await streamToTerminal(stream, 'cyan');
+    const fullReport = response.content;
 
     // Save to ~/snapmind_reports/
     await fs.ensureDir(REPORTS_DIR);

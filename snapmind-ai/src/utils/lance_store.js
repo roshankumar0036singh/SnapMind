@@ -2,8 +2,9 @@ import * as lancedb from '@lancedb/lancedb';
 import path from 'path';
 import fs from 'fs-extra';
 import crypto from 'crypto';
+import { CACHE_DIR } from './constants.js';
 
-const DB_DIR = path.join(process.cwd(), '.snapmind_cache', 'lancedb');
+const DB_DIR = path.join(CACHE_DIR, 'lancedb');
 
 /**
  * LanceDB Wrapper for SnapMind AI
@@ -40,9 +41,9 @@ export class LanceStore {
     if (!this.db) await this.init();
 
     // 1. Generate hashes for new docs
-    const docsWithHashes = docs.map(doc => {
+    const docsWithHashes = docs.map((doc, index) => {
       const hash = crypto.createHash('sha256').update(doc.pageContent).digest('hex');
-      const id = `${doc.metadata.source}_${doc.metadata.loc?.lines?.from || 0}`;
+      const id = `${doc.metadata.source}_${doc.metadata.loc?.lines?.from || index}`;
       return { ...doc, hash, id };
     });
 
@@ -116,7 +117,8 @@ export class LanceStore {
           ['system', 'Rate the following snippets by relevance to the query (0-10). Output ONLY the indices of the top 5 most relevant snippets (newline separated).'],
           ['user', `Query: ${query}\n\nSnippets:\n${finalResults.map((r, i) => `[${i}] ${r.pageContent.slice(0, 200)}`).join('\n')}`]
         ]);
-        const indices = response.content.match(/\d+/g).map(Number).filter(n => n < finalResults.length);
+        const match = response.content.match(/\d+/g);
+        const indices = (match || []).map(Number).filter(n => n < finalResults.length);
         return indices.length > 0 ? indices.map(i => finalResults[i]) : finalResults.slice(0, 5);
       } catch (e) {
         return finalResults.slice(0, 5); // Fallback to distance
@@ -124,5 +126,31 @@ export class LanceStore {
     }
 
     return finalResults;
+  }
+
+  /**
+   * Deletes documents originating from a specific file path
+   * @param {string} sourcePath - The file path to remove
+   */
+  async deleteDocumentsBySource(sourcePath) {
+    if (!this.table) return;
+    try {
+      const records = await this.table.query().select(['id', 'metadata']).toArray();
+      const idsToDelete = records
+        .filter(r => {
+           try {
+             return JSON.parse(r.metadata).source === sourcePath;
+           } catch (e) {
+             return false;
+           }
+        })
+        .map(r => `'${r.id}'`);
+        
+      if (idsToDelete.length > 0) {
+        await this.table.delete(`id IN (${idsToDelete.join(',')})`);
+      }
+    } catch (e) {
+      // Ignore if table deletion fails
+    }
   }
 }

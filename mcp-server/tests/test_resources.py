@@ -6,13 +6,13 @@ import respx
 import httpx
 
 
-BASE_URL = "https://roshan123478-snapmind-backend.hf.space"
-
+BASE_URL = "http://localhost:8000"
+API_PREFIX = "/api/v1"
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_kb_stats():
-    respx.get(f"{BASE_URL}/admin/analytics").mock(
+    respx.get(f"{BASE_URL}{API_PREFIX}/admin/analytics").mock(
         return_value=httpx.Response(200, json={"docs": 100, "health": "excellent"})
     )
     from resources.kb import read_kb_stats
@@ -23,7 +23,7 @@ async def test_kb_stats():
 @pytest.mark.asyncio
 @respx.mock
 async def test_kb_tags():
-    respx.get(f"{BASE_URL}/tags").mock(
+    respx.get(f"{BASE_URL}{API_PREFIX}/tags").mock(
         return_value=httpx.Response(200, json={"success": True, "tags": ["AI", "RAG", "vector"]})
     )
     from resources.kb import read_kb_tags
@@ -34,7 +34,7 @@ async def test_kb_tags():
 @pytest.mark.asyncio
 @respx.mock
 async def test_session_history():
-    respx.get(f"{BASE_URL}/sessions/test-session-id").mock(
+    respx.get(f"{BASE_URL}{API_PREFIX}/search/sessions/test-session-id").mock(
         return_value=httpx.Response(200, json={
             "success": True,
             "history": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi!"}]
@@ -43,3 +43,13 @@ async def test_session_history():
     from resources.sessions import read_session_history
     result = await read_session_history("test-session-id")
     assert "Hello" in result or "history" in result
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_kb_sites():
+    respx.get(f"{BASE_URL}{API_PREFIX}/sites").mock(
+        return_value=httpx.Response(200, json={"success": True, "sites": [{"url": "http://example.com"}]})
+    )
+    from resources.kb import read_kb_sites
+    result = await read_kb_sites()
+    assert "example.com" in result

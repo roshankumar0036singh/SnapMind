@@ -80,6 +80,12 @@ export async function startMenu(options) {
       const customConfig = await (await import('../utils/persona_store.js')).loadPersona(customName);
       if (customConfig) {
         const handoff = await (await import('../personas/custom_runner.js')).startCustomPersona(customConfig, currentOptions);
+        if (handoff && handoff.collaborate) {
+           currentOptions.history = handoff.history || currentOptions.history;
+           const orch = await import('../personas/orchestrator.js');
+           await orch.runCollaboration(handoff.collaborate, currentOptions);
+           continue;
+        }
         if (handoff && handoff.target) {
           persona = handoff.target;
           currentOptions = { ...currentOptions, history: handoff.history, mount: handoff.mount || currentOptions.mount };
@@ -89,6 +95,12 @@ export async function startMenu(options) {
       }
     } else if (personaMap[normalizedPersona]) {
       const handoff = await personaMap[normalizedPersona](currentOptions);
+      if (handoff && handoff.collaborate) {
+         currentOptions.history = handoff.history || currentOptions.history;
+         const orch = await import('../personas/orchestrator.js');
+         await orch.runCollaboration(handoff.collaborate, currentOptions);
+         continue;
+      }
       if (handoff && handoff.target) {
         persona = handoff.target;
         currentOptions = { ...currentOptions, history: handoff.history, mount: handoff.mount || currentOptions.mount };

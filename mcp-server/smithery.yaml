@@ -1,0 +1,51 @@
+registry: https://smithery.ai
+name: snapmind-mcp
+description: "A comprehensive MCP server that exposes the SnapMind AI RAG backend. Features 18+ tools for semantic search, multi-agent web research, knowledge graph analysis, bookmark management, translation, and vision analysis."
+version: 2.0.0
+authors:
+  - name: SnapMind
+icon: https://raw.githubusercontent.com/roshankumar0036singh/SnapMind/main/extension/public/icon128.png
+license: ISC
+homepage: https://github.com/roshankumar0036singh/SnapMind
+repository: https://github.com/roshankumar0036singh/SnapMind
+documentation: https://github.com/roshankumar0036singh/SnapMind/blob/main/mcp-server/README.md
+categories:
+  - knowledge-base
+  - research
+  - search
+  - coding
+install:
+  - pip install -e .
+run:
+  - snapmind-mcp
+configSchema:
+  type: object
+  properties:
+    SNAPMIND_BACKEND_URL:
+      type: string
+      description: The URL of your SnapMind backend instance.
+      default: http://localhost:8000
+    HF_TOKEN:
+      type: string
+      description: (Optional) Hugging Face token if your backend is deployed in a private Space.
+    SUPABASE_ACCESS_TOKEN:
+      type: string
+      description: (Optional) Supabase auth token for user-scoped endpoints.
+    GEMINI_API_KEY:
+      type: string
+      description: (Optional) Gemini API Key
+    MISTRAL_API_KEY:
+      type: string
+      description: (Optional) Mistral API Key
+    GROQ_API_KEY:
+      type: string
+      description: (Optional) Groq API Key
+    FIRECRAWL_API_KEY:
+      type: string
+      description: (Optional) Firecrawl API Key for web scraping
+    LINGODEV_API_KEY:
+      type: string
+      description: (Optional) Lingo.dev API Key for translation
+    APIFY_API_TOKEN:
+      type: string
+      description: (Optional) Apify Token for browser agents

@@ -127,6 +127,9 @@ export async function startCustomPersona(persona, options = {}) {
 
         // Shared Commands
         const cmdResult = await handleCommonCommands(query, { history, namespace, llm, currentFocus: focusLens });
+        if (cmdResult.collaborate) {
+          return { collaborate: cmdResult.collaborate, history, mount: targetPath };
+        }
         if (cmdResult.handled) {
           focusLens = cmdResult.focusLens;
           continue;

@@ -1,184 +1,92 @@
 # SnapMind MCP Server
 
-Model Context Protocol server that exposes the SnapMind RAG backend as tools, resources, and prompt templates for any MCP-compatible AI agent.
+[![smithery badge](https://smithery.ai/badge/snapmind-mcp)](https://smithery.ai/server/snapmind-mcp)
 
-## Architecture
+The SnapMind Model Context Protocol (MCP) server exposes the powerful capabilities of the SnapMind RAG backend to any MCP-compatible client (like Cursor, Claude Desktop, or Antigravity).
 
-```
-stdio (JSON-RPC 2.0)                    HTTPS REST
-Agent (Antigravity/Cursor/Claude) ←→ mcp-server/server.py ←→ HF Backend (hf.space)
-```
+Version 2.0 brings a massive expansion from 9 to **18 tools**, deep reasoning agents, knowledge graph visualization, bookmarks, and site management.
 
-**Transport:** stdio — agents launch the server as a subprocess. No ports needed.
+## Installation
 
-## Tools (8)
+### Method 1: Using Smithery (Recommended)
 
-| Tool | Endpoint | Description |
-|---|---|---|
-| `snapmind_search` | `POST /search/global` | Semantic search across the entire knowledge base |
-| `snapmind_chat` | `POST /chat` | RAG-powered Q&A with persona and session support |
-| `snapmind_ingest_url` | `POST /ingest` | Index a website URL |
-| `snapmind_ingest_file` | `POST /ingest/file` | Index a local file (PDF, DOCX, CSV, TXT) |
-| `snapmind_ingest_repo` | `POST /ingest/github` | Clone and index a GitHub repository |
-| `snapmind_web_research` | `POST /browser/research` | Multi-agent web research with synthesis |
-| `snapmind_list_personas` | `GET /personas` | List available AI personas |
-| `snapmind_get_analytics` | `GET /admin/analytics` | Knowledge base statistics |
-
-## Resources (2)
-
-| URI | Description |
-|---|---|
-| `snapmind://kb/stats` | Live knowledge base statistics (JSON) |
-| `snapmind://kb/tags` | All semantic tags in the knowledge base (JSON) |
-
-## Prompt Templates (3)
-
-| Prompt | Description |
-|---|---|
-| `research_topic` | Deep investigation combining web research + existing knowledge |
-| `code_review` | Review code against indexed documentation and best practices |
-| `summarize_notebook` | Summarize saved bookmarks and research notes on a topic |
-
-## Setup
-
-### Prerequisites
-- Python 3.10+
-- `pip install mcp httpx python-dotenv anyio`
-
-### Install
+To install SnapMind for Claude Desktop or other MCP clients via Smithery:
 
 ```bash
-cd d:\Rag\mcp-server
+npx -y @smithery/cli install snapmind-mcp --client claude
+```
+
+### Method 2: Manual Installation
+
+1. Clone the repository and navigate to the `mcp-server` directory:
+```bash
+git clone https://github.com/roshankumar0036singh/SnapMind.git
+cd SnapMind/mcp-server
+```
+
+2. Install dependencies:
+```bash
 pip install -e .
 ```
 
-### Environment
-
-Copy `.env.example` to `.env` and fill in your keys, or provide them via the MCP client configuration:
-
-```bash
-cp .env.example .env
-```
-
-## Agent Configuration
-
-### Antigravity / Gemini CLI
-
-Add to your MCP settings:
-
-```json
-{
-  "snapmind": {
-    "command": "python",
-    "args": ["d:\\Rag\\mcp-server\\server.py"],
-    "env": {
-      "SNAPMIND_BACKEND_URL": "https://roshan123478-snapmind-backend.hf.space",
-      "HF_TOKEN": "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",
-      "GEMINI_API_KEY": "YOUR_KEY",
-      "MISTRAL_API_KEY": "YOUR_KEY"
-    }
-  }
-}
-```
-
-### Claude Desktop
-
-Add to `%APPDATA%\Claude\claude_desktop_config.json`:
+3. Add to your MCP client configuration (e.g., `claude_desktop_config.json` or Cursor's MCP config):
 
 ```json
 {
   "mcpServers": {
     "snapmind": {
-      "command": "python",
-      "args": ["d:\\Rag\\mcp-server\\server.py"],
+      "command": "snapmind-mcp",
       "env": {
-        "SNAPMIND_BACKEND_URL": "https://roshan123478-snapmind-backend.hf.space",
-        "HF_TOKEN": "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",
-        "GEMINI_API_KEY": "YOUR_KEY"
+        "SNAPMIND_BACKEND_URL": "http://localhost:8000",
+        "HF_TOKEN": "your-huggingface-token-if-private",
+        "SUPABASE_ACCESS_TOKEN": "your-auth-token-for-user-data",
+        "GEMINI_API_KEY": "your-gemini-key",
+        "MISTRAL_API_KEY": "your-mistral-key"
       }
     }
   }
 }
 ```
 
-### Cursor
+## Features
 
-Add to `.cursor/mcp.json` in your project root:
+### 🛠️ 18 Available Tools
+* **Search & Chat**
+  * `snapmind_search` - Semantic search across documents, bookmarks, and history.
+  * `snapmind_chat` - Chat with your knowledge base using optional personas.
+* **Knowledge Management**
+  * `snapmind_create_bookmark` / `list_bookmarks` / `delete_bookmark` - Manage saved snippets.
+  * `snapmind_knowledge_graph` - Extract relations and nodes from your data.
+  * `snapmind_list_sites` / `delete_site` - Manage indexed source websites.
+  * `snapmind_export_site` - Export all data for a specific site.
+* **Deep Research**
+  * `snapmind_web_research` - Multi-agent web research pipeline.
+  * `snapmind_deep_research` - Multi-hop reasoning chain across web and local sources.
+  * `snapmind_generate_report` - Synthesize sessions into a DOCX report.
+* **Ingestion**
+  * `snapmind_ingest_url` - Index a website.
+  * `snapmind_ingest_file` - Index local documents (PDF, DOCX, CSV).
+  * `snapmind_ingest_repo` - Clone and index a GitHub repository.
+* **Utilities**
+  * `snapmind_translate` - Translate text between languages.
+  * `snapmind_analyze_image` - Vision AI (QA/OCR) on local images.
+  * `snapmind_list_personas` / `get_analytics` / `health_check`
 
-```json
-{
-  "mcpServers": {
-    "snapmind": {
-      "command": "python",
-      "args": ["d:\\Rag\\mcp-server\\server.py"],
-      "env": {
-        "SNAPMIND_BACKEND_URL": "https://roshan123478-snapmind-backend.hf.space",
-        "HF_TOKEN": "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"
-      }
-    }
-  }
-}
-```
+### 📚 7 Available Resources
+* `snapmind://kb/stats` - Live knowledge base statistics
+* `snapmind://kb/tags` - All semantic tags
+* `snapmind://kb/sites` - List of all indexed source URLs
+* `snapmind://graph/full` - The full knowledge graph data (JSON)
+* `snapmind://graph/sessions` - List of sessions containing graph data
+* `snapmind://sessions/{id}/history` - Chat history for a specific session
 
-### Continue.dev
+### 🗣️ 6 Prompt Templates
+* `research_topic`, `code_review`, `summarize_notebook`, `deep_dive`, `compare_sources`, `export_knowledge`
 
-Add to `~/.continue/config.json`:
-
-```json
-{
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "transport": {
-          "type": "stdio",
-          "command": "python",
-          "args": ["d:\\Rag\\mcp-server\\server.py"]
-        }
-      }
-    ]
-  }
-}
-```
-
-## Project Structure
-
-```
-mcp-server/
-├── server.py              # Entry point — registers all tools, resources, prompts
-├── config.py              # Environment-based configuration and auth headers
-├── pyproject.toml          # Package definition
-├── .env.example            # Template for environment variables
-├── test_integration.py     # Integration tests against live backend
-├── tools/
-│   ├── search.py           # snapmind_search handler
-│   ├── chat.py             # snapmind_chat handler
-│   ├── ingest.py           # snapmind_ingest_url, _file, _repo handlers
-│   ├── research.py         # snapmind_web_research handler
-│   └── personas.py         # snapmind_list_personas, _get_analytics handlers
-└── resources/
-    └── kb.py               # snapmind://kb/stats, snapmind://kb/tags handlers
-```
-
-## Testing
-
-### Integration Test
+## Development & Testing
 
 ```bash
-cd d:\Rag\mcp-server
-python test_integration.py
+# Run tests
+pip install -e ".[dev]"
+pytest tests/ -v
 ```
-
-Tests connectivity to the backend and verifies search, analytics, and ingestion endpoints.
-
-### Manual Verification
-
-1. Start the backend: `uvicorn main:app --reload` in `d:\Rag\backend\`
-2. Add the MCP config to your agent
-3. Ask: "Search my SnapMind knowledge base for hybrid search"
-4. Agent should call `snapmind_search` and return results
-5. Ask: "Index https://docs.anthropic.com into my knowledge base"
-6. Agent should call `snapmind_ingest_url` and report success
-
-## License
-
-ISC

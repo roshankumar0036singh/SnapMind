@@ -1,3 +1,8 @@
+import os from 'os';
+import path from 'path';
+
+export const CACHE_DIR = path.join(os.homedir(), '.snapmind');
+
 export const NLP_CONFIG = {
   SCHOLAR: {
     CHUNK_SIZE: 1000,

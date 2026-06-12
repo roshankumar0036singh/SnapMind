@@ -1,20 +1,19 @@
 """
 SnapMind MCP Tools — Personas
-Wraps GET /personas and related persona management endpoints.
+Wraps GET /api/v1/personas and GET /api/v1/admin/analytics
 """
-import httpx
 from mcp.types import TextContent
-from config import BACKEND_URL, get_headers
+from config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def handle_list_personas(arguments: dict) -> list[TextContent]:
     """List all available AI personas."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(f"{BACKEND_URL}/personas", headers=get_headers())
+    async with get_client(timeout=15.0) as client:
+        response = await client.get(f"{BACKEND_URL}{API_PREFIX}/personas", headers=get_headers())
         data = response.json()
 
     if not data.get("success"):
-        return [TextContent(type="text", text="Failed to fetch personas.")]
+        return [TextContent(type="text", text=f"Failed to fetch personas: {data.get('detail', 'Unknown error')}")]
 
     personas = data.get("personas", [])
     if not personas:
@@ -29,12 +28,12 @@ async def handle_list_personas(arguments: dict) -> list[TextContent]:
 
 async def handle_get_analytics(arguments: dict) -> list[TextContent]:
     """Get knowledge base analytics and health status."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.get(f"{BACKEND_URL}/admin/analytics", headers=get_headers())
+    async with get_client(timeout=15.0) as client:
+        response = await client.get(f"{BACKEND_URL}{API_PREFIX}/admin/analytics", headers=get_headers())
         data = response.json()
 
-    if "error" in data:
-        return [TextContent(type="text", text=f"Analytics error: {data['error']}")]
+    if "error" in data or "detail" in data:
+        return [TextContent(type="text", text=f"Analytics error: {data.get('error', data.get('detail', 'Unknown error'))}")]
 
     stats = (
         f"SnapMind Library Stats:\n"

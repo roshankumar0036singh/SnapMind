@@ -28,6 +28,7 @@ export async function handleCommonCommands(query, { history, namespace, llm, cur
     console.log(chalk.white('  /stats     ') + chalk.gray('- Show token usage and cost statistics'));
     console.log(chalk.white('  /snapshot  ') + chalk.gray('- Save the current session with an optional name'));
     console.log(chalk.white('  /handoff   ') + chalk.gray('- Switch to a different persona'));
+    console.log(chalk.white('  /collaborate... ') + chalk.gray('- Initiate multi-agent collaboration task'));
     console.log(chalk.white('  /global... ') + chalk.gray('- Search across all datasets globally'));
     console.log(chalk.white('  exit       ') + chalk.gray('- Exit the current session\n'));
     return { handled: true, focusLens: currentFocus };
@@ -78,6 +79,11 @@ export async function handleCommonCommands(query, { history, namespace, llm, cur
   if (normQuery === '/unfocus') {
     console.log(chalk.yellow(`\n🎯 Focus lens removed.\n`));
     return { handled: true, focusLens: null };
+  }
+
+  if (normQuery.startsWith('/collaborate ')) {
+    const topic = query.replace('/collaborate', '').trim();
+    return { handled: true, collaborate: topic, focusLens: currentFocus };
   }
 
   return { handled: false, focusLens: currentFocus };

@@ -1,10 +1,9 @@
 """
 SnapMind MCP Tools — Search
-Wraps POST /search/global endpoint.
+Wraps POST /api/v1/search/global endpoint.
 """
-import httpx
 from mcp.types import TextContent
-from config import BACKEND_URL, get_headers
+from config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def handle_search(arguments: dict) -> list[TextContent]:
@@ -12,16 +11,16 @@ async def handle_search(arguments: dict) -> list[TextContent]:
     query = arguments.get("query")
     limit = arguments.get("limit", 10)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with get_client(timeout=30.0) as client:
         response = await client.post(
-            f"{BACKEND_URL}/search/global",
+            f"{BACKEND_URL}{API_PREFIX}/search/global",
             json={"query": query, "limit": limit},
             headers=get_headers()
         )
         data = response.json()
 
     if not data.get("success"):
-        return [TextContent(type="text", text=f"Search failed: {data.get('error', 'Unknown error')}")]
+        return [TextContent(type="text", text=f"Search failed: {data.get('error', data.get('detail', 'Unknown error'))}")]
 
     results = data.get("results", [])
     if not results:

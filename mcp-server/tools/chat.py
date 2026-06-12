@@ -1,17 +1,16 @@
 """
 SnapMind MCP Tools — Chat
-Wraps POST /chat endpoint with persona and session support.
+Wraps POST /api/v1/search/chat endpoint with persona and session support.
 """
-import httpx
 from mcp.types import TextContent
-from config import BACKEND_URL, get_headers
+from config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def handle_chat(arguments: dict) -> list[TextContent]:
     """Ask a question with full RAG context and optional persona."""
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with get_client(timeout=60.0) as client:
         response = await client.post(
-            f"{BACKEND_URL}/chat",
+            f"{BACKEND_URL}{API_PREFIX}/search/chat",
             json={
                 "query": arguments.get("query"),
                 "site_id": arguments.get("site_id"),
@@ -22,8 +21,8 @@ async def handle_chat(arguments: dict) -> list[TextContent]:
         )
         data = response.json()
 
-    if "error" in data:
-        return [TextContent(type="text", text=f"Chat error: {data['error']}")]
+    if "error" in data or "detail" in data:
+        return [TextContent(type="text", text=f"Chat error: {data.get('error', data.get('detail', 'Unknown error'))}")]
 
     answer = data.get("answer", "")
     sources = data.get("sources", [])

@@ -19,6 +19,8 @@ import fs from 'fs-extra';
 import path from 'path';
 import { execSync } from 'child_process';
 import { setupWatcher } from '../utils/watcher.js';
+import config from '../utils/config.js';
+import { apiClient } from '../utils/api_client.js';
 
 async function detectTechStack(dir) {
   const stack = [];
@@ -166,7 +168,7 @@ export async function startCoder(options = {}) {
     if (options.watch) {
       setupWatcher(targetPath, async (event, filePath) => {
         if (event === 'unlink') {
-          vectorStore.memoryVectors = vectorStore.memoryVectors.filter(v => v.metadata.source !== filePath);
+          await vectorStore.deleteDocumentsBySource(filePath);
         } else {
           try {
             const loader = new TextLoader(filePath);
@@ -175,10 +177,9 @@ export async function startCoder(options = {}) {
             const newDocs = await splitter.splitDocuments(rawDocs);
             
             // Remove old
-            vectorStore.memoryVectors = vectorStore.memoryVectors.filter(v => v.metadata.source !== filePath);
+            await vectorStore.deleteDocumentsBySource(filePath);
             // Add new
             await vectorStore.addDocuments(newDocs);
-            await saveVectorStore(vectorStore, namespace);
           } catch (e) {
             // Ignore temporary file errors
           }
@@ -204,6 +205,9 @@ export async function startCoder(options = {}) {
 
       // Shared Commands
       const cmdResult = await handleCommonCommands(query, { history, namespace, llm, currentFocus: null });
+      if (cmdResult.collaborate) {
+        return { collaborate: cmdResult.collaborate, history, mount: targetPath };
+      }
       if (cmdResult.handled) continue;
 
       if (query.startsWith('/global')) {
@@ -238,8 +242,9 @@ export async function startCoder(options = {}) {
 
       if (query.startsWith('/skill')) {
         const script = query.split(' ')[1];
-        if (!script) {
+        if (!script || !/^[a-zA-Z0-9:-]+$/.test(script)) {
           console.log(chalk.yellow('\nUsage: /skill <script_name> (e.g., /skill test, /skill lint)'));
+          console.log(chalk.red('Only alphanumeric characters, colons, and hyphens are allowed.'));
           continue;
         }
         

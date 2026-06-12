@@ -1,14 +1,14 @@
 [project]
 name = "snapmind-mcp"
-version = "1.0.0"
-description = "MCP server exposing the SnapMind RAG backend as tools and resources"
+version = "2.0.0"
+description = "MCP server exposing the full SnapMind RAG backend capabilities as tools and resources"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "SnapMind" }]
 license = { text = "ISC" }
-keywords = ["mcp", "rag", "ai", "llm", "knowledge-base", "vector-search"]
+keywords = ["mcp", "rag", "ai", "llm", "knowledge-base", "vector-search", "smithery"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: ISC License (ISCL)",
 ]
@@ -18,6 +18,11 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "anyio>=4.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/roshankumar0036singh/SnapMind"
+Repository = "https://github.com/roshankumar0036singh/SnapMind"
+Documentation = "https://github.com/roshankumar0036singh/SnapMind/blob/main/mcp-server/README.md"
 
 [project.optional-dependencies]
 dev = [

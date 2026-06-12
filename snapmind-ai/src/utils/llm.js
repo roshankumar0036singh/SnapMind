@@ -54,6 +54,10 @@ async function checkOllama(airgap) {
     if (!(response && response.status === 200)) {
       if (airgap) throw new SnapMindError('Ollama not running! Airgap mode requires local Ollama.', 'LOCAL_OFFLINE');
       
+      if (!process.stdout.isTTY) {
+        throw new SnapMindError('Ollama not running! Background tasks cannot prompt for fallback. Ensure Ollama is running.', 'OLLAMA_OFFLINE');
+      }
+
       const inquirer = (await import('inquirer')).default;
       console.log(chalk.yellow('\n⚠️ Local Ollama runs offline but is NOT detected on port 11434.'));
       console.log(chalk.gray('  You can install it for free from https://ollama.com\n'));

@@ -136,6 +136,9 @@ export async function startScholar(options = {}) {
 
       // Shared Commands
       const cmdResult = await handleCommonCommands(query, { history, namespace, llm, currentFocus: null });
+      if (cmdResult.collaborate) {
+        return { collaborate: cmdResult.collaborate, history, mount: targetPath };
+      }
       if (cmdResult.handled) continue;
 
       if (query.startsWith('/global')) {

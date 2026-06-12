@@ -17,7 +17,7 @@ import {
   exportPersona, 
   importPersona 
 } from './utils/persona_store.js';
-
+import { CACHE_DIR } from './utils/constants.js';
 
 
 const sleep = (ms = 2000) => new Promise((r) => setTimeout(r, ms));
@@ -193,7 +193,7 @@ program
     const spinner = ora('Performing system hygiene...').start();
     
     try {
-      const cacheDir = path.join(process.cwd(), '.snapmind_cache');
+      const cacheDir = CACHE_DIR;
       const sessionsDir = path.join(cacheDir, 'sessions');
 
       let cleanedNamespaces = 0;
@@ -409,7 +409,7 @@ program
       }
       const content = Buffer.concat(chunks).toString('utf8');
       if (content.trim().length > 0) {
-        const tmpDir = path.join(process.cwd(), '.snapmind_cache', 'pipe_input');
+        const tmpDir = path.join(CACHE_DIR, 'pipe_input');
         await fs.ensureDir(tmpDir);
         const tmpFile = path.join(tmpDir, `stdin_${Date.now()}.txt`);
         await fs.writeFile(tmpFile, content);
