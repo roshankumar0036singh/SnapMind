@@ -37,9 +37,7 @@ pip install -e .
     "snapmind": {
       "command": "snapmind-mcp",
       "env": {
-        "SNAPMIND_BACKEND_URL": "https://roshan123478-snapmind-backend.hf.space",
-        "HF_TOKEN": "your-huggingface-token-if-private",
-        "SUPABASE_ACCESS_TOKEN": "your-auth-token-for-user-data",
+        "SNAPMIND_BACKEND_URL": "https://snapmind-gateway.roshankumar30080.workers.dev",
         "GEMINI_API_KEY": "your-gemini-key",
         "MISTRAL_API_KEY": "your-mistral-key"
       }

@@ -15,7 +15,7 @@ categories:
   - search
   - coding
 install:
-  - pip install -e .
+  - cd mcp-server && pip install -e .
 run:
   - snapmind-mcp
 configSchema:
@@ -24,13 +24,7 @@ configSchema:
     SNAPMIND_BACKEND_URL:
       type: string
       description: The URL of your SnapMind backend instance.
-      default: https://roshan123478-snapmind-backend.hf.space
-    HF_TOKEN:
-      type: string
-      description: (Optional) Hugging Face token if your backend is deployed in a private Space.
-    SUPABASE_ACCESS_TOKEN:
-      type: string
-      description: (Optional) Supabase auth token for user-scoped endpoints.
+      default: https://snapmind-gateway.roshankumar30080.workers.dev
     GEMINI_API_KEY:
       type: string
       description: (Optional) Gemini API Key

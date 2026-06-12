@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 load_dotenv()
 
 # The MCP client (Antigravity/Cursor/etc.) provides these in the "env" section of the MCP config
-BACKEND_URL = os.environ.get("SNAPMIND_BACKEND_URL", "https://roshan123478-snapmind-backend.hf.space").rstrip("/")
+BACKEND_URL = os.environ.get("SNAPMIND_BACKEND_URL", "https://snapmind-gateway.roshankumar30080.workers.dev").rstrip("/")
 API_PREFIX = "/api/v1"
 HF_TOKEN = os.environ.get("HF_TOKEN")
 SUPABASE_ACCESS_TOKEN = os.environ.get("SUPABASE_ACCESS_TOKEN")
