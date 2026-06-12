@@ -2,7 +2,7 @@
 SnapMind MCP Resources — Session History
 Implements snapmind://sessions/{id}/history resource.
 """
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def read_session_history(session_id: str) -> str:

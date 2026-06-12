@@ -3,7 +3,7 @@ SnapMind MCP Tools — Web Research
 Wraps POST /api/v1/research/research, POST /api/v1/research/deep-research, POST /api/v1/research/generate_report
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 async def handle_web_research(arguments: dict) -> list[TextContent]:
     """Deep multi-agent web research with synthesis and citations."""

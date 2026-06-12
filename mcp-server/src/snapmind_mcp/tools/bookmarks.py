@@ -3,7 +3,7 @@ SnapMind MCP Tools — Bookmarks
 Wraps POST /api/v1/bookmarks, GET /api/v1/bookmarks, DELETE /api/v1/bookmarks/{id}
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 async def handle_create_bookmark(arguments: dict) -> list[TextContent]:
     """Saves a research snippet as a bookmark with semantic search support."""

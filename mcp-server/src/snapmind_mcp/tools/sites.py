@@ -3,7 +3,7 @@ SnapMind MCP Tools — Sites
 Wraps GET /api/v1/sites, DELETE /api/v1/sites/{site_id}
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 import urllib.parse
 
 async def handle_list_sites(arguments: dict) -> list[TextContent]:

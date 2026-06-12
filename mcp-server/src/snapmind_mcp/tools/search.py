@@ -3,7 +3,7 @@ SnapMind MCP Tools — Search
 Wraps POST /api/v1/search/global endpoint.
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def handle_search(arguments: dict) -> list[TextContent]:

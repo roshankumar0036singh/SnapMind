@@ -3,7 +3,7 @@ SnapMind MCP Tools — Knowledge Graph
 Wraps GET /api/v1/graph/data
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 import json
 
 async def handle_knowledge_graph(arguments: dict) -> list[TextContent]:

@@ -19,25 +19,25 @@ from mcp.types import (
 import httpx
 
 # --- Tool Handlers (modular) ---
-from tools.search import handle_search
-from tools.chat import handle_chat
-from tools.ingest import handle_ingest_url, handle_ingest_file, handle_ingest_repo, handle_ingest_status
-from tools.research import handle_web_research, handle_deep_research, handle_generate_report
-from tools.personas import handle_list_personas, handle_get_analytics
-from tools.bookmarks import handle_create_bookmark, handle_list_bookmarks, handle_delete_bookmark
-from tools.graph import handle_knowledge_graph
-from tools.sites import handle_list_sites, handle_delete_site
-from tools.translate import handle_translate
-from tools.vision import handle_analyze_image
-from tools.export import handle_export_site
+from snapmind_mcp.tools.search import handle_search
+from snapmind_mcp.tools.chat import handle_chat
+from snapmind_mcp.tools.ingest import handle_ingest_url, handle_ingest_file, handle_ingest_repo, handle_ingest_status
+from snapmind_mcp.tools.research import handle_web_research, handle_deep_research, handle_generate_report
+from snapmind_mcp.tools.personas import handle_list_personas, handle_get_analytics
+from snapmind_mcp.tools.bookmarks import handle_create_bookmark, handle_list_bookmarks, handle_delete_bookmark
+from snapmind_mcp.tools.graph import handle_knowledge_graph
+from snapmind_mcp.tools.sites import handle_list_sites, handle_delete_site
+from snapmind_mcp.tools.translate import handle_translate
+from snapmind_mcp.tools.vision import handle_analyze_image
+from snapmind_mcp.tools.export import handle_export_site
 
 # --- Resource Handlers (modular) ---
-from resources.kb import read_kb_stats, read_kb_tags, read_kb_sites
-from resources.sessions import read_session_history
-from resources.graph import read_graph_full, read_graph_sessions
+from snapmind_mcp.resources.kb import read_kb_stats, read_kb_tags, read_kb_sites
+from snapmind_mcp.resources.sessions import read_session_history
+from snapmind_mcp.resources.graph import read_graph_full, read_graph_sessions
 
 # --- Config ---
-from config import close_client, BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import close_client, BACKEND_URL, API_PREFIX, get_headers, get_client
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Server Instance

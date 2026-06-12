@@ -2,7 +2,7 @@
 SnapMind MCP Resources — Knowledge Base
 Implements snapmind://kb/stats, snapmind://kb/tags, snapmind://kb/sites
 """
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def read_kb_stats() -> str:

@@ -4,7 +4,7 @@ Wraps all 3 ingest endpoints: URL, File, and GitHub Repository under /api/v1/ing
 """
 import os
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def handle_ingest_url(arguments: dict) -> list[TextContent]:

@@ -2,7 +2,7 @@
 SnapMind MCP Resources — Graph
 Implements snapmind://graph/full and snapmind://graph/sessions
 """
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def read_graph_full() -> str:

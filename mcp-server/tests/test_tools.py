@@ -23,7 +23,7 @@ async def test_search_success():
             "results": [{"type": "doc", "url": "https://example.com", "score": 0.95, "content": "Hybrid search combines vector and keyword."}]
         })
     )
-    from tools.search import handle_search
+    from snapmind_mcp.tools.search import handle_search
     result = await handle_search({"query": "hybrid search", "limit": 5})
     assert len(result) == 1
     assert "Hybrid search" in result[0].text or "Found 1" in result[0].text
@@ -34,7 +34,7 @@ async def test_search_no_results():
     respx.post(f"{BASE_URL}{API_PREFIX}/search/global").mock(
         return_value=httpx.Response(200, json={"success": True, "results": []})
     )
-    from tools.search import handle_search
+    from snapmind_mcp.tools.search import handle_search
     result = await handle_search({"query": "nonexistent query"})
     assert "No results" in result[0].text
 
@@ -44,7 +44,7 @@ async def test_search_api_error():
     respx.post(f"{BASE_URL}{API_PREFIX}/search/global").mock(
         return_value=httpx.Response(200, json={"success": False, "error": "DB timeout"})
     )
-    from tools.search import handle_search
+    from snapmind_mcp.tools.search import handle_search
     result = await handle_search({"query": "test"})
     assert "failed" in result[0].text.lower()
 
@@ -57,7 +57,7 @@ async def test_chat_success():
     respx.post(f"{BASE_URL}{API_PREFIX}/search/chat").mock(
         return_value=httpx.Response(200, json={"answer": "SnapMind is a RAG platform.", "sources": []})
     )
-    from tools.chat import handle_chat
+    from snapmind_mcp.tools.chat import handle_chat
     result = await handle_chat({"query": "What is SnapMind?"})
     assert "SnapMind" in result[0].text
 
@@ -70,7 +70,7 @@ async def test_chat_with_sources():
             "sources": [{"url": "https://example.com/rag"}]
         })
     )
-    from tools.chat import handle_chat
+    from snapmind_mcp.tools.chat import handle_chat
     result = await handle_chat({"query": "Explain RAG"})
     assert "Sources" in result[0].text
     assert "example.com" in result[0].text
@@ -84,7 +84,7 @@ async def test_ingest_url_success():
     respx.post(f"{BASE_URL}{API_PREFIX}/ingest").mock(
         return_value=httpx.Response(200, json={"success": True, "chunks_stored": 42})
     )
-    from tools.ingest import handle_ingest_url
+    from snapmind_mcp.tools.ingest import handle_ingest_url
     result = await handle_ingest_url({"url": "https://example.com"})
     assert "42" in result[0].text or "Successfully" in result[0].text
 
@@ -94,13 +94,13 @@ async def test_ingest_url_failure():
     respx.post(f"{BASE_URL}{API_PREFIX}/ingest").mock(
         return_value=httpx.Response(200, json={"success": False, "error": "Firecrawl timeout"})
     )
-    from tools.ingest import handle_ingest_url
+    from snapmind_mcp.tools.ingest import handle_ingest_url
     result = await handle_ingest_url({"url": "https://example.com"})
     assert "failed" in result[0].text.lower()
 
 @pytest.mark.asyncio
 async def test_ingest_file_not_found():
-    from tools.ingest import handle_ingest_file
+    from snapmind_mcp.tools.ingest import handle_ingest_file
     result = await handle_ingest_file({"file_path": "/nonexistent/file.pdf"})
     assert "not found" in result[0].text.lower()
 
@@ -110,7 +110,7 @@ async def test_ingest_repo_success():
     respx.post(f"{BASE_URL}{API_PREFIX}/ingest/github").mock(
         return_value=httpx.Response(200, json={"success": True, "job_id": "123"})
     )
-    from tools.ingest import handle_ingest_repo
+    from snapmind_mcp.tools.ingest import handle_ingest_repo
     result = await handle_ingest_repo({"repo_url": "https://github.com/example/repo"})
     assert "123" in result[0].text or "Started" in result[0].text
 
@@ -126,7 +126,7 @@ async def test_list_personas_success():
             "personas": [{"id": "abc", "name": "Scholar", "description": "Academic research"}]
         })
     )
-    from tools.personas import handle_list_personas
+    from snapmind_mcp.tools.personas import handle_list_personas
     result = await handle_list_personas({})
     assert "Scholar" in result[0].text
 
@@ -138,7 +138,7 @@ async def test_get_analytics():
             "docs": 120, "bookmarks": 55, "sessions": 34, "storage": "12 MB", "health": "excellent"
         })
     )
-    from tools.personas import handle_get_analytics
+    from snapmind_mcp.tools.personas import handle_get_analytics
     result = await handle_get_analytics({})
     assert "120" in result[0].text
     assert "excellent" in result[0].text
@@ -154,7 +154,7 @@ async def test_ingest_status_completed():
             "success": True, "status": "completed", "message": "Done", "files_processed": 10, "chunks_count": 200
         })
     )
-    from tools.ingest import handle_ingest_status
+    from snapmind_mcp.tools.ingest import handle_ingest_status
     result = await handle_ingest_status({"job_id": "42"})
     assert "completed" in result[0].text.lower()
     assert "200" in result[0].text
@@ -170,6 +170,6 @@ async def test_list_bookmarks():
             "success": True, "bookmarks": [{"id": "1", "content": "Test bookmark", "source_url": "http://x"}]
         })
     )
-    from tools.bookmarks import handle_list_bookmarks
+    from snapmind_mcp.tools.bookmarks import handle_list_bookmarks
     result = await handle_list_bookmarks({})
     assert "Test bookmark" in result[0].text

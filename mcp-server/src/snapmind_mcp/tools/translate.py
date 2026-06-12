@@ -3,7 +3,7 @@ SnapMind MCP Tools — Translate
 Wraps POST /api/v1/translate
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 async def handle_translate(arguments: dict) -> list[TextContent]:
     """Translates text between languages."""

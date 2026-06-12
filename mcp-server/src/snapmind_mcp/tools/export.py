@@ -3,7 +3,7 @@ SnapMind MCP Tools — Export
 Wraps GET /api/v1/export/{url}
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 import urllib.parse
 
 async def handle_export_site(arguments: dict) -> list[TextContent]:

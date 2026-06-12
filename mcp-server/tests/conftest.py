@@ -1,6 +1,6 @@
 """
 pytest configuration — ensures the mcp-server root is on sys.path
-so that `from tools.search import ...` works when running tests from
+so that `from snapmind_mcp.tools.search import ...` works when running tests from
 any working directory.
 """
 import sys

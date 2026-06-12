@@ -3,7 +3,7 @@ SnapMind MCP Tools — Chat
 Wraps POST /api/v1/search/chat endpoint with persona and session support.
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def handle_chat(arguments: dict) -> list[TextContent]:

@@ -3,7 +3,7 @@ SnapMind MCP Tools — Personas
 Wraps GET /api/v1/personas and GET /api/v1/admin/analytics
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 
 
 async def handle_list_personas(arguments: dict) -> list[TextContent]:

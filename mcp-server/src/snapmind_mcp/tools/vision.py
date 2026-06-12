@@ -3,7 +3,7 @@ SnapMind MCP Tools — Vision
 Wraps POST /api/v1/vision/analyze-image
 """
 from mcp.types import TextContent
-from config import BACKEND_URL, API_PREFIX, get_headers, get_client
+from snapmind_mcp.config import BACKEND_URL, API_PREFIX, get_headers, get_client
 import base64
 import os
 
