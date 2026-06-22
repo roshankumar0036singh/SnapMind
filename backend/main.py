@@ -165,7 +165,7 @@ from api.v1.endpoints import (
     ingest, search, bookmarks, workspaces, 
     graph, research, saved_pages, tags,
     translate, vision, widget, sites,
-    personas, export, admin, status, linkedin
+    personas, export, admin, status, linkedin, auth
 )
 
 app.include_router(status.router, prefix="/api/v1/status", tags=["System Health"])
@@ -185,6 +185,7 @@ app.include_router(sites.router, prefix="/api/v1/sites", tags=["Site Management"
 app.include_router(personas.router, prefix="/api/v1/personas", tags=["Agent Personas"])
 app.include_router(export.router, prefix="/api/v1/export", tags=["Data Export"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Administration"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 
 # Legacy Compatibility Routes
 @app.post("/ingest")

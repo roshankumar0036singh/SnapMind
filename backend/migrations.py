@@ -766,6 +766,53 @@ MIGRATIONS = [
             END;
             $$;
         """
+    },
+    {
+        "version": 16,
+        "name": "user_api_keys",
+        "sql": """
+            -- Personal API Keys for MCP / CLI authentication
+            CREATE TABLE IF NOT EXISTS user_api_keys (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL,
+                key_hash TEXT NOT NULL UNIQUE,
+                key_prefix TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT 'Default',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP WITH TIME ZONE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_user_api_keys_user_id ON user_api_keys(user_id);
+            CREATE INDEX IF NOT EXISTS idx_user_api_keys_key_hash ON user_api_keys(key_hash);
+
+            -- Enable Row Level Security
+            ALTER TABLE user_api_keys ENABLE ROW LEVEL SECURITY;
+
+            -- RLS Policy: Users can only see their own keys
+            DROP POLICY IF EXISTS user_api_keys_select_policy ON user_api_keys;
+            CREATE POLICY user_api_keys_select_policy ON user_api_keys
+                FOR SELECT USING (auth.uid() = user_id);
+
+            -- RLS Policy: Users can only insert keys for themselves
+            DROP POLICY IF EXISTS user_api_keys_insert_policy ON user_api_keys;
+            CREATE POLICY user_api_keys_insert_policy ON user_api_keys
+                FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+            -- RLS Policy: Users can only delete their own keys
+            DROP POLICY IF EXISTS user_api_keys_delete_policy ON user_api_keys;
+            CREATE POLICY user_api_keys_delete_policy ON user_api_keys
+                FOR DELETE USING (auth.uid() = user_id);
+
+            -- RLS Policy: Service role can read all keys (for API key validation)
+            DROP POLICY IF EXISTS user_api_keys_service_select ON user_api_keys;
+            CREATE POLICY user_api_keys_service_select ON user_api_keys
+                FOR SELECT TO service_role USING (true);
+
+            -- RLS Policy: Service role can update last_used_at
+            DROP POLICY IF EXISTS user_api_keys_service_update ON user_api_keys;
+            CREATE POLICY user_api_keys_service_update ON user_api_keys
+                FOR UPDATE TO service_role USING (true);
+        """
     }
 ]
 

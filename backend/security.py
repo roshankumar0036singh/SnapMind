@@ -43,31 +43,29 @@ async def get_current_user(request: Request):
     try:
         # [DEBUG] Log token presence
         if not token_str:
-            # --- MCP SERVER BYPASS ---
-            # The MCP Server doesn't have a JWT, but it sends LLM API keys.
+            # --- PERSONAL API KEY AUTH (MCP / CLI) ---
+            # Check for x-api-key header first (industry-standard pattern)
+            api_key = request.headers.get("x-api-key")
+            if api_key:
+                from api.v1.endpoints.auth import validate_api_key
+                validated_user_id = validate_api_key(api_key)
+                if validated_user_id:
+                    print(f"[SECURITY] API key authenticated. user_id: {validated_user_id}")
+                    class ApiKeyUser:
+                        id = validated_user_id
+                    return ApiKeyUser()
+                else:
+                    print("[SECURITY] Invalid API key provided.")
+                    raise HTTPException(status_code=401, detail="Invalid API key.")
+
+            # --- LEGACY MCP BYPASS (fallback for API-key-less MCP requests) ---
             if request.headers.get("x-gemini-key") or request.headers.get("x-mistral-key") or request.headers.get("x-firecrawl-key"):
-                print("[SECURITY] MCP Server detected via API Keys. Resolving default user_id...")
-                try:
-                    mcp_user_id = os.getenv("DEFAULT_USER_ID")
-                    
-                    if not mcp_user_id:
-                        mcp_user_id = "00000000-0000-0000-0000-000000000000" # Fallback Nil UUID
-                        # Try to dynamically grab the real user_id from various tables
-                        for table in ["documents", "saved_pages", "bookmarks", "chat_sessions"]:
-                            try:
-                                res = supabase.table(table).select("user_id").not_is("user_id", "null").limit(1).execute()
-                                if res.data and len(res.data) > 0:
-                                    mcp_user_id = res.data[0]["user_id"]
-                                    break
-                            except Exception:
-                                pass
-                                
-                    print(f"[SECURITY] Bypassing auth. Assigned MCP to user_id: {mcp_user_id}")
-                    class MockUser:
-                        id = mcp_user_id
-                    return MockUser()
-                except Exception as e:
-                    print(f"[SECURITY] Critical failure in MCP bypass: {e}")
+                print("[SECURITY] MCP Server detected via LLM API Keys but no x-api-key provided.")
+                print("[SECURITY] Generate a Personal API Key from the Chrome Extension Settings to authenticate.")
+                raise HTTPException(
+                    status_code=401,
+                    detail="MCP authentication requires a Personal API Key. Generate one from the SnapMind Chrome Extension → Settings → MCP Integration."
+                )
 
             print(f"[SECURITY] No valid authentication token found. Headers present: {list(request.headers.keys())}")
             raise HTTPException(status_code=401, detail="No credentials provided")

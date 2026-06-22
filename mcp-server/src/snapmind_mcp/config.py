@@ -17,6 +17,7 @@ API_KEYS = {
     "firecrawl": os.environ.get("FIRECRAWL_API_KEY"),
     "lingodev": os.environ.get("LINGODEV_API_KEY"),
     "apify": os.environ.get("APIFY_API_TOKEN"),
+    "snapmind": os.environ.get("SNAPMIND_API_KEY"),
 }
 
 # Shared HTTP client for connection pooling
@@ -34,6 +35,7 @@ def get_headers():
     if API_KEYS["firecrawl"]: headers["x-firecrawl-key"] = API_KEYS["firecrawl"]
     if API_KEYS["groq"]: headers["x-groq-key"] = API_KEYS["groq"]
     if API_KEYS["apify"]: headers["x-apify-token"] = API_KEYS["apify"]
+    if API_KEYS["snapmind"]: headers["x-api-key"] = API_KEYS["snapmind"]
     
     return headers
 

@@ -22,9 +22,11 @@ The easiest way to use SnapMind with Claude Desktop is via `uvx` or `npx`, which
       ],
       "env": {
         "SNAPMIND_BACKEND_URL": "https://snapmind-gateway.roshankumar30080.workers.dev",
+        "SNAPMIND_API_KEY": "snp_your_generated_api_key",
         "GEMINI_API_KEY": "your-gemini-key",
         "FIRECRAWL_API_KEY": "your-firecrawl-key",
-        "MISTRAL_API_KEY": "your-mistral-key"
+        "MISTRAL_API_KEY": "your-mistral-key",
+        "LINGODEV_API_KEY": "your-lingodev-key"
       }
     }
   }
@@ -61,9 +63,11 @@ pip install -e .
       "command": "snapmind-mcp",
       "env": {
         "SNAPMIND_BACKEND_URL": "https://snapmind-gateway.roshankumar30080.workers.dev",
+        "SNAPMIND_API_KEY": "snp_your_generated_api_key",
         "GEMINI_API_KEY": "your-gemini-key",
         "FIRECRAWL_API_KEY": "your-firecrawl-key",
-        "MISTRAL_API_KEY": "your-mistral-key"
+        "MISTRAL_API_KEY": "your-mistral-key",
+        "LINGODEV_API_KEY": "your-lingodev-key"
       }
     }
   }

@@ -3129,12 +3129,19 @@ function App() {
                           code: ({ node, inline, className, children, ...props }) => {
                             const match = /language-(\w+)/.exec(className || '');
                             const lang = match ? match[1] : '';
+                            
+                            // [FIX] More robust check for inline vs block code.
+                            // react-markdown passes node.position, block code is usually wrapped in <pre>
+                            // Rehype-highlight often adds className to inline code too, so we can't rely just on match/className.
+                            // A more robust check is whether the parent is a pre tag, or if the code contains newlines.
+                            const hasNewlines = String(children).includes('\n');
+                            const isBlock = !inline && (hasNewlines || match);
 
-                            if (!inline && lang === 'mermaid') {
+                            if (isBlock && lang === 'mermaid') {
                               return <MermaidChart chart={String(children).replace(/\n$/, '')} />;
                             }
 
-                            return !inline ? (
+                            return isBlock ? (
                               <div className="relative group/code my-4 rounded-xl overflow-hidden shadow-sm bg-[#1e1e1e] border border-slate-700/50">
                                 <div className="flex items-center px-4 py-2 bg-black/40 border-b border-white/5">
                                   <span className="text-xs font-medium text-slate-400 capitalize">{match?.[1] || 'code'}</span>
@@ -3158,7 +3165,7 @@ function App() {
                                 </button>
                               </div>
                             ) : (
-                              <code className="px-1.5 py-0.5 mx-0.5 bg-indigo-50/50 dark:bg-slate-800/80 text-indigo-700 dark:text-indigo-300 rounded font-mono text-[13px] border border-indigo-100 dark:border-slate-700 !bg-transparent" {...props}>
+                              <code className="px-1.5 py-0.5 mx-0.5 bg-indigo-50/50 dark:bg-slate-800/80 text-indigo-700 dark:text-indigo-300 rounded-md font-mono text-[12px] border border-indigo-100 dark:border-slate-700" {...props}>
                                 {children}
                               </code>
                             );

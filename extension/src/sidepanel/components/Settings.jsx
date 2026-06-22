@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Key, ArrowLeft, LogOut, User, ExternalLink, ShieldCheck, Zap, Globe, Sparkles } from 'lucide-react';
+import { Save, Key, ArrowLeft, LogOut, User, ExternalLink, ShieldCheck, Zap, Globe, Sparkles, Terminal, Copy, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../../shared/supabaseClient';
+import { apiClient } from '../../background/api';
 
 export default function Settings({ onBack }) {
     const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -10,6 +11,12 @@ export default function Settings({ onBack }) {
     const [groqApiKey, setGroqApiKey] = useState('');
     const [autoSuggest, setAutoSuggest] = useState(false);
     const [saved, setSaved] = useState(false);
+    
+    // MCP API Keys State
+    const [mcpKeys, setMcpKeys] = useState([]);
+    const [generatedKey, setGeneratedKey] = useState(null);
+    const [loadingKeys, setLoadingKeys] = useState(false);
+    const [generatingKey, setGeneratingKey] = useState(false);
 
     useEffect(() => {
         if (chrome.storage && chrome.storage.local) {
@@ -22,7 +29,47 @@ export default function Settings({ onBack }) {
                 if (result.autoSuggest !== undefined) setAutoSuggest(result.autoSuggest);
             });
         }
+        fetchMcpKeys();
     }, []);
+
+    const fetchMcpKeys = async () => {
+        try {
+            setLoadingKeys(true);
+            const response = await apiClient.listApiKeys();
+            if (response && response.keys) {
+                setMcpKeys(response.keys);
+            }
+        } catch (error) {
+            console.error("Failed to fetch MCP keys:", error);
+        } finally {
+            setLoadingKeys(false);
+        }
+    };
+
+    const handleGenerateKey = async () => {
+        try {
+            setGeneratingKey(true);
+            const response = await apiClient.generateApiKey("Claude Desktop Extension");
+            if (response && response.success) {
+                setGeneratedKey(response.key);
+                fetchMcpKeys(); // Refresh list
+            }
+        } catch (error) {
+            console.error("Failed to generate key:", error);
+        } finally {
+            setGeneratingKey(false);
+        }
+    };
+
+    const handleRevokeKey = async (keyId) => {
+        if (!confirm("Are you sure you want to revoke this key? Any connected MCP clients will stop working immediately.")) return;
+        try {
+            await apiClient.revokeApiKey(keyId);
+            fetchMcpKeys(); // Refresh list
+        } catch (error) {
+            console.error("Failed to revoke key:", error);
+        }
+    };
 
     const handleSave = () => {
         if (chrome.storage && chrome.storage.local) {
@@ -167,6 +214,74 @@ export default function Settings({ onBack }) {
                                 <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${autoSuggest ? 'translate-x-4' : 'translate-x-0'}`} />
                             </button>
                         </div>
+                    </div>
+                </section>
+
+                {/* MCP Integration Section */}
+                <section className="space-y-3 mt-4">
+                    <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                            <Terminal className="w-3.5 h-3.5 text-indigo-500" />
+                            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">MCP Integration</h3>
+                        </div>
+                    </div>
+                    
+                    <div className="p-4 bg-white rounded-2xl border border-slate-200/60 shadow-sm space-y-4">
+                        <div className="space-y-1">
+                            <p className="text-[10px] text-slate-500 leading-relaxed">
+                                Generate a Personal API Key to connect SnapMind to Claude Desktop or other MCP clients. 
+                                Keys are hashed and cannot be viewed again.
+                            </p>
+                        </div>
+
+                        {generatedKey ? (
+                            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">Copy this key now</span>
+                                    <button 
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(generatedKey);
+                                            setGeneratedKey(null);
+                                        }}
+                                        className="text-[10px] bg-emerald-600 text-white px-2 py-1 rounded hover:bg-emerald-700 transition-colors flex items-center gap-1"
+                                    >
+                                        <Copy className="w-3 h-3" /> Done
+                                    </button>
+                                </div>
+                                <code className="block w-full p-2 bg-white rounded border border-emerald-200 text-xs font-mono text-emerald-900 break-all">
+                                    {generatedKey}
+                                </code>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleGenerateKey}
+                                disabled={generatingKey}
+                                className="w-full flex items-center justify-center gap-2 py-2 bg-indigo-50 text-indigo-600 rounded-xl text-xs font-bold hover:bg-indigo-100 transition-colors border border-indigo-100"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                {generatingKey ? "Generating..." : "Generate New API Key"}
+                            </button>
+                        )}
+
+                        {mcpKeys.length > 0 && (
+                            <div className="space-y-2 pt-2 border-t border-slate-100">
+                                {mcpKeys.map(k => (
+                                    <div key={k.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                        <div className="flex flex-col">
+                                            <span className="text-[11px] font-bold text-slate-700">{k.name}</span>
+                                            <span className="text-[9px] text-slate-400 font-mono">{k.key_prefix}</span>
+                                        </div>
+                                        <button
+                                            onClick={() => handleRevokeKey(k.id)}
+                                            className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                                            title="Revoke Key"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </section>
 
