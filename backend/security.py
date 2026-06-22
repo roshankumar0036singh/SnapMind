@@ -48,18 +48,20 @@ async def get_current_user(request: Request):
             if request.headers.get("x-gemini-key") or request.headers.get("x-mistral-key") or request.headers.get("x-firecrawl-key"):
                 print("[SECURITY] MCP Server detected via API Keys. Resolving default user_id...")
                 try:
-                    mcp_user_id = "00000000-0000-0000-0000-000000000000" # Fallback Nil UUID
+                    mcp_user_id = os.getenv("DEFAULT_USER_ID")
                     
-                    # Try to dynamically grab the real user_id from various tables
-                    for table in ["documents", "saved_pages", "bookmarks", "chat_sessions"]:
-                        try:
-                            res = supabase.table(table).select("user_id").not_is("user_id", "null").limit(1).execute()
-                            if res.data and len(res.data) > 0:
-                                mcp_user_id = res.data[0]["user_id"]
-                                break
-                        except Exception:
-                            pass
-                            
+                    if not mcp_user_id:
+                        mcp_user_id = "00000000-0000-0000-0000-000000000000" # Fallback Nil UUID
+                        # Try to dynamically grab the real user_id from various tables
+                        for table in ["documents", "saved_pages", "bookmarks", "chat_sessions"]:
+                            try:
+                                res = supabase.table(table).select("user_id").not_is("user_id", "null").limit(1).execute()
+                                if res.data and len(res.data) > 0:
+                                    mcp_user_id = res.data[0]["user_id"]
+                                    break
+                            except Exception:
+                                pass
+                                
                     print(f"[SECURITY] Bypassing auth. Assigned MCP to user_id: {mcp_user_id}")
                     class MockUser:
                         id = mcp_user_id
