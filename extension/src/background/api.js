@@ -43,6 +43,22 @@ export const apiClient = {
     },
 
     /**
+     * Generic DELETE helper with auth and base URL.
+     */
+    async del(endpoint) {
+        const baseUrl = await this.getBaseUrl();
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+            method: "DELETE",
+            headers: await this.getApiKeysHeaders()
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: `DELETE failed: ${response.status}` }));
+            throw new Error(err.detail || "Server Error");
+        }
+        return await response.json();
+    },
+
+    /**
      * Retrieves the backend base URL.
      * Prioritizes VITE_BACKEND_URL environment variable, falling back to default production node.
      */
