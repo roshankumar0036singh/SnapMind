@@ -1,6 +1,6 @@
 [project]
 name = "snapmind-mcp"
-version = "2.1.1"
+version = "2.1.2"
 description = "MCP server exposing the full SnapMind RAG backend capabilities as tools and resources"
 readme = "README.md"
 requires-python = ">=3.10"
