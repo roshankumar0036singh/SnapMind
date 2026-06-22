@@ -158,25 +158,15 @@ export const apiClient = {
     // --- Personal API Keys for MCP / CLI ---
 
     async generateApiKey(name = "Default") {
-        const url = `${this.baseUrl}/auth/generate-key`;
-        return this._fetchWithAuth(url, {
-            method: 'POST',
-            body: JSON.stringify({ name })
-        });
+        return this.post(`/api/v1/auth/generate-key`, { name });
     },
 
     async listApiKeys() {
-        const url = `${this.baseUrl}/auth/keys`;
-        return this._fetchWithAuth(url, {
-            method: 'GET'
-        });
+        return this.get(`/api/v1/auth/keys`);
     },
 
     async revokeApiKey(keyId) {
-        const url = `${this.baseUrl}/auth/keys/${keyId}`;
-        return this._fetchWithAuth(url, {
-            method: 'DELETE'
-        });
+        return this.del(`/api/v1/auth/keys/${keyId}`);
     },
 
     /**
