@@ -84,3 +84,159 @@ def export_site_text(source_url: str, user_id: str = None) -> str:
         return "\n".join(lines)
     except Exception as e:
         return f"Export failed: {str(e)}"
+
+import re
+import json
+
+def export_session_data(session_id: str, format_type: str = "json", user_id: str = None) -> Any:
+    """
+    Export all data (chat history, graph edges, and cited source documents) for a given session.
+    Supports formats: 'json', 'markdown', 'csv'
+    """
+    try:
+        db_pool = get_db_pool()
+        from psycopg.rows import dict_row
+        
+        # 1. Fetch Chat History
+        with db_pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    "SELECT id, role, content, created_at::text FROM chat_sessions WHERE session_id = %s ORDER BY created_at",
+                    (session_id,)
+                )
+                chat_history = cur.fetchall()
+                
+        # 2. Extract Document IDs from Assistant Citations
+        # Citations look like [db-block-1], [db-block-42]
+        doc_ids = set()
+        for msg in chat_history:
+            if msg['role'] == 'assistant':
+                # find all occurrences of [db-block-<id>]
+                matches = re.findall(r'\[db-block-(\d+)\]', msg['content'])
+                for m in matches:
+                    doc_ids.add(int(m))
+                    
+        # 3. Fetch Source Documents
+        source_documents = []
+        if doc_ids:
+            with db_pool.connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    placeholders = ','.join(['%s'] * len(doc_ids))
+                    cur.execute(
+                        f"SELECT id, content, source_url, metadata, created_at::text FROM documents WHERE id IN ({placeholders})",
+                        tuple(doc_ids)
+                    )
+                    source_documents = cur.fetchall()
+                    
+        # 4. Fetch Graph Edges
+        graph_edges = []
+        try:
+            with db_pool.connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        "SELECT source, relation, target, source_url, created_at::text FROM edges WHERE session_id = %s ORDER BY created_at",
+                        (session_id,)
+                    )
+                    graph_edges = cur.fetchall()
+        except Exception as e:
+            # Graph might not be set up or no session_id in edges
+            pass
+            
+        # Format Output
+        if format_type == "markdown":
+            lines = [
+                f"# Session Export: {session_id}",
+                f"Generated from SnapMind\n",
+                "## Chat History\n"
+            ]
+            for msg in chat_history:
+                role = "User" if msg['role'] == 'user' else "SnapMind"
+                lines.append(f"**{role}** ({msg['created_at']}):\n{msg['content']}\n")
+                
+            lines.append("## Graph Relations Discovered\n")
+            if graph_edges:
+                lines.append("| Source | Relation | Target |")
+                lines.append("|---|---|---|")
+                for edge in graph_edges:
+                    lines.append(f"| {edge['source']} | {edge['relation']} | {edge['target']} |")
+                lines.append("\n")
+            else:
+                lines.append("*No graph edges found for this session.*\n")
+                
+            lines.append("## Cited Source Documents\n")
+            if source_documents:
+                for doc in source_documents:
+                    lines.append(f"### Document ID: {doc['id']}")
+                    lines.append(f"**Source URL:** {doc['source_url']}")
+                    lines.append(f"**Extracted Text:**\n```\n{doc['content']}\n```\n")
+            else:
+                lines.append("*No documents cited in this session.*\n")
+                
+            return {
+                "success": True,
+                "content": "\n".join(lines),
+                "export_format": "markdown",
+                "filename": f"session_{session_id}.md"
+            }
+            
+        elif format_type == "csv":
+            import io
+            import csv
+            import zipfile
+            
+            # Create a zip file containing 3 CSVs
+            memory_file = io.BytesIO()
+            with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                # Chat History CSV
+                chat_io = io.StringIO()
+                if chat_history:
+                    writer = csv.DictWriter(chat_io, fieldnames=["id", "role", "content", "created_at"])
+                    writer.writeheader()
+                    writer.writerows(chat_history)
+                zf.writestr("chat_history.csv", chat_io.getvalue())
+                
+                # Documents CSV
+                docs_io = io.StringIO()
+                if source_documents:
+                    # Clean metadata for CSV
+                    for d in source_documents:
+                        if isinstance(d.get('metadata'), dict):
+                            d['metadata'] = json.dumps(d['metadata'])
+                    writer = csv.DictWriter(docs_io, fieldnames=["id", "content", "source_url", "metadata", "created_at"])
+                    writer.writeheader()
+                    writer.writerows(source_documents)
+                zf.writestr("source_documents.csv", docs_io.getvalue())
+                
+                # Edges CSV
+                edges_io = io.StringIO()
+                if graph_edges:
+                    writer = csv.DictWriter(edges_io, fieldnames=["source", "relation", "target", "source_url", "created_at"])
+                    writer.writeheader()
+                    writer.writerows(graph_edges)
+                zf.writestr("graph_edges.csv", edges_io.getvalue())
+                
+            memory_file.seek(0)
+            return {
+                "success": True,
+                "content": memory_file.read(),
+                "export_format": "csv",
+                "filename": f"session_{session_id}.zip"
+            }
+            
+        else: # Default to JSON
+            return {
+                "success": True,
+                "session_id": session_id,
+                "export_format": "json",
+                "chat_history": chat_history,
+                "source_documents": source_documents,
+                "graph_edges": graph_edges,
+                "filename": f"session_{session_id}.json"
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+

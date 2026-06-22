@@ -27,6 +27,22 @@ const schema = {
     type: 'string',
     default: 'http://localhost:8000',
   },
+  hybridSearch: {
+    type: 'boolean',
+    default: true,
+  },
+  memoryWindow: {
+    type: 'number',
+    default: 20,
+  },
+  citationGrounding: {
+    type: 'boolean',
+    default: true,
+  },
+  pluginRegistryUrl: {
+    type: 'string',
+    default: '',
+  },
 };
 
 const config = new Conf({

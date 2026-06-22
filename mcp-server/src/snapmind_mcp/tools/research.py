@@ -77,3 +77,124 @@ async def handle_generate_report(arguments: dict) -> list[TextContent]:
          return [TextContent(type="text", text=f"Successfully generated report. Saved locally as {output_path}")]
     except Exception as e:
          return [TextContent(type="text", text=f"Failed to save generated report locally: {str(e)}")]
+
+async def handle_live_scrape(arguments: dict) -> list[TextContent]:
+    """Instantly scrape a URL into clean markdown without indexing."""
+    url = arguments.get("url")
+    if not url:
+        return [TextContent(type="text", text="Error: url is required.")]
+        
+    async with get_client(timeout=60.0) as client:
+        response = await client.post(
+            f"{BACKEND_URL}{API_PREFIX}/research/scrape",
+            json={"url": url},
+            headers=get_headers()
+        )
+        
+    if response.status_code != 200:
+        return [TextContent(type="text", text=f"Scraping failed: {response.text}")]
+        
+    data = response.json()
+    markdown = data.get("markdown", "")
+    title = data.get("title", "")
+    
+    return [TextContent(type="text", text=f"--- Scraped Content from {url} ---\nTitle: {title}\n\n{markdown}")]
+
+async def handle_person_intelligence(arguments: dict) -> list[TextContent]:
+    """Execute OSINT profiling directly via the BrowserOrchestrator."""
+    query = arguments.get("query")
+    session_id = arguments.get("session_id", "mcp-osint")
+    
+    if not query:
+        return [TextContent(type="text", text="Error: query is required.")]
+        
+    async with get_client(timeout=180.0) as client:
+        response = await client.post(
+            f"{BACKEND_URL}{API_PREFIX}/research/person_intelligence",
+            json={"query": query, "session_id": session_id},
+            headers=get_headers()
+        )
+        
+    if response.status_code != 200:
+        return [TextContent(type="text", text=f"OSINT profiling failed: {response.text}")]
+        
+    data = response.json()
+    if "error" in data:
+        return [TextContent(type="text", text=f"OSINT error: {data['error']}")]
+        
+    answer = data.get("answer", "")
+    sources = data.get("sources", [])
+    
+    text = f"--- OSINT Dossier ---\n\n{answer}"
+    if sources:
+        text += "\n\nSources used:\n" + "\n".join([f"- {s}" for s in sources])
+        
+    return [TextContent(type="text", text=text)]
+
+async def handle_agent_debate(arguments: dict) -> list[TextContent]:
+    """Execute Adversarial RAG debate."""
+    topic = arguments.get("topic")
+    session_id = arguments.get("session_id", "mcp-debate")
+    
+    if not topic:
+        return [TextContent(type="text", text="Error: topic is required.")]
+        
+    async with get_client(timeout=300.0) as client:
+        response = await client.post(
+            f"{BACKEND_URL}{API_PREFIX}/research/debate",
+            json={"topic": topic, "session_id": session_id},
+            headers=get_headers()
+        )
+        
+    if response.status_code != 200:
+        return [TextContent(type="text", text=f"Debate failed: {response.text}")]
+        
+    data = response.json()
+    answer = data.get("answer", "")
+    sources = data.get("sources", [])
+    
+    text = f"--- Adversarial Debate: {topic} ---\n\n{answer}"
+    if sources:
+        text += "\n\nSources used across both agents:\n" + "\n".join([f"- {s}" for s in sources])
+        
+    return [TextContent(type="text", text=text)]
+
+async def handle_cross_lingual_research(arguments: dict) -> list[TextContent]:
+    """Execute Babel Fish Cross-lingual research."""
+    query = arguments.get("query")
+    search_lang = arguments.get("search_lang", "Mandarin Chinese")
+    target_lang = arguments.get("target_lang", "English")
+    session_id = arguments.get("session_id", "mcp-babel")
+    
+    if not query:
+        return [TextContent(type="text", text="Error: query is required.")]
+        
+    async with get_client(timeout=300.0) as client:
+        response = await client.post(
+            f"{BACKEND_URL}{API_PREFIX}/research/cross_lingual",
+            json={
+                "query": query, 
+                "search_lang": search_lang, 
+                "target_lang": target_lang,
+                "session_id": session_id
+            },
+            headers=get_headers()
+        )
+        
+    if response.status_code != 200:
+        return [TextContent(type="text", text=f"Cross-lingual research failed: {response.text}")]
+        
+    data = response.json()
+    answer = data.get("answer", "")
+    sources = data.get("sources", [])
+    translated_query = data.get("translated_query", "")
+    
+    text = f"--- Cross-Lingual Research ---\n"
+    text += f"Original Query: {query}\n"
+    text += f"Translated Query ({search_lang}): {translated_query}\n\n"
+    text += f"{answer}"
+    
+    if sources:
+        text += "\n\nForeign Sources Used:\n" + "\n".join([f"- {s}" for s in sources])
+        
+    return [TextContent(type="text", text=text)]

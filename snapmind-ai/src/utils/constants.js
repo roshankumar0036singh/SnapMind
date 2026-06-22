@@ -1,7 +1,4 @@
-import os from 'os';
-import path from 'path';
-
-export const CACHE_DIR = path.join(os.homedir(), '.snapmind');
+export { CACHE_DIR, LANCE_DIR, SESSION_DIR, EXPORT_DIR } from './paths.js';
 
 export const NLP_CONFIG = {
   SCHOLAR: {

@@ -1,6 +1,6 @@
 [project]
 name = "snapmind-mcp"
-version = "2.0.0"
+version = "2.1.1"
 description = "MCP server exposing the full SnapMind RAG backend capabilities as tools and resources"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
     "anyio>=4.0.0",
+    "Pillow>=10.0.0",
 ]
 
 [project.urls]
@@ -32,7 +33,7 @@ dev = [
 ]
 
 [project.scripts]
-snapmind-mcp = "server:main"
+snapmind-mcp = "snapmind_mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

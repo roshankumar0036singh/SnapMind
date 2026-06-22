@@ -1,7 +1,7 @@
 #!/usr/bin/env node
+import { readFileSync } from 'fs';
 import { Command } from 'commander';
 import chalk from 'chalk';
-import chalkAnimation from 'chalk-animation';
 import inquirer from 'inquirer';
 import figlet from 'figlet';
 import boxen from 'boxen';
@@ -9,7 +9,7 @@ import { startMenu } from './cli/menu.js';
 import config from './utils/config.js';
 import { setKey, deleteKey } from './utils/credentials.js';
 import { globalSearch } from './utils/vector_storage.js';
-import { getEmbeddings } from './utils/llm.js';
+import { getEmbeddings, buildCliOptions } from './utils/llm.js';
 import { 
   savePersona, 
   listCustomPersonas, 
@@ -17,15 +17,16 @@ import {
   exportPersona, 
   importPersona 
 } from './utils/persona_store.js';
-import { CACHE_DIR } from './utils/constants.js';
+import { CACHE_DIR, migrateLegacyCache, resolveTemplatePath } from './utils/paths.js';
+import { gracefulShutdown } from './utils/shutdown.js';
 
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
-const sleep = (ms = 2000) => new Promise((r) => setTimeout(r, ms));
+await migrateLegacyCache();
 
-// Graceful Exit on Ctrl+C
+// Graceful exit on Ctrl+C
 process.on('SIGINT', () => {
-  console.log(chalk.gray('\n\n  × Shutdown requested. Take care of your mind!'));
-  process.exit(0);
+  gracefulShutdown(130);
 });
 
 const program = new Command();
@@ -33,7 +34,7 @@ const program = new Command();
 program
   .name('snapmind-ai')
   .description('The ultimate local AI companion for students, developers, and analysts.')
-  .version('1.1.3')
+  .version(pkg.version)
   .argument('[extraPaths...]', 'Extra paths if spaces were not escaped')
   .option('--airgap', 'Run in 100% offline mode using local models only')
   .option('--watch <path>', 'Automatically index changes in the specified directory')
@@ -78,6 +79,8 @@ program
         await deleteKey(answers.provider);
         console.log(chalk.green(`✅ ${answers.provider} API Key has been reset.`));
       }
+    } else if (action === 'list') {
+      console.log(JSON.stringify(config.store, null, 2));
     } else {
       // Interactive Wizard
       console.log(chalk.cyan('\n🛠️ SnapMind Setup Wizard'));
@@ -91,6 +94,13 @@ program
             { name: 'Update API Keys (Secure Keychain)', value: 'keys' },
             { name: 'Reset Expired API Key', value: 'reset' },
             { name: 'Adjust Temperature', value: 'temperature' },
+            { name: 'Intelligence Mode (Local / Remote)', value: 'mode' },
+            { name: 'Backend URL (Remote Mode)', value: 'backend' },
+            { name: 'Default Model Name', value: 'model' },
+            { name: 'Toggle Hybrid Search', value: 'hybrid' },
+            { name: 'Toggle Multilingual Embeddings', value: 'multilingual' },
+            { name: 'Memory Window (messages)', value: 'memory' },
+            { name: 'Citation Grounding (Scholar)', value: 'grounding' },
             { name: 'View Current Config', value: 'show' },
             { name: 'Exit', value: 'exit' }
           ]
@@ -128,6 +138,74 @@ program
       } else if (choice === 'temperature') {
         const { temp } = await inquirer.prompt([{ type: 'number', name: 'temp', message: 'Enter temperature (0.0 - 1.0):', default: config.get('temperature') }]);
         config.set('temperature', temp);
+      } else if (choice === 'mode') {
+        const { mode } = await inquirer.prompt([{
+          type: 'list',
+          name: 'mode',
+          message: 'Select intelligence mode:',
+          choices: [
+            { name: 'Local (LanceDB on this machine)', value: 'local' },
+            { name: 'Remote (FastAPI SnapMind backend)', value: 'remote' },
+          ],
+          default: config.get('mode'),
+        }]);
+        config.set('mode', mode);
+        console.log(chalk.green(`✅ Mode set to ${mode}`));
+      } else if (choice === 'backend') {
+        const { backendUrl } = await inquirer.prompt([{
+          type: 'input',
+          name: 'backendUrl',
+          message: 'Backend URL:',
+          default: config.get('backendUrl'),
+          validate: (v) => /^https?:\/\//.test(v) || 'Enter a valid http(s) URL',
+        }]);
+        config.set('backendUrl', backendUrl.replace(/\/$/, ''));
+        console.log(chalk.green(`✅ Backend URL updated`));
+      } else if (choice === 'model') {
+        const { model } = await inquirer.prompt([{
+          type: 'input',
+          name: 'model',
+          message: 'Default model name (e.g. llama3, gpt-4o-mini):',
+          default: config.get('model'),
+        }]);
+        config.set('model', model);
+        console.log(chalk.green(`✅ Default model set to ${model}`));
+      } else if (choice === 'hybrid') {
+        const { hybridSearch } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'hybridSearch',
+          message: 'Enable hybrid vector + keyword search?',
+          default: config.get('hybridSearch'),
+        }]);
+        config.set('hybridSearch', hybridSearch);
+        console.log(chalk.green(`✅ Hybrid search ${hybridSearch ? 'enabled' : 'disabled'}`));
+      } else if (choice === 'multilingual') {
+        const { multilingual } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'multilingual',
+          message: 'Use multilingual embedding models?',
+          default: config.get('multilingual'),
+        }]);
+        config.set('multilingual', multilingual);
+        console.log(chalk.green(`✅ Multilingual embeddings ${multilingual ? 'enabled' : 'disabled'}`));
+      } else if (choice === 'memory') {
+        const { memoryWindow } = await inquirer.prompt([{
+          type: 'number',
+          name: 'memoryWindow',
+          message: 'Max conversation messages to include in LLM context:',
+          default: config.get('memoryWindow'),
+        }]);
+        config.set('memoryWindow', memoryWindow);
+        console.log(chalk.green(`✅ Memory window set to ${memoryWindow} messages`));
+      } else if (choice === 'grounding') {
+        const { citationGrounding } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'citationGrounding',
+          message: 'Require sufficient retrieved context before Scholar answers?',
+          default: config.get('citationGrounding'),
+        }]);
+        config.set('citationGrounding', citationGrounding);
+        console.log(chalk.green(`✅ Citation grounding ${citationGrounding ? 'enabled' : 'disabled'}`));
       } else if (choice === 'show') {
         console.log(chalk.gray('\nPersistent Config:'));
         console.log(JSON.stringify(config.store, null, 2));
@@ -146,6 +224,9 @@ program
     console.log(chalk.white('  snapmind-ai config          ') + chalk.gray('- Manage settings and API keys'));
     console.log(chalk.white('  snapmind-ai config reset    ') + chalk.gray('- Reset a saved API key (useful if expired)'));
     console.log(chalk.white('  snapmind-ai search <query>  ') + chalk.gray('- Search across all indexed datasets'));
+    console.log(chalk.white('  snapmind-ai index           ') + chalk.gray('- List, inspect, or clear vector indexes'));
+    console.log(chalk.white('  snapmind-ai ingest <path>   ') + chalk.gray('- Index files without a persona session'));
+    console.log(chalk.white('  snapmind-ai plugin          ') + chalk.gray('- Browse and install plugins'));
     console.log(chalk.white('  snapmind-ai vault           ') + chalk.gray('- Manage secure credentials in OS Keychain'));
     console.log(chalk.white('  snapmind-ai schedule        ') + chalk.gray('- Manage scheduled intelligence reports'));
     console.log(chalk.white('  snapmind-ai maintenance     ') + chalk.gray('- Clean up system and stale caches\n'));
@@ -156,12 +237,15 @@ program
   .command('search')
   .description('Search across all indexed datasets globally')
   .argument('<query>', 'The search query')
-  .action(async (query) => {
+  .option('--airgap', 'Run embeddings offline via Ollama')
+  .option('--multilingual', 'Use multilingual embedding model')
+  .action(async (query, cmdOptions) => {
     const ora = (await import('ora')).default;
     const path = (await import('path')).default;
     const spinner = ora('Searching globally...').start();
+    const llmOptions = buildCliOptions(cmdOptions);
     try {
-      const embeddings = await getEmbeddings();
+      const embeddings = await getEmbeddings(llmOptions);
       const results = await globalSearch(query, embeddings, 5);
       spinner.stop();
 
@@ -182,6 +266,155 @@ program
       console.error(chalk.red(e.message));
     }
   });
+
+program
+  .command('index')
+  .description('Manage local vector indexes')
+  .argument('[action]', 'Action: list, stats, clear', 'list')
+  .argument('[namespace]', 'Namespace to clear (required for clear)')
+  .option('--all', 'Clear all namespaces (use with clear)')
+  .action(async (action, namespace, opts) => {
+    const { getIndexStats, clearNamespace, clearAllNamespaces } = await import('./utils/index_manager.js');
+
+    if (action === 'stats' || action === 'list') {
+      const stats = await getIndexStats();
+      if (stats.length === 0) {
+        console.log(chalk.yellow('\nNo indexed namespaces found. Mount a folder or PDF in a persona session first.\n'));
+        return;
+      }
+
+      console.log(chalk.bold.cyan(`\n📚 Indexed Namespaces (${stats.length})\n`));
+      stats.forEach((entry) => {
+        console.log(chalk.white(`  ${entry.namespace}`));
+        console.log(chalk.gray(`     Chunks: ${entry.rowCount}  |  Session snapshots: ${entry.sessionCount}`));
+      });
+      console.log('');
+      return;
+    }
+
+    if (action === 'clear') {
+      if (opts.all) {
+        const { confirm } = await inquirer.prompt([{
+          type: 'confirm',
+          name: 'confirm',
+          message: 'Delete ALL indexed namespaces and their sessions?',
+          default: false,
+        }]);
+        if (!confirm) {
+          console.log(chalk.gray('\nCancelled.\n'));
+          return;
+        }
+        const count = await clearAllNamespaces();
+        console.log(chalk.green(`\n✅ Cleared ${count} namespace(s).\n`));
+        return;
+      }
+
+      if (!namespace) {
+        console.log(chalk.yellow('\nUsage: snapmind-ai index clear <namespace>'));
+        console.log(chalk.gray('       snapmind-ai index clear --all\n'));
+        return;
+      }
+
+      const removed = await clearNamespace(namespace);
+      if (removed) {
+        console.log(chalk.green(`\n✅ Namespace "${namespace}" cleared.\n`));
+      } else {
+        console.log(chalk.red(`\nNamespace "${namespace}" not found.\n`));
+      }
+      return;
+    }
+
+    console.log(chalk.yellow(`\nUnknown index action: ${action}`));
+    console.log(chalk.gray('Usage: snapmind-ai index list|stats|clear [namespace]\n'));
+  });
+
+program
+  .command('ingest')
+  .description('Index a file or directory without starting a persona session')
+  .argument('<path>', 'File or directory to index')
+  .option('-t, --type <type>', 'Ingest type: auto, pdf, code, data', 'auto')
+  .option('-n, --namespace <namespace>', 'Override vector namespace')
+  .option('--pages <range>', 'PDF page range (e.g. 1-10)')
+  .option('--airgap', 'Use offline Ollama embeddings')
+  .option('--multilingual', 'Use multilingual embedding model')
+  .action(async (targetPath, opts) => {
+    const ora = (await import('ora')).default;
+    const spinner = ora(`Indexing ${targetPath}...`).start();
+    try {
+      const { ingestSource } = await import('./utils/ingest.js');
+      const result = await ingestSource(targetPath, {
+        ...buildCliOptions(opts),
+        type: opts.type,
+        namespace: opts.namespace,
+        pages: opts.pages,
+      });
+      spinner.succeed(`Indexed ${result.chunks} chunks (${result.type})`);
+      console.log(chalk.gray(`  Path      : ${result.path}`));
+      console.log(chalk.gray(`  Namespace : ${result.namespace}\n`));
+    } catch (e) {
+      spinner.fail('Ingest failed.');
+      console.error(chalk.red(e.message));
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command('plugin')
+  .description('Browse and install SnapMind plugins')
+  .addCommand(
+    new Command('list')
+      .description('List plugins from the catalog')
+      .action(async () => {
+        const configMod = (await import('./utils/config.js')).default;
+        const { listCatalogPlugins } = await import('./utils/plugin_registry.js');
+        const registryUrl = configMod.get('pluginRegistryUrl') || null;
+        const plugins = await listCatalogPlugins(registryUrl || null);
+        if (plugins.length === 0) {
+          console.log(chalk.yellow('\nNo plugins found in catalog.\n'));
+          return;
+        }
+        console.log(chalk.bold.cyan(`\nPlugin Catalog (${plugins.length})\n`));
+        plugins.forEach((p) => {
+          console.log(chalk.white(`  ${p.id}`) + chalk.gray(` — ${p.description}`));
+        });
+        console.log('');
+      })
+  )
+  .addCommand(
+    new Command('search')
+      .description('Search the plugin catalog')
+      .argument('<query>', 'Search term')
+      .action(async (query) => {
+        const configMod = (await import('./utils/config.js')).default;
+        const { searchCatalogPlugins } = await import('./utils/plugin_registry.js');
+        const registryUrl = configMod.get('pluginRegistryUrl') || null;
+        const plugins = await searchCatalogPlugins(query, registryUrl || null);
+        if (plugins.length === 0) {
+          console.log(chalk.yellow(`\nNo plugins matched "${query}".\n`));
+          return;
+        }
+        plugins.forEach((p) => {
+          console.log(chalk.white(`  ${p.id}`) + chalk.gray(` — ${p.description}`));
+        });
+        console.log('');
+      })
+  )
+  .addCommand(
+    new Command('install')
+      .description('Install a plugin by catalog id')
+      .argument('<id>', 'Plugin id from catalog')
+      .action(async (id) => {
+        const configMod = (await import('./utils/config.js')).default;
+        const { installCatalogPlugin } = await import('./utils/plugin_registry.js');
+        try {
+          const registryUrl = configMod.get('pluginRegistryUrl') || null;
+          await installCatalogPlugin(id, registryUrl || null);
+        } catch (e) {
+          console.error(chalk.red(`\n${e.message}\n`));
+          process.exitCode = 1;
+        }
+      })
+  );
 
 program
   .command('maintenance')
@@ -234,8 +467,8 @@ program
       await deleteKey(provider);
     } else {
       console.log(chalk.cyan('\n🔒 SnapMind Secure Vault'));
-      console.log(chalk.gray('  Usage: snapmind vault set <provider>'));
-      console.log(chalk.gray('  Usage: snapmind vault delete <provider>'));
+      console.log(chalk.gray('  Usage: snapmind-ai vault set <provider>'));
+      console.log(chalk.gray('  Usage: snapmind-ai vault delete <provider>'));
     }
   });
 
@@ -248,16 +481,25 @@ program
       .requiredOption('-q, --query <query>', 'The RAG query to run')
       .requiredOption('-c, --cron <expression>', 'Cron expression (e.g. "0 9 * * 1" = every Monday 9am)')
       .option('-p, --persona <persona>', 'Persona to use', 'scholar')
-      .option('-n, --namespace <namespace>', 'Knowledge namespace to query', 'default')
+      .option('-n, --namespace <namespace>', 'Knowledge namespace to query')
+      .option('-m, --mount <path>', 'Derive namespace from an indexed source path')
+      .option('--airgap', 'Run embeddings offline via Ollama')
+      .option('--multilingual', 'Use multilingual embedding model')
       .action(async (opts) => {
         const { addSchedule } = await import('./utils/scheduler.js');
-        const id = await addSchedule(opts);
-        console.log(chalk.green(`\nSchedule added with ID: ${chalk.bold(id)}`));
-        console.log(chalk.gray(`  Query     : "${opts.query}"`));
-        console.log(chalk.gray(`  Cron      : ${opts.cron}`));
-        console.log(chalk.gray(`  Persona   : ${opts.persona}`));
-        console.log(chalk.gray(`\nReports will be saved to: ~/snapmind_reports/`));
-        console.log(chalk.gray(`Start with: snapmind-ai schedule run`));
+        try {
+          const id = await addSchedule(opts);
+          console.log(chalk.green(`\nSchedule added with ID: ${chalk.bold(id)}`));
+          console.log(chalk.gray(`  Query     : "${opts.query}"`));
+          console.log(chalk.gray(`  Cron      : ${opts.cron}`));
+          console.log(chalk.gray(`  Persona   : ${opts.persona}`));
+          console.log(chalk.gray(`  Namespace : ${opts.namespace || (opts.mount ? '(from mount)' : 'n/a')}`));
+          console.log(chalk.gray(`\nReports will be saved to: ~/snapmind_reports/`));
+          console.log(chalk.gray(`Start with: snapmind-ai schedule run`));
+        } catch (e) {
+          console.error(chalk.red(`\n${e.message}`));
+          process.exitCode = 1;
+        }
       })
   )
   .addCommand(
@@ -273,7 +515,7 @@ program
         console.log(chalk.bold.cyan(`\nScheduled Intelligence Reports (${schedules.length})\n`));
         schedules.forEach(s => {
           console.log(chalk.white(`  [${s.id}] ${s.query}`));
-          console.log(chalk.gray(`         Cron: ${s.cron}  |  Persona: ${s.persona}`));
+          console.log(chalk.gray(`         Cron: ${s.cron}  |  Persona: ${s.persona}  |  NS: ${s.namespace}`));
         });
       })
   )
@@ -294,9 +536,11 @@ program
   .addCommand(
     new Command('run')
       .description('Start the cron scheduler (runs until Ctrl+C)')
-      .action(async () => {
+      .option('--airgap', 'Run embeddings offline via Ollama')
+      .option('--multilingual', 'Use multilingual embedding model')
+      .action(async (opts) => {
         const { startScheduler } = await import('./utils/scheduler.js');
-        await startScheduler();
+        await startScheduler(buildCliOptions(opts));
       })
   );
 
@@ -313,7 +557,7 @@ program
         
         let initialConfig = {};
         if (opts.from) {
-          const templatePath = path.join(process.cwd(), 'src', 'templates', `${opts.from}.json`);
+          const templatePath = resolveTemplatePath(opts.from);
           if (await fs.pathExists(templatePath)) {
             initialConfig = await fs.readJson(templatePath);
             delete initialConfig.name; // User will provide new name
@@ -390,7 +634,7 @@ program
 
 program
   .action(async (extraPaths, options) => {
-    if (program.args.length > 0 && (['config', 'search', 'maintenance', 'vault', 'schedule', 'persona'].includes(program.args[0]))) return;
+    if (program.args.length > 0 && (['config', 'search', 'index', 'ingest', 'plugin', 'maintenance', 'vault', 'schedule', 'persona', 'help'].includes(program.args[0]))) return;
 
     // Fix for unquoted paths with spaces (Feature 30)
     if (extraPaths && extraPaths.length > 0 && options.mount) {
@@ -457,7 +701,7 @@ program
 
 
     try {
-      await startMenu(options);
+      await startMenu(buildCliOptions(options));
     } catch (e) {
       if (e.name === 'ExitPromptError' || e.message.includes('force closed')) {
         console.log(chalk.gray('\n  × Session ended.'));

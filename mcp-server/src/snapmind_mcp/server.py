@@ -22,14 +22,14 @@ import httpx
 from snapmind_mcp.tools.search import handle_search
 from snapmind_mcp.tools.chat import handle_chat
 from snapmind_mcp.tools.ingest import handle_ingest_url, handle_ingest_file, handle_ingest_repo, handle_ingest_status
-from snapmind_mcp.tools.research import handle_web_research, handle_deep_research, handle_generate_report
+from snapmind_mcp.tools.research import handle_web_research, handle_deep_research, handle_generate_report, handle_live_scrape, handle_person_intelligence, handle_agent_debate, handle_cross_lingual_research
 from snapmind_mcp.tools.personas import handle_list_personas, handle_get_analytics
 from snapmind_mcp.tools.bookmarks import handle_create_bookmark, handle_list_bookmarks, handle_delete_bookmark
 from snapmind_mcp.tools.graph import handle_knowledge_graph
 from snapmind_mcp.tools.sites import handle_list_sites, handle_delete_site
 from snapmind_mcp.tools.translate import handle_translate
-from snapmind_mcp.tools.vision import handle_analyze_image
-from snapmind_mcp.tools.export import handle_export_site
+from snapmind_mcp.tools.vision import handle_analyze_image, handle_see_screen
+from snapmind_mcp.tools.export import handle_export_site, handle_export_session
 
 # --- Resource Handlers (modular) ---
 from snapmind_mcp.resources.kb import read_kb_stats, read_kb_tags, read_kb_sites
@@ -253,6 +253,11 @@ async def handle_list_tools():
             }
         ),
         Tool(
+            name="snapmind_see_screen",
+            description="Take a local screenshot of the user's screen and return it to the AI. Use this when the user asks you to 'look' at their screen.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        Tool(
             name="snapmind_export_site",
             description="Export all indexed content for a given source URL as text or json.",
             inputSchema={
@@ -262,6 +267,67 @@ async def handle_list_tools():
                     "format": {"type": "string", "description": "'text' or 'json'", "default": "text"}
                 },
                 "required": ["url"]
+            }
+        ),
+        Tool(
+            name="snapmind_export_session",
+            description="Export all knowledge (chat, sources, graph) from a specific session.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_id": {"type": "string", "description": "The session ID to export"},
+                    "format": {"type": "string", "description": "'json', 'markdown', or 'csv'", "default": "markdown"}
+                },
+                "required": ["session_id"]
+            }
+        ),
+        Tool(
+            name="snapmind_live_scrape",
+            description="Instantly scrape a URL into clean markdown without saving it to the database. Useful for reading live news or one-off pages.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to scrape"}
+                },
+                "required": ["url"]
+            }
+        ),
+        Tool(
+            name="snapmind_person_intelligence",
+            description="Use autonomous OSINT agents to profile a person by name. Automatically scrapes LinkedIn and other sources, bypassing basic walls.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The name or query of the person to profile (e.g. 'Profile Sarthak Chandekar')"},
+                    "session_id": {"type": "string", "description": "Optional session ID to store the OSINT data", "default": "mcp-osint"}
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="snapmind_agent_debate",
+            description="Adversarial RAG Mode: Spin up two independent AI agents to research and debate a topic from opposing viewpoints.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "The controversial topic to debate"},
+                    "session_id": {"type": "string", "description": "Optional session ID", "default": "mcp-debate"}
+                },
+                "required": ["topic"]
+            }
+        ),
+        Tool(
+            name="snapmind_cross_lingual_research",
+            description="The Babel Fish: Autonomously research a topic strictly in a foreign language (e.g. Mandarin Chinese) and translate the synthesized findings back to English.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The topic to research"},
+                    "search_lang": {"type": "string", "description": "The language to search and scrape in", "default": "Mandarin Chinese"},
+                    "target_lang": {"type": "string", "description": "The language to return the final answer in", "default": "English"},
+                    "session_id": {"type": "string", "description": "Optional session ID", "default": "mcp-babel"}
+                },
+                "required": ["query"]
             }
         ),
         Tool(
@@ -509,7 +575,13 @@ TOOL_HANDLERS = {
     "snapmind_delete_site": handle_delete_site,
     "snapmind_translate": handle_translate,
     "snapmind_analyze_image": handle_analyze_image,
+    "snapmind_see_screen": handle_see_screen,
     "snapmind_export_site": handle_export_site,
+    "snapmind_export_session": handle_export_session,
+    "snapmind_live_scrape": handle_live_scrape,
+    "snapmind_person_intelligence": handle_person_intelligence,
+    "snapmind_agent_debate": handle_agent_debate,
+    "snapmind_cross_lingual_research": handle_cross_lingual_research,
     "snapmind_health_check": handle_health_check,
 }
 
@@ -535,7 +607,7 @@ async def handle_call_tool(name: str, arguments: dict):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Entry Point
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-async def main():
+async def async_main():
     try:
         async with stdio_server() as (read_stream, write_stream):
             await server.run(
@@ -546,7 +618,9 @@ async def main():
     finally:
         await close_client()
 
+def main():
+    import asyncio
+    asyncio.run(async_main())
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()

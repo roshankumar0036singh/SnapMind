@@ -5,8 +5,8 @@ import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/director
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { getLLM, getEmbeddings } from '../utils/llm.js';
 import { streamToTerminal } from '../utils/streamer.js';
-import { generateNamespace, getVectorStore } from '../utils/vector_storage.js';
-import { loadSession, saveSession } from '../utils/session.js';
+import { resolveNamespace, getVectorStore, personaSearch } from '../utils/vector_storage.js';
+import { loadSessionForPath, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { handleError } from '../utils/errors.js';
 import { handleCommonCommands } from '../utils/commands.js';
@@ -62,14 +62,14 @@ export async function startCustomPersona(persona, options = {}) {
   }
 
   try {
-    const namespace = generateNamespace(targetPath);
+    const namespace = await resolveNamespace(targetPath);
     const embeddings = await getEmbeddings(options);
     const vectorStore = await getVectorStore(namespace, embeddings);
     const llm = await getLLM(options);
     let history = options.history || [];
     let focusLens = null;
 
-    const existingHistory = await loadSession(namespace);
+    const existingHistory = await loadSessionForPath(targetPath);
     if (existingHistory.length > 0) {
       const { resume } = await inquirer.prompt([{ type: 'confirm', name: 'resume', message: 'Resume previous session?', default: true }]);
       if (resume) history = existingHistory;
@@ -142,7 +142,7 @@ export async function startCustomPersona(persona, options = {}) {
            // For now, custom commands just trigger a specialized prompt
            const prompt = `Action: ${cmd.name}. Task: ${query.replace(`/${cmd.name}`, '').trim()}`;
            const chatSpinner = ora('Processing action...').start();
-           const results = await vectorStore.similaritySearch(query, config.similarityK);
+           const results = await personaSearch(vectorStore, query, config.similarityK);
            const context = results.map(r => r.pageContent).join('\n---\n');
            chatSpinner.stop();
            const stream = await llm.stream([
@@ -160,7 +160,7 @@ export async function startCustomPersona(persona, options = {}) {
 
         const chatSpinner = ora('Thinking...').start();
         try {
-          const results = await vectorStore.similaritySearch(query, config.similarityK);
+          const results = await personaSearch(vectorStore, query, config.similarityK);
           const context = results.map(r => r.pageContent).join('\n---\n');
           chatSpinner.stop();
           const stream = await llm.stream([

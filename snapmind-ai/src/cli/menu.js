@@ -12,7 +12,7 @@ export async function startMenu(options) {
   while (true) {
     if (!persona) {
       if (currentOptions.mount || currentOptions.pages) persona = 'scholar';
-      if (currentOptions.repo || currentOptions.watch) persona = 'coder';
+      else if (currentOptions.repo || currentOptions.watch) persona = 'coder';
     }
 
     if (!persona) {

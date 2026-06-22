@@ -1,7 +1,7 @@
 import fs from 'fs-extra';
 import path from 'path';
-
-const SESSION_DIR = path.join(process.cwd(), '.snapmind_cache', 'sessions');
+import { SESSION_DIR } from './paths.js';
+import { legacyNamespace, generateNamespace } from './vector_storage.js';
 
 /**
  * Saves conversation history to a local JSON file.
@@ -22,10 +22,26 @@ export async function saveSession(namespace, history, name = 'latest') {
  * @param {string} namespace - The unique store namespace
  * @param {string} [name='latest'] - The name of the snapshot to load
  */
-export async function loadSession(namespace, name = 'latest') {
+export async function loadSession(namespace, name = 'latest', legacyNs = null) {
   const sessionPath = path.join(SESSION_DIR, namespace, `${name}.json`);
-  if (!(await fs.pathExists(sessionPath))) return [];
-  return await fs.readJson(sessionPath);
+  if (await fs.pathExists(sessionPath)) {
+    return await fs.readJson(sessionPath);
+  }
+
+  if (legacyNs && legacyNs !== namespace) {
+    const legacyPath = path.join(SESSION_DIR, legacyNs, `${name}.json`);
+    if (await fs.pathExists(legacyPath)) {
+      return await fs.readJson(legacyPath);
+    }
+  }
+
+  return [];
+}
+
+export async function loadSessionForPath(targetPath, name = 'latest') {
+  const namespace = generateNamespace(targetPath);
+  const legacy = legacyNamespace(targetPath);
+  return loadSession(namespace, name, legacy);
 }
 
 /**

@@ -157,8 +157,7 @@ const GraphMap = ({ data, isLoading }) => {
                 layout: {
                     name: 'cose',
                     padding: 40,
-                    animate: elements.length < 50, // Only animate small graphs for stability
-                    animationDuration: 1000,
+                    animate: false, // [FIX] Disabled animation to prevent unmount crash ('notify' error)
                     refresh: 20,
                     fit: true,
                     randomize: false,
@@ -190,6 +189,10 @@ const GraphMap = ({ data, isLoading }) => {
         return () => {
             if (cyRef.current) {
                 try {
+                    // [FIX] Stop any ongoing animations or background layouts before destroying
+                    if (typeof cyRef.current.stop === 'function') {
+                        cyRef.current.stop(true, true);
+                    }
                     cyRef.current.destroy();
                     cyRef.current = null;
                 } catch (e) {

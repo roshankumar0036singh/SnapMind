@@ -1,0 +1,20 @@
+{
+  "plugins": [
+    {
+      "id": "wordcount",
+      "name": "wordcount",
+      "description": "Count words in the last retrieved context snippets.",
+      "bundle": "src/plugins/examples/wordcount.js",
+      "author": "SnapMind AI",
+      "version": "1.0.0"
+    },
+    {
+      "id": "summarize-context",
+      "name": "summarize",
+      "description": "Summarize the top retrieved context chunks without a full chat turn.",
+      "bundle": "src/plugins/examples/summarize-context.js",
+      "author": "SnapMind AI",
+      "version": "1.0.0"
+    }
+  ]
+}

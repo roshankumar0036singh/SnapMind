@@ -8,8 +8,6 @@ load_dotenv()
 # The MCP client (Antigravity/Cursor/etc.) provides these in the "env" section of the MCP config
 BACKEND_URL = os.environ.get("SNAPMIND_BACKEND_URL", "https://snapmind-gateway.roshankumar30080.workers.dev").rstrip("/")
 API_PREFIX = "/api/v1"
-HF_TOKEN = os.environ.get("HF_TOKEN")
-SUPABASE_ACCESS_TOKEN = os.environ.get("SUPABASE_ACCESS_TOKEN")
 
 # Provider Keys (expected from client env)
 API_KEYS = {
@@ -28,13 +26,7 @@ def get_headers():
     headers = {
         "Content-Type": "application/json",
     }
-    if HF_TOKEN:
-        headers["Authorization"] = f"Bearer {HF_TOKEN}"
-        headers["x-hf-token"] = HF_TOKEN
-        
-    if SUPABASE_ACCESS_TOKEN:
-        headers["Authorization"] = f"Bearer {SUPABASE_ACCESS_TOKEN}" # This might override HF_TOKEN, depending on backend precedence. Often backend checks Authorization for user token.
-        
+    
     # Map to the backend's expected headers
     if API_KEYS["gemini"]: headers["x-gemini-key"] = API_KEYS["gemini"]
     if API_KEYS["mistral"]: headers["x-mistral-key"] = API_KEYS["mistral"]

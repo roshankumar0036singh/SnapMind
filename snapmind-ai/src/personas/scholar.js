@@ -2,10 +2,10 @@ import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
 import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { handleError, SnapMindError } from '../utils/errors.js';
-import { generateNamespace, getVectorStore, globalSearch } from '../utils/vector_storage.js';
+import { getVectorStore, globalSearch, resolveNamespace, personaSearch } from '../utils/vector_storage.js';
 import { getLLM, getEmbeddings } from '../utils/llm.js';
 import { streamToTerminal } from '../utils/streamer.js';
-import { loadSession, saveSession } from '../utils/session.js';
+import { loadSessionForPath, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { getTheme } from '../utils/themes.js';
 import { NLP_CONFIG } from '../utils/constants.js';
@@ -17,13 +17,16 @@ import fs from 'fs-extra';
 import path from 'path';
 import config from '../utils/config.js';
 import { loadPlugins, runPlugin } from '../utils/plugins.js';
+import { setupWatcher } from '../utils/watcher.js';
+import { buildMessages } from '../utils/memory.js';
+import { assessRetrieval, formatGroundingRefusal } from '../utils/grounding.js';
 
 const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.SCHOLAR;
 
 export async function startScholar(options = {}) {
   const theme = getTheme();
   console.log(theme.scholar('\n🎓 SnapMind Scholar Mode'));
-  console.log(theme.secondary('Tips: Use --mount <dir> for folders or pass a PDF path.\n'));
+  console.log(theme.secondary('Tips: Use --mount <dir> for folders, --watch for live PDF sync.\n'));
 
   let targetPath = options.mount;
   if (!targetPath) {
@@ -57,14 +60,15 @@ export async function startScholar(options = {}) {
   }
 
   try {
-    const namespace = generateNamespace(targetPath);
+    const namespace = await resolveNamespace(targetPath);
     const embeddings = await getEmbeddings(options);
     const vectorStore = await getVectorStore(namespace, embeddings);
     const llm = await getLLM(options);
     let history = options.history || [];
     let currentResults = [];
+    let strictGrounding = config.get('citationGrounding') !== false;
 
-    const existingHistory = await loadSession(namespace);
+    const existingHistory = await loadSessionForPath(targetPath);
     if (existingHistory.length > 0) {
       const { resume } = await inquirer.prompt([{
         type: 'confirm',
@@ -115,7 +119,32 @@ export async function startScholar(options = {}) {
         return;
       }
     }
-    
+
+    const watchPath = options.watch || targetPath;
+    if (options.watch) {
+      const splitter = new RecursiveCharacterTextSplitter({ chunkSize: CHUNK_SIZE, chunkOverlap: CHUNK_OVERLAP });
+
+      setupWatcher(watchPath, async (event, filePath) => {
+        if (!filePath.toLowerCase().endsWith('.pdf')) return;
+
+        if (event === 'unlink') {
+          await vectorStore.deleteDocumentsBySource(filePath);
+          return;
+        }
+
+        try {
+          const rawDocs = await new PDFLoader(filePath).load();
+          const docs = await splitter.splitDocuments(rawDocs);
+          await vectorStore.deleteDocumentsBySource(filePath);
+          if (docs.length > 0) {
+            await vectorStore.addDocuments(docs);
+          }
+        } catch {
+          // Ignore transient PDF read errors during sync.
+        }
+      });
+    }
+
     const plugins = await loadPlugins();
 
     while (true) {
@@ -233,29 +262,47 @@ export async function startScholar(options = {}) {
         continue;
       }
 
-      if (query.toLowerCase() === '/export') {
-        await exportSession(history);
+      if (query.toLowerCase() === '/grounding on') {
+        strictGrounding = true;
+        console.log(chalk.green('\n✅ Citation grounding enabled.\n'));
+        continue;
+      }
+      if (query.toLowerCase() === '/grounding off') {
+        strictGrounding = false;
+        console.log(chalk.yellow('\n⚠️ Citation grounding disabled.\n'));
         continue;
       }
 
       const chatSpinner = ora('Researching...').start();
       try {
-        const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
+        const results = await personaSearch(vectorStore, query, SIMILARITY_K);
         currentResults = results;
-        const context = results.map((r, i) => `[Source ${i+1}] Path: ${path.basename(r.metadata?.source || 'Doc')}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
-        
-        const systemPrompt = query.startsWith('/research') 
+
+        if (strictGrounding) {
+          const assessment = assessRetrieval(results);
+          if (!assessment.ok) {
+            chatSpinner.stop();
+            console.log(chalk.yellow(`\n${formatGroundingRefusal(assessment.reason)}\n`));
+            continue;
+          }
+        }
+
+        const context = results.map((r, i) => `[Source ${i + 1}] Path: ${path.basename(r.metadata?.source || 'Doc')}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
+
+        const systemPrompt = query.startsWith('/research')
           ? 'You are SnapMind Scholar. This is a DEEP RESEARCH task. Synthesize all sources into a cohesive academic summary. Compare perspectives if they differ.'
-          : 'You are SnapMind Scholar. Answer based ONLY on context. Cite page numbers using [Source X] notation.';
+          : 'You are SnapMind Scholar. Answer based ONLY on context. Cite page numbers using [Source X] notation. If context is insufficient, say so explicitly.';
 
         chatSpinner.stop();
-        const stream = await llm.stream([
-          ['system', systemPrompt],
-          ['user', `Context:\n${context}\n\nQuestion: ${query.replace('/research', '').trim()}`]
-        ]);
+        const messages = buildMessages({
+          system: systemPrompt,
+          history,
+          user: `Context:\n${context}\n\nQuestion: ${query.replace('/research', '').trim()}`,
+        });
+        const stream = await llm.stream(messages);
 
         const fullResponse = await streamToTerminal(stream, 'cyan');
-        
+
         history.push({ role: 'user', content: query });
         history.push({ role: 'assistant', content: fullResponse });
         await saveSession(namespace, history);
@@ -263,7 +310,7 @@ export async function startScholar(options = {}) {
         console.log(chalk.gray('Sources:'));
         results.forEach((r, i) => {
           const fileName = path.basename(r.metadata?.source || 'Doc');
-          console.log(chalk.gray(` [${i+1}] ${fileName} (Page ${r.metadata?.loc?.pageNumber || '?'})`));
+          console.log(chalk.gray(` [${i + 1}] ${fileName} (Page ${r.metadata?.loc?.pageNumber || '?'})`));
         });
         console.log('');
       } catch (e) {

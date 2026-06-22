@@ -2,9 +2,7 @@ import * as lancedb from '@lancedb/lancedb';
 import path from 'path';
 import fs from 'fs-extra';
 import crypto from 'crypto';
-import { CACHE_DIR } from './constants.js';
-
-const DB_DIR = path.join(CACHE_DIR, 'lancedb');
+import { LANCE_DIR } from './paths.js';
 
 /**
  * LanceDB Wrapper for SnapMind AI
@@ -18,8 +16,8 @@ export class LanceStore {
   }
 
   async init() {
-    await fs.ensureDir(DB_DIR);
-    this.db = await lancedb.connect(DB_DIR);
+    await fs.ensureDir(LANCE_DIR);
+    this.db = await lancedb.connect(LANCE_DIR);
     
     const tableNames = await this.db.tableNames();
     if (tableNames.includes(this.namespace)) {
@@ -131,20 +129,22 @@ export class LanceStore {
   /**
    * Deletes documents originating from a specific file path
    * @param {string} sourcePath - The file path to remove
+   * @param {{ prefix?: boolean }} options - Match sources that start with sourcePath
    */
-  async deleteDocumentsBySource(sourcePath) {
+  async deleteDocumentsBySource(sourcePath, { prefix = false } = {}) {
     if (!this.table) return;
     try {
       const records = await this.table.query().select(['id', 'metadata']).toArray();
       const idsToDelete = records
         .filter(r => {
            try {
-             return JSON.parse(r.metadata).source === sourcePath;
+             const source = JSON.parse(r.metadata).source;
+             return prefix ? source.startsWith(sourcePath) : source === sourcePath;
            } catch (e) {
              return false;
            }
         })
-        .map(r => `'${r.id}'`);
+        .map(r => `'${String(r.id).replace(/'/g, "''")}'`);
         
       if (idsToDelete.length > 0) {
         await this.table.delete(`id IN (${idsToDelete.join(',')})`);

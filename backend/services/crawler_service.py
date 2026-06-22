@@ -68,9 +68,7 @@ class CrawlerService:
                 # Secondary: Jina Reader Fallback
                 try:
                     print(f"[CrawlerService] Attempting Jina premium fallback for {url}...")
-                    from services.scrapers.jina_scraper import JinaScraper
-                    jina = JinaScraper()
-                    content, title = await jina.scrape(url)
+                    content, title = await cls.jina_scrape_fallback(url, api_keys)
                     if content:
                         return content, title
                 except Exception as je:

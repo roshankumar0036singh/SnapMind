@@ -132,4 +132,10 @@ class ResearchActionItem(BaseModel):
     status: str = "pending"
     reason: Optional[str] = None
 
+class LinkedInParseRequest(BaseModel):
+    url: str
+    raw_text: str # This contains the raw HTML/text extracted from the browser
+    session_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+
 # [SCHEMAS] Enhanced Pydantic model descriptions

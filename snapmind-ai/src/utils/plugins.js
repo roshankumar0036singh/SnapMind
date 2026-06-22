@@ -1,8 +1,9 @@
 import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
+import { CACHE_DIR } from './paths.js';
 
-const PLUGIN_DIR = path.join(process.env.HOME || process.env.USERPROFILE, '.snapmind', 'plugins');
+const PLUGIN_DIR = path.join(CACHE_DIR, 'plugins');
 
 /**
  * Loads all .js plugins from ~/.snapmind/plugins/

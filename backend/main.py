@@ -165,10 +165,11 @@ from api.v1.endpoints import (
     ingest, search, bookmarks, workspaces, 
     graph, research, saved_pages, tags,
     translate, vision, widget, sites,
-    personas, export, admin, status
+    personas, export, admin, status, linkedin
 )
 
 app.include_router(status.router, prefix="/api/v1/status", tags=["System Health"])
+app.include_router(linkedin.router, prefix="/api/v1/linkedin", tags=["LinkedIn Scraper"])
 app.include_router(ingest.router, prefix="/api/v1/ingest", tags=["Ingestion"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search & Chat"])
 app.include_router(bookmarks.router, prefix="/api/v1/bookmarks", tags=["Research"])

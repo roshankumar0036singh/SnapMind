@@ -4,11 +4,34 @@
 
 The SnapMind Model Context Protocol (MCP) server exposes the powerful capabilities of the SnapMind RAG backend to any MCP-compatible client (like Cursor, Claude Desktop, or Antigravity).
 
-Version 2.0 brings a massive expansion from 9 to **18 tools**, deep reasoning agents, knowledge graph visualization, bookmarks, and site management.
+Version 2.1 brings a massive expansion to **24 tools**, featuring deep reasoning agents, contextual desktop vision, adversarial RAG debates, and cross-lingual web intelligence.
 
 ## Installation
 
-### Method 1: Using Smithery (Recommended)
+### Method 1: Using PyPI (Global Install - Recommended)
+
+The easiest way to use SnapMind with Claude Desktop is via `uvx` or `npx`, which pulls directly from PyPI. Add this to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "snapmind": {
+      "command": "uvx",
+      "args": [
+        "snapmind-mcp"
+      ],
+      "env": {
+        "SNAPMIND_BACKEND_URL": "https://snapmind-gateway.roshankumar30080.workers.dev",
+        "GEMINI_API_KEY": "your-gemini-key",
+        "FIRECRAWL_API_KEY": "your-firecrawl-key",
+        "MISTRAL_API_KEY": "your-mistral-key"
+      }
+    }
+  }
+}
+```
+
+### Method 2: Using Smithery
 
 To install SnapMind for Claude Desktop or other MCP clients via Smithery:
 
@@ -16,7 +39,7 @@ To install SnapMind for Claude Desktop or other MCP clients via Smithery:
 npx -y @smithery/cli install snapmind-mcp --client claude
 ```
 
-### Method 2: Manual Installation
+### Method 3: Manual Local Installation
 
 1. Clone the repository and navigate to the `mcp-server` directory:
 ```bash
@@ -29,7 +52,7 @@ cd SnapMind/mcp-server
 pip install -e .
 ```
 
-3. Add to your MCP client configuration (e.g., `claude_desktop_config.json` or Cursor's MCP config):
+3. Add to your MCP client configuration (e.g., `claude_desktop_config.json`):
 
 ```json
 {
@@ -39,6 +62,7 @@ pip install -e .
       "env": {
         "SNAPMIND_BACKEND_URL": "https://snapmind-gateway.roshankumar30080.workers.dev",
         "GEMINI_API_KEY": "your-gemini-key",
+        "FIRECRAWL_API_KEY": "your-firecrawl-key",
         "MISTRAL_API_KEY": "your-mistral-key"
       }
     }
@@ -48,7 +72,14 @@ pip install -e .
 
 ## Features
 
-### 🛠️ 18 Available Tools
+### 🛠️ 24 Available Tools
+* **Agentic Intelligence (New in v2.1)**
+  * `snapmind_see_screen` - Takes a secure, silent screenshot of your desktop so Claude can "see" what you are working on.
+  * `snapmind_agent_debate` - Spins up two independent agents to debate a controversial topic in memory.
+  * `snapmind_cross_lingual_research` - The Babel Fish: Autonomously researches foreign websites and translates findings.
+  * `snapmind_person_intelligence` - Generates highly targeted OSINT dossiers for specific people.
+  * `snapmind_live_scrape` - Instantly extracts clean markdown from any URL without indexing it.
+  * `snapmind_export_session` - Exports full Chat History, Source Documents, and Graph Edges as Markdown or CSV.
 * **Search & Chat**
   * `snapmind_search` - Semantic search across documents, bookmarks, and history.
   * `snapmind_chat` - Chat with your knowledge base using optional personas.

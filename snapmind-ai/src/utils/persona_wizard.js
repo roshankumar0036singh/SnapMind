@@ -1,13 +1,13 @@
 import inquirer from 'inquirer';
 import chalk from 'chalk';
-import path from 'path';
 import fs from 'fs-extra';
 import { savePersona } from './persona_store.js';
+import { resolveTemplatePath } from './paths.js';
 
 export async function runPersonaWizard(templateName = null) {
   let initialConfig = {};
   if (templateName) {
-    const templatePath = path.join(process.cwd(), 'src', 'templates', `${templateName}.json`);
+    const templatePath = resolveTemplatePath(templateName);
     if (await fs.pathExists(templatePath)) {
       initialConfig = await fs.readJson(templatePath);
       delete initialConfig.name;

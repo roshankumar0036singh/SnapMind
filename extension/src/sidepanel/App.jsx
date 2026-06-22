@@ -30,7 +30,7 @@ import MermaidChart from './components/MermaidChart';
 
 
 
-const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight, children }) => {
+const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight, children, index }) => {
   // Find block content
   // Find block content with robust prefix-agnostic matching
   const normalizeId = (id) => id?.toLowerCase().replace(/^(bi|nb|db|br|block)-block-/i, '');
@@ -184,7 +184,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
             ) : (
               <>
                 <span className="truncate max-w-[100px] font-semibold">{isBookmarked ? 'Saved' : 'Source'}</span>
-                <span className="opacity-50 font-mono">[{citation.blockId?.match?.(/\d+$/)?.[0] || citation.blockId?.replace?.(/^(bi-block-|nb-block-|db-block-|pin-[a-zA-Z0-9-]+-)/i, '') || 'Link'}]</span>
+                <span className="opacity-50 font-mono">[{index || citation.blockId?.match?.(/\d+$/)?.[0] || citation.blockId?.replace?.(/^(bi-block-|nb-block-|db-block-|pin-[a-zA-Z0-9-]+-)/i, '') || 'Link'}]</span>
               </>
             )}
           </button>
@@ -1845,6 +1845,7 @@ function App() {
   };
 
   const handleBrowserSync = async (url) => {
+
     setIsLoading(true);
     setMessages(prev => [...prev, {
       id: (Date.now() + 1).toString(),
@@ -1881,7 +1882,7 @@ function App() {
           setMessages(prev => [...prev, {
             id: (Date.now() + 2).toString(),
             role: 'assistant',
-            text: `✅ **Sync Complete**: Profile data retrieved using your session. Resuming investigation...`
+            text: `**Sync Complete**: Profile data retrieved using your session. Resuming investigation...`
           }]);
 
           // 5. Automatically re-query to finish dossier
@@ -3177,6 +3178,7 @@ function App() {
                         // [FIX] Updated regex to handle multiple citations in brackets like [pin-t0-1, nb-block-5, source-URL]
                         const citationRegex = /\[((?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+)(?:\s*,\s*(?:(?:bi|nb|db|br|source)-block-[a-zA-Z0-9-]+|pin-[a-zA-Z0-9-]+|source-[a-zA-Z0-9\.\:/%-]+))*)\]/gi;
                         let seenCitations = new Set(); // Track seen citations to avoid duplicates
+                        let citationCounter = 1;
 
                         const processedText = msg.text.replace(citationRegex, (match) => {
                           // Extract individual citation IDs from the bracket group
@@ -3192,10 +3194,10 @@ function App() {
                               seenCitations.add(id);
                               return msg.citations?.some(c => c.blockId === id);
                             })
-                            .map(id => `[●](#snap-cite-${id})`)
-                            .join('');
+                            .map(id => `[${citationCounter++}](#snap-cite-${id})`)
+                            .join(' ');
 
-                          return citationLinks || ''; // Return empty if no valid citations found
+                          return citationLinks ? ` ${citationLinks}` : ''; // Return empty if no valid citations found
                         });
 
                         return (
@@ -3211,7 +3213,7 @@ function App() {
                     )}
 
                     {/* [NEW] Person Intelligence Sync UI (Bypass Auth Wall) */}
-                    {msg.role === 'assistant' && msg.status === 'needs_browser_sync' && (
+                    {msg.role === 'assistant' && msg.status === 'needs_browser_sync' && !messages.slice(idx + 1).some(m => m.text?.includes('Sync Complete') || m.text?.includes('Syncing via Browser')) && (
                       <div className="mt-4 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl animate-in fade-in slide-in-from-top-2">
                         <div className="flex items-center gap-2 mb-3">
                           <Globe className="w-4 h-4 text-indigo-500" />
@@ -3326,6 +3328,7 @@ function App() {
                               <CitationHoverCard
                                 key={i}
                                 citation={cite}
+                                index={i + 1}
                                 blocks={allAvailableBlocks}
                                 onSave={handleSaveBookmark}
                                 isBookmarked={isBookmarked}

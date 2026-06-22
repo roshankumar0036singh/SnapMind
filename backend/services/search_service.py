@@ -150,9 +150,10 @@ CRITICAL CITATION RULES:
 1. Every single fact OR claim you make MUST be followed by the exact source tag like [db-block-1].
 2. Place citations immediately after the relevant sentence.
 3. Example: "The total funding is $5M [db-block-1]. Innovation is key [db-block-2]."
-4. NEVER respond without citations if context is provided.
+4. NEVER respond without citations EXCEPT when you don't know the answer.
 5. If the user asks for a diagram, flowchart, or technical workflow, use Mermaid syntax in a ```mermaid block.
-6. If the context does not contain the answer, say you don't know rather than hallucinating."""
+6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations.
+7. If the user asks to research a specific person's profile AND the context lacks information, politely tell them: "To research a person's digital footprint, please switch to **Browser Mode** using the globe icon." DO NOT include any citations."""
 
         prompt = f"""CONTEXT DOCUMENT BLOCKS:
 {full_context}
@@ -162,7 +163,7 @@ USER QUERY: {query}
 
 MANDATORY INSTRUCTION: Answer based ONLY on the sources above. 
 You MUST cite every fact with the exact tag like [db-block-1].
-If you skip citations, you fail.
+If no answer is found, say so and DO NOT include any citations.
 """
         answer = self.router.chat(
             prompt=prompt,
@@ -325,9 +326,10 @@ CRITICAL CITATION RULES:
 1. Every single fact OR claim you make MUST be followed by the exact source tag like [db-block-1].
 2. Place citations immediately after the relevant sentence.
 3. Example: "The project ends in 2026 [db-block-1]. It is funded by DoT [db-block-2]."
-4. NEVER respond without citations if context is provided.
+4. NEVER respond without citations EXCEPT when you don't know the answer.
 5. If requested, provide a diagram or technical visualization using Mermaid syntax in a ```mermaid block.
-6. If the context does not contain the answer, say you don't know rather than hallucinating."""
+6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations.
+7. If the user asks to research a specific person's profile AND the context lacks information, politely tell them: "To research a person's digital footprint, please switch to **Browser Mode** using the globe icon." DO NOT include any citations."""
         
         context_text = "\n\n".join([f"[[ SOURCE {s.get('mapped_id')} ]]\n{s.get('content', '')}" for s in context_sources])
         
@@ -340,7 +342,7 @@ USER QUERY: {query}
 FINAL INSTRUCTION: Answer in {lang_name} using the sources above. 
 EVERY fact MUST be cited with the exact tag like [db-block-1].
 Example: "The sky is blue [db-block-1]. Humans breathe air [db-block-2]."
-Do NOT skip citations. If no answer is found, say so.
+If no answer is found, say so and DO NOT include any citations.
 """
         
         async for token in self.router.stream(

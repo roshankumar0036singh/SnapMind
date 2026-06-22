@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Trash2, Plus, Tag } from 'lucide-react';
+import { MessageSquare, Trash2, Plus, Tag, Copy, Check } from 'lucide-react';
 import { apiClient } from '../../background/api';
 
 export default function SessionList({
@@ -11,6 +11,14 @@ export default function SessionList({
     onClearAll
 }) {
     const [tags, setTags] = useState([]);
+    const [copiedId, setCopiedId] = useState(null);
+
+    const handleCopyId = (e, id) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(id);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
+    };
 
     useEffect(() => {
         // Fetch global semantic tags on mount
@@ -63,16 +71,29 @@ export default function SessionList({
                                         {new Date(session.updatedAt).toLocaleDateString()}
                                     </div>
                                 </div>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onSessionDelete(session.id);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-all"
-                                    title="Delete conversation"
-                                >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                <div className="flex items-center opacity-0 group-hover:opacity-100 transition-all">
+                                    <button
+                                        onClick={(e) => handleCopyId(e, session.id)}
+                                        className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-all mr-1"
+                                        title="Copy Session ID for MCP"
+                                    >
+                                        {copiedId === session.id ? (
+                                            <Check className="w-3.5 h-3.5 text-green-500" />
+                                        ) : (
+                                            <Copy className="w-3.5 h-3.5" />
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onSessionDelete(session.id);
+                                        }}
+                                        className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition-all"
+                                        title="Delete conversation"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ))

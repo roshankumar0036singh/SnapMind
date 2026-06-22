@@ -5,9 +5,8 @@ import { getLLM, getEmbeddings } from '../utils/llm.js';
 import { streamToTerminal } from '../utils/streamer.js';
 import { NLP_CONFIG } from '../utils/constants.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
-import { generateNamespace, getVectorStore, globalSearch } from '../utils/vector_storage.js';
-import { exportSession } from '../utils/exporter.js';
-import { loadSession, saveSession } from '../utils/session.js';
+import { generateNamespace, getVectorStore, globalSearch, resolveNamespace, personaSearch, retrieveContext } from '../utils/vector_storage.js';
+import { loadSessionForPath, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { extractCodeBlocks } from '../utils/ast_parser.js';
 import { handleCommonCommands } from '../utils/commands.js';
@@ -19,6 +18,8 @@ import fs from 'fs-extra';
 import path from 'path';
 import { execSync } from 'child_process';
 import { setupWatcher } from '../utils/watcher.js';
+import { syncRepoIndex } from '../utils/repo_sync.js';
+import { buildMessages } from '../utils/memory.js';
 import config from '../utils/config.js';
 import { apiClient } from '../utils/api_client.js';
 
@@ -69,16 +70,19 @@ export async function startCoder(options = {}) {
     }
   }
 
-  const namespace = generateNamespace(repoUrl || targetPath);
+  const namespace = await resolveNamespace(repoUrl || targetPath);
   const git = simpleGit();
+  let remoteSessionId = null;
 
   try {
     const embeddings = await getEmbeddings(options);
     const vectorStore = await getVectorStore(namespace, embeddings);
     const llm = await getLLM(options);
     let history = [];
+    const mode = config.get('mode') || 'local';
+    const useRemoteRag = mode === 'remote';
 
-    const existingHistory = await loadSession(namespace);
+    const existingHistory = await loadSessionForPath(repoUrl || targetPath);
     if (existingHistory.length > 0) {
       const { resume } = await inquirer.prompt([{
         type: 'confirm',
@@ -89,20 +93,8 @@ export async function startCoder(options = {}) {
       if (resume) history = existingHistory;
     }
 
-    const mode = config.get('mode') || 'local';
-
-    if (!vectorStore.table) {
-      if (repoUrl && mode === 'remote') {
-        const remoteSpinner = ora(`[Remote] Delegating GitHub synthesis to Neural Core...`).start();
-        try {
-          await apiClient.ingestGithub(repoUrl, 'auto');
-          remoteSpinner.succeed('Neural Core is now synthesizing the repository. Status available in Atlas.');
-          targetPath = repoUrl;
-        } catch (e) {
-          remoteSpinner.fail('Remote delegation failed.');
-          throw e;
-        }
-      } else if (repoUrl) {
+    if (!vectorStore.table && !useRemoteRag) {
+      if (repoUrl) {
         const repoName = repoUrl.split('/').pop().replace('.git', '');
         targetPath = path.join(process.cwd(), 'snapmind_repos', repoName);
         
@@ -117,8 +109,7 @@ export async function startCoder(options = {}) {
         spinner.succeed(`Clone complete: ${repoName}`);
       }
 
-      if (mode !== 'remote') {
-        const indexSpinner = ora('Indexing codebase locally...').start();
+      const indexSpinner = ora('Indexing codebase locally...').start();
         
         const loader = new DirectoryLoader(targetPath, {
           '.js': (p) => new TextLoader(p),
@@ -162,6 +153,16 @@ export async function startCoder(options = {}) {
           
           await vectorStore.addDocuments(finalDocs);
           indexSpinner.succeed(`Analyzed ${filteredDocs.length} files (${finalDocs.length} snippets).`);
+    } else if (useRemoteRag && repoUrl && !vectorStore.table) {
+      const remoteSpinner = ora('[Remote] Delegating GitHub synthesis to Neural Core...').start();
+      try {
+        const ingestResult = await apiClient.ingestGithub(repoUrl, 'auto', remoteSessionId);
+        remoteSessionId = ingestResult.session_id || ingestResult.sessionId || null;
+        remoteSpinner.succeed('Repository delegated to backend. Chat will use remote neural search.');
+        targetPath = repoUrl;
+      } catch (e) {
+        remoteSpinner.fail('Remote delegation failed.');
+        throw e;
       }
     }
 
@@ -265,13 +266,29 @@ export async function startCoder(options = {}) {
         continue;
       }
 
+      if (query.toLowerCase() === '/sync') {
+        const syncSpinner = ora('Syncing git changes into index...').start();
+        try {
+          const result = await syncRepoIndex(targetPath, vectorStore);
+          if (!result.synced) {
+            syncSpinner.warn(result.reason || 'Sync skipped.');
+          } else {
+            syncSpinner.succeed(`Synced ${result.updated} file(s), removed ${result.removed}.`);
+          }
+        } catch (e) {
+          syncSpinner.fail('Repo sync failed.');
+          handleError(e);
+        }
+        continue;
+      }
+
       // /export handled by handleCommonCommands
 
 
       if (query.toLowerCase() === '/diagram') {
         const diagramSpinner = ora('Generating architecture diagram...').start();
         try {
-          const archResults = await vectorStore.similaritySearch('main entry point, app structure, core modules, architecture', 10);
+          const archResults = await personaSearch(vectorStore, 'main entry point, app structure, core modules, architecture', 10);
           const archContext = archResults.map(r => `File: ${path.relative(targetPath, r.metadata.source)}\nContent:\n${r.pageContent}`).join('\n\n---\n\n');
           
           const response = await llm.invoke([
@@ -318,16 +335,20 @@ export async function startCoder(options = {}) {
 
       const chatSpinner = ora('Analyzing logic...').start();
       try {
-        const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
+        const results = useRemoteRag
+          ? await retrieveContext(query, namespace, embeddings, SIMILARITY_K, { session_id: remoteSessionId })
+          : await personaSearch(vectorStore, query, SIMILARITY_K);
         // Deduplicate snippets by source
         const context = [...new Set(results.map(r => `File: ${r.metadata.source}\nContent: ${r.pageContent}`))].join('\n---\n');
         
         const stack = await detectTechStack(targetPath);
         chatSpinner.stop();
-        const stream = await llm.stream([
-          ['system', `You are SnapMind Coder. Expert in ${stack}. Answer based on the codebase context provided. \nAnalyze logic, find bugs, and suggest improvements.`],
-          ['user', `Context:\n${context}\n\nQuestion/Task: ${query}`]
-        ]);
+        const messages = buildMessages({
+          system: `You are SnapMind Coder. Expert in ${stack}. Answer based on the codebase context provided.\nAnalyze logic, find bugs, and suggest improvements.`,
+          history,
+          user: `Context:\n${context}\n\nQuestion/Task: ${query}`,
+        });
+        const stream = await llm.stream(messages);
 
         const fullResponse = await streamToTerminal(stream, 'cyan');
 

@@ -1,7 +1,7 @@
 import chalk from 'chalk';
-import { saveSession } from './session.js';
 import ora from 'ora';
 import { streamToTerminal } from './streamer.js';
+import { exportSession } from './exporter.js';
 
 /**
  * Handles shared slash commands and Returns true if command was handled.
@@ -30,6 +30,8 @@ export async function handleCommonCommands(query, { history, namespace, llm, cur
     console.log(chalk.white('  /handoff   ') + chalk.gray('- Switch to a different persona'));
     console.log(chalk.white('  /collaborate... ') + chalk.gray('- Initiate multi-agent collaboration task'));
     console.log(chalk.white('  /global... ') + chalk.gray('- Search across all datasets globally'));
+    console.log(chalk.white('  /grounding ') + chalk.gray('- Toggle strict citation grounding (Scholar)'));
+    console.log(chalk.white('  /sync      ') + chalk.gray('- Incremental git re-index (Coder)'));
     console.log(chalk.white('  exit       ') + chalk.gray('- Exit the current session\n'));
     return { handled: true, focusLens: currentFocus };
   }
@@ -79,6 +81,11 @@ export async function handleCommonCommands(query, { history, namespace, llm, cur
   if (normQuery === '/unfocus') {
     console.log(chalk.yellow(`\n🎯 Focus lens removed.\n`));
     return { handled: true, focusLens: null };
+  }
+
+  if (normQuery === '/export') {
+    await exportSession(history);
+    return { handled: true, focusLens: currentFocus };
   }
 
   if (normQuery.startsWith('/collaborate ')) {

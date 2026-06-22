@@ -408,9 +408,9 @@ class BrowserOrchestrator:
                except Exception as e:
                    print(f"[BrowserOrchestrator] Forced global search failed: {e}")
 
-        # Skip web search if we have significant local context (> 4000 chars)
+        # Skip web search if we have significant local context (> 4000 chars) OR if this is a sync finalization
         local_context_size = sum(len(c) for c in scraped_contexts)
-        skip_web_search = local_context_size > 4000
+        skip_web_search = local_context_size > 4000 or is_sync_finalization
         
         if not skip_web_search:
             print("[BrowserOrchestrator] Local context insufficient. Searching Web...")
@@ -527,6 +527,44 @@ class BrowserOrchestrator:
                         print(f"[BrowserOrchestrator] YouTube route error for {url}: {_yt_e}")
                     continue  # Skip for YouTube URLs
 
+                # [NEW] LinkedIn Posts-aware path
+                is_linkedin_post = 'linkedin.com/posts/' in url or 'linkedin.com/feed/update/' in url
+                if is_linkedin_post:
+                    print(f"[BrowserOrchestrator] Attempting headless extraction for LinkedIn Post: {url}")
+                    from services.scrapers.linkedin_posts_scraper import LinkedInPostsScraper
+                    try:
+                        post_data, post_err = await LinkedInPostsScraper.scrape_post(url)
+                        if post_data and not post_err:
+                            formatted_text = f"**Author:** {post_data.get('author')} ({post_data.get('author_headline')})\n"
+                            formatted_text += f"**Posted:** {post_data.get('posted_at')}\n"
+                            formatted_text += f"\n**Post Content:**\n{post_data.get('content')}\n"
+                            
+                            sub_block_id = f"br-block-{run_id}-{global_chunk_counter}"
+                            global_chunk_counter += 1
+                            
+                            scraped_contexts.append(f"[{sub_block_id}] Source URL: {url}\n{formatted_text}")
+                            h_snippet = extract_highlight_snippet(formatted_text)
+                            citations.append({"blockId": sub_block_id, "snippet": url, "highlightUrl": url})
+                            blocks.append({
+                                "id": sub_block_id,
+                                "text": formatted_text,
+                                "highlight_snippet": h_snippet,
+                                "url": url,
+                                "source_type": "linkedin_post"
+                            })
+                            
+                            # Background ingest
+                            threading.Thread(
+                                target=bg_ingest,
+                                args=(url, formatted_text, f"LinkedIn Post by {post_data.get('author')}"),
+                                daemon=True
+                            ).start()
+                            continue # Skip the standard scraper since we got the post
+                        else:
+                            print(f"[BrowserOrchestrator] Headless post scrape failed or hit wall. Falling back to standard scrape. Error: {post_err}")
+                    except Exception as e:
+                        print(f"[BrowserOrchestrator] Error in LinkedIn post path: {e}")
+
                 print(f"[BrowserOrchestrator] Extracting: {url}...")
                 
                 # Standard Scraping Pipeline (Specialized LinkedIn -> Firecrawl -> Jina -> BS4)
@@ -535,7 +573,8 @@ class BrowserOrchestrator:
                 # [MOD] Custom Scraper already handles walls. No early return needed.
                 is_linkedin_wall = 'linkedin.com' in url and any(kw in data.lower() for kw in ["sign up | linkedin", "join linkedin", "security verification", "authwall", "agree & join"])
                 if is_linkedin_wall:
-                    print(f"[BrowserOrchestrator] LinkedIn Auth Wall detected for {url}. Continuing with extracted fragments...")
+                    print(f"[BrowserOrchestrator] LinkedIn Auth Wall detected for {url}. Skipping poisoned content.")
+                    continue
 
                 # [NEW] Check for scraping errors (including 502/504 Bad Gateway)
                 if not data or "Error" in data:
@@ -683,7 +722,7 @@ Structure your response into the following sections:
 IMPORTANT: Prioritize [br-block-local-*] and [br-block-force-*] sources. These are verified manual syncs from the user's browser. 
 Even if you see generic LinkedIn templates or 'Join' buttons in these blocks, look DEEPER for actual professional data (Work history, Education, About section). 
 If the text contains specific job titles, companies, or cities, SYNTHESIZE them. 
-Only return 'NEED_CLARIFICATION' if the context is ENTIRELY restricted to a login/redirect page with NO personalized data."""
+CRITICAL: If the context is ENTIRELY restricted to a login/redirect page (like a LinkedIn auth wall) with NO personalized data, you MUST return the exact string 'NEED_CLARIFICATION' and absolutely nothing else. DO NOT generate the dossier structure."""
 
         prompt = f"""{persona_instruction}
 Answer the user's query comprehensively using ONLY the provided scraped web context.
@@ -734,30 +773,32 @@ User Query: {user_query}
             while final_answer and (final_answer[-1] in ' \n\t"\'@' or final_answer.endswith('..')):
                 final_answer = final_answer[:-1]
                 
-            # [NEW] Detect 'needs_browser_sync' in LLM answer (Post-Synthesis Detection)
+            # [FIX] Force status to "completed" if it's a sync finalization query to stop redundant UI prompts
+            # We do this FIRST so we don't accidentally trigger the sync logic below
+            is_sync_finalization = any(kw in user_query.lower() for kw in ['finalize', 'successfully synced', 'linkedin profile has been synced'])
+            
             res_status = None
             locked_url = None
             
-            # If the LLM generates a text mentioning the wall/login, we bridge the status
-            wall_keywords = ["login wall", "sign-up wall", "blocking automated access", "directly from your browser tab"]
-            if any(kw in final_answer.lower() for kw in wall_keywords) or final_answer.startswith("NEED_CLARIFICATION"):
-                res_status = "needs_browser_sync"
-                # Remove ugly technical prefix if present
-                final_answer = final_answer.replace("NEED_CLARIFICATION:", "").replace("NEED_CLARIFICATION", "").strip()
-                
-                # Attempt to extract the URL mentioned back to the front-end for the Sync Button
-                import re as _re3
-                li_url_match = _re3.search(r'https?://[a-z0-9\.]*linkedin\.com/in/[a-zA-Z0-9\-_]+', final_answer)
-                if li_url_match:
-                    locked_url = li_url_match.group(0)
-                    # Linkify it for the markdown renderer if not already linkified
-                    if f"({locked_url})" not in final_answer and f"[{locked_url}]" not in final_answer:
-                        final_answer = final_answer.replace(locked_url, f"[{locked_url}]({locked_url})")
-            
-            # [FIX] Force status to "completed" if it's a sync finalization query to stop redundant UI prompts
-            is_sync_finalization = any(kw in user_query.lower() for kw in ['finalize', 'successfully synced', 'linkedin profile has been synced'])
             if is_sync_finalization:
                 res_status = "completed"
+            else:
+                # [NEW] Detect 'needs_browser_sync' in LLM answer (Post-Synthesis Detection)
+                # If the LLM generates a text mentioning the wall/login, we bridge the status
+                wall_keywords = ["login wall", "sign-up wall", "blocking automated access", "directly from your browser tab"]
+                if any(kw in final_answer.lower() for kw in wall_keywords) or "NEED_CLARIFICATION" in final_answer:
+                    res_status = "needs_browser_sync"
+                    # Remove ugly technical prefix if present
+                    final_answer = final_answer.replace("NEED_CLARIFICATION:", "").replace("NEED_CLARIFICATION", "").strip()
+                    
+                    # Attempt to extract the URL mentioned back to the front-end for the Sync Button
+                    import re as _re3
+                    li_url_match = _re3.search(r'https?://[a-z0-9\.]*linkedin\.com/in/[a-zA-Z0-9\-_]+', final_answer)
+                    if li_url_match:
+                        locked_url = li_url_match.group(0)
+                        # Linkify it for the markdown renderer if not already linkified
+                        if f"({locked_url})" not in final_answer and f"[{locked_url}]" not in final_answer:
+                            final_answer = final_answer.replace(locked_url, f"[{locked_url}]({locked_url})")
                 
             print(f"[BrowserOrchestrator] Final Response Analysis: status={res_status}, locked_url={locked_url}")
             

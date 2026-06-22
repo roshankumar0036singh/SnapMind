@@ -1,22 +1,25 @@
 import { CheerioWebBaseLoader } from '@langchain/community/document_loaders/web/cheerio';
+import { DirectoryLoader } from '@langchain/classic/document_loaders/fs/directory';
+import { TextLoader } from '@langchain/classic/document_loaders/fs/text';
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { getLLM, getEmbeddings } from '../utils/llm.js';
 import { streamToTerminal } from '../utils/streamer.js';
 import { NLP_CONFIG } from '../utils/constants.js';
 import { handleError, SnapMindError } from '../utils/errors.js';
-import { exportSession } from '../utils/exporter.js';
-import { generateNamespace, getVectorStore, globalSearch } from '../utils/vector_storage.js';
-import { loadSession, saveSession } from '../utils/session.js';
+import { generateNamespace, getVectorStore, globalSearch, resolveNamespace, personaSearch } from '../utils/vector_storage.js';
+import { loadSessionForPath, saveSession } from '../utils/session.js';
 import { showStats } from '../utils/monitor.js';
 import { getTheme } from '../utils/themes.js';
 import { handleCommonCommands } from '../utils/commands.js';
+import config from '../utils/config.js';
+import { apiClient } from '../utils/api_client.js';
+import { LANCE_DIR } from '../utils/paths.js';
+import * as lancedb from '@lancedb/lancedb';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
 import fs from 'fs-extra';
 import path from 'path';
-
-const DB_DIR = path.join(process.cwd(), '.snapmind_cache', 'lancedb');
 const { CHUNK_SIZE, CHUNK_OVERLAP, SIMILARITY_K } = NLP_CONFIG.WRITER;
 
 export async function startWriter(options = {}) {
@@ -68,6 +71,59 @@ export async function startWriter(options = {}) {
       scrapeSpinner.succeed(`Scraped ${docs.length} pages.`);
       targetPath = urls;
     }
+  } else if (action === 'files') {
+    const { source } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'source',
+        message: 'Load text from:',
+        choices: [
+          { name: '📂 Current folder (.)', value: 'current' },
+          { name: '📄 Specific file or folder path', value: 'path' },
+        ],
+      },
+    ]);
+
+    if (source === 'current') {
+      targetPath = '.';
+    } else {
+      const { filePath } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'filePath',
+          message: 'Enter path to file or folder:',
+          validate: (input) => fs.pathExists(input) || 'Path does not exist',
+        },
+      ]);
+      targetPath = filePath;
+    }
+
+    const loadSpinner = ora('Loading local text files...').start();
+    try {
+      const stats = await fs.stat(targetPath);
+      if (stats.isDirectory()) {
+        const loader = new DirectoryLoader(
+          targetPath,
+          {
+            '.txt': (p) => new TextLoader(p),
+            '.md': (p) => new TextLoader(p),
+          },
+          true
+        );
+        docs = await loader.load();
+      } else {
+        docs = await new TextLoader(targetPath).load();
+      }
+
+      if (docs.length === 0) {
+        throw new SnapMindError('No .txt or .md files found at the selected path.', 'EMPTY_SOURCE');
+      }
+      loadSpinner.succeed(`Loaded ${docs.length} document(s).`);
+    } catch (error) {
+      loadSpinner.fail('Failed to load local files.');
+      handleError(error);
+      return;
+    }
   }
 
   const { tone } = await inquirer.prompt([
@@ -81,14 +137,14 @@ export async function startWriter(options = {}) {
   ]);
 
   try {
-    const namespace = generateNamespace(targetPath || 'default_writer');
+    const namespace = await resolveNamespace(targetPath || 'default_writer');
     const embeddings = await getEmbeddings(options);
     const vectorStore = await getVectorStore(namespace, embeddings);
     const llm = await getLLM(options);
     let history = options.history || [];
     let currentResults = [];
 
-    const existingHistory = await loadSession(namespace);
+    const existingHistory = await loadSessionForPath(targetPath || 'default_writer');
     if (existingHistory.length > 0) {
       const { resume } = await inquirer.prompt([{
         type: 'confirm',
@@ -171,17 +227,23 @@ export async function startWriter(options = {}) {
       }
 
       if (query.toLowerCase() === '/import') {
-        const namespaces = (await fs.readdir(DB_DIR)).filter(f => !f.includes('.'));
+        const db = await lancedb.connect(LANCE_DIR);
+        const namespaces = (await db.tableNames()).filter((n) => n !== namespace);
+        if (namespaces.length === 0) {
+          console.log(chalk.yellow('\nNo other indexed datasets available to import.\n'));
+          continue;
+        }
+
         const { choice } = await inquirer.prompt([{
           type: 'list',
           name: 'choice',
           message: 'Select research to import:',
-          choices: namespaces.filter(n => n !== namespace)
+          choices: namespaces,
         }]);
         
         const importSpinner = ora(`Importing ${choice}...`).start();
         const otherStore = await getVectorStore(choice, embeddings);
-        const otherDocs = await otherStore.similaritySearch('', 20);
+        const otherDocs = await personaSearch(otherStore, 'summary overview content', 20);
         await vectorStore.addDocuments(otherDocs.map(d => ({ pageContent: d.pageContent, metadata: { ...d.metadata, importedFrom: choice } })));
         importSpinner.succeed(`Imported context from ${choice}.`);
         continue;
@@ -192,7 +254,7 @@ export async function startWriter(options = {}) {
 
       const chatSpinner = ora('Synthesizing...').start();
       try {
-        const results = await vectorStore.similaritySearch(query, SIMILARITY_K);
+        const results = await personaSearch(vectorStore, query, SIMILARITY_K);
         const context = results.map(r => `Source: ${r.metadata.source}\nContent: ${r.pageContent}`).join('\n\n---\n\n');
         
         chatSpinner.stop();

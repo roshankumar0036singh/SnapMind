@@ -71,10 +71,9 @@ export const apiClient = {
                 if (res.firecrawlApiKey) headers['x-firecrawl-key'] = res.firecrawlApiKey;
 
                 // 2. Set Authorization Header for Backend Security (Supabase Token)
-                // Note: The Cloudflare Proxy will add its own HF_TOKEN Authorization header 
-                // but it will forward this one as well if needed.
-                if (session && session.access_token) {
-                    headers['Authorization'] = `Bearer ${session.access_token}`;
+                // Note: Hugging Face overwrites the standard Authorization header.
+                // We MUST use x-supabase-auth so the backend can read the JWT!
+                if (session?.access_token) {
                     headers['x-supabase-auth'] = session.access_token;
                 }
 
@@ -468,7 +467,7 @@ export const apiClient = {
                 workspace_id: workspaceId
             };
             if (text) {
-                bodyPayload.text_content = text;
+                bodyPayload.text = text;
             }
 
             const response = await fetch(`${baseUrl}/api/v1/ingest`, {
@@ -540,7 +539,7 @@ export const apiClient = {
                 },
                 body: JSON.stringify({
                     url: url,
-                    text_content: text,
+                    text: text,
                     session_id: session_id
                 })
             });

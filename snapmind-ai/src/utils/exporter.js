@@ -1,11 +1,17 @@
 import fs from 'fs-extra';
 import path from 'path';
 import chalk from 'chalk';
+import { EXPORT_DIR } from './paths.js';
 
 export async function exportSession(history, format = 'markdown') {
+  if (!history || history.length === 0) {
+    console.log(chalk.yellow('\nNo session history to export.\n'));
+    return;
+  }
+
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const fileName = `snapmind-session-${timestamp}.md`;
-  const exportDir = path.join(process.cwd(), 'snapmind_exports');
+  const exportDir = EXPORT_DIR;
   
   await fs.ensureDir(exportDir);
   const filePath = path.join(exportDir, fileName);
