@@ -44,7 +44,7 @@ class WidgetIngestRequest(BaseModel):
     url: str
     widget_id: str
     workspace_id: Optional[str] = None # [NEW]
-    max_pages: int = 50
+    max_pages: int = 10
     max_depth: int = 3
     api_key: Optional[str] = None
 

@@ -17,21 +17,35 @@ async def chat_endpoint(
         "mistral": req.headers.get("x-mistral-key"), 
         "gemini": req.headers.get("x-gemini-key")
     }
+    filters = {}
+    if request.site_id:
+        filters["source_urls"] = [s.strip() for s in request.site_id.split(",")]
+        
     # Map to DTO if passing to search_service
     dto = SearchRequestDTO(
         query=request.query,
         session_id=request.session_id,
         user_id=user_id,
         workspace_id=request.workspace_id,
-        tenant_id="default"
+        tenant_id="default",
+        filters=filters
     )
     
     # If using local RAG via page_content, we can mock the search
     if request.page_content:
-        # System instruction asking the LLM to output a special string if it can't answer
         sys_instruct = (
-            f"You are a helpful assistant. Use the context to answer in {request.output_lang}. "
-            "If the context does NOT contain the answer, output EXACTLY the phrase: __FALLBACK_REQUIRED__ and nothing else."
+            f"You are a highly precise SnapMind research assistant. "
+            f"Your ABSOLUTE MANDATE is to answer in {request.output_lang} using ONLY the provided context blocks.\n"
+            "If the context does NOT contain the answer, output EXACTLY the phrase: __FALLBACK_REQUIRED__ and nothing else.\n\n"
+            "FORMATTING RULES:\n"
+            "1. Be highly professional, structured, and easy to read.\n"
+            "2. Use bolding, bullet points, and numbered lists where appropriate.\n"
+            "3. Use Markdown tables for comparisons or data.\n\n"
+            "CRITICAL CITATION RULES:\n"
+            "1. Every single fact OR claim you make MUST be followed by the exact block ID found in the [[ SOURCE <id> ]] header of the context block.\n"
+            "2. Wrap the ID in SINGLE brackets. For example, if the header is [[ SOURCE pin-t0-5 ]], you must cite it as [pin-t0-5]. DO NOT output '[[ SOURCE pin-t0-5 ]]'.\n"
+            "3. Place citations immediately after the relevant sentence.\n"
+            "4. NEVER respond without citations."
         )
         answer = search_service.router.chat(
             prompt=f"Context:\n{request.page_content}\n\nQuery: {request.query}",
@@ -71,7 +85,17 @@ async def chat_stream_endpoint(
     from config import settings
     
     async def event_generator():
-        dto = SearchRequestDTO(query=request.query, session_id=request.session_id, user_id=user_id, workspace_id=request.workspace_id)
+        filters = {}
+        if request.site_id:
+            filters["source_urls"] = [s.strip() for s in request.site_id.split(",")]
+            
+        dto = SearchRequestDTO(
+            query=request.query, 
+            session_id=request.session_id, 
+            user_id=user_id, 
+            workspace_id=request.workspace_id,
+            filters=filters
+        )
         
         fallback_triggered = False
         
@@ -82,10 +106,19 @@ async def chat_stream_endpoint(
                 "blocks": [{"id": "local", "content": "local page context"}]
             }) + "\n"
             
-            # System instruction asking the LLM to output a special string if it can't answer
             sys_instruct = (
-                f"You are a helpful assistant. Use the context to answer in {request.output_lang}. "
-                "If the context does NOT contain the answer, output EXACTLY the phrase: __FALLBACK_REQUIRED__ and nothing else."
+                f"You are a highly precise SnapMind research assistant. "
+                f"Your ABSOLUTE MANDATE is to answer in {request.output_lang} using ONLY the provided context blocks.\n"
+                "If the context does NOT contain the answer, output EXACTLY the phrase: __FALLBACK_REQUIRED__ and nothing else.\n\n"
+                "FORMATTING RULES:\n"
+                "1. Be highly professional, structured, and easy to read.\n"
+                "2. Use bolding, bullet points, and numbered lists where appropriate.\n"
+                "3. Use Markdown tables for comparisons or data.\n\n"
+                "CRITICAL CITATION RULES:\n"
+                "1. Every single fact OR claim you make MUST be followed by the exact block ID found in the [[ SOURCE <id> ]] header of the context block.\n"
+                "2. Wrap the ID in SINGLE brackets. For example, if the header is [[ SOURCE pin-t0-5 ]], you must cite it as [pin-t0-5]. DO NOT output '[[ SOURCE pin-t0-5 ]]'.\n"
+                "3. Place citations immediately after the relevant sentence.\n"
+                "4. NEVER respond without citations."
             )
             
             full_response = ""

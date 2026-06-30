@@ -101,44 +101,61 @@ def export_session_data(session_id: str, format_type: str = "json", user_id: str
         with db_pool.connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
-                    "SELECT id, role, content, created_at::text FROM chat_sessions WHERE session_id = %s ORDER BY created_at",
+                    "SELECT id, title, created_at::text, messages FROM chat_sessions WHERE id = %s",
                     (session_id,)
                 )
-                chat_history = cur.fetchall()
+                session_row = cur.fetchone()
                 
-        # 2. Extract Document IDs from Assistant Citations
-        # Citations look like [db-block-1], [db-block-42]
-        doc_ids = set()
-        for msg in chat_history:
-            if msg['role'] == 'assistant':
-                # find all occurrences of [db-block-<id>]
-                matches = re.findall(r'\[db-block-(\d+)\]', msg['content'])
-                for m in matches:
-                    doc_ids.add(int(m))
-                    
-        # 3. Fetch Source Documents
+        chat_history = []
+        if session_row and session_row.get('messages'):
+            messages = session_row['messages']
+            if isinstance(messages, str):
+                messages = json.loads(messages)
+            
+            # Format messages as chat_history to match the downstream expected structure
+            for idx, msg in enumerate(messages):
+                chat_history.append({
+                    "id": f"{session_id}-{idx}",
+                    "role": msg.get("role", "unknown"),
+                    "content": msg.get("text", msg.get("content", "")),
+                    "created_at": session_row["created_at"] # We only have session-level timestamp
+                })
+                
+        # 2 & 3. Extract Citations directly from the messages array
         source_documents = []
-        if doc_ids:
-            with db_pool.connection() as conn:
-                with conn.cursor(row_factory=dict_row) as cur:
-                    placeholders = ','.join(['%s'] * len(doc_ids))
-                    cur.execute(
-                        f"SELECT id, content, source_url, metadata, created_at::text FROM documents WHERE id IN ({placeholders})",
-                        tuple(doc_ids)
-                    )
-                    source_documents = cur.fetchall()
+        seen_cit_ids = set()
+        
+        if session_row and session_row.get('messages'):
+            messages_list = session_row['messages']
+            if isinstance(messages_list, str):
+                messages_list = json.loads(messages_list)
+                
+            for msg in messages_list:
+                if msg.get('role') == 'assistant' and 'citations' in msg:
+                    for cit in msg['citations']:
+                        # Avoid duplicates
+                        cit_id = cit.get('blockId', str(len(seen_cit_ids)))
+                        if cit_id not in seen_cit_ids:
+                            seen_cit_ids.add(cit_id)
+                            source_documents.append({
+                                "id": cit_id,
+                                "source_url": cit.get('url', ''),
+                                "content": cit.get('snippet', 'No snippet available'),
+                                "metadata": {"label": cit.get('label', 'Source')}
+                            })
                     
-        # 4. Fetch Graph Edges
+        # 4. Fetch Graph Data
         graph_edges = []
         try:
             with db_pool.connection() as conn:
                 with conn.cursor(row_factory=dict_row) as cur:
                     cur.execute(
-                        "SELECT source, relation, target, source_url, created_at::text FROM edges WHERE session_id = %s ORDER BY created_at",
+                        "SELECT source_node_id as source, relation, target_node_id as target, source_url, created_at::text FROM edges WHERE session_id = %s ORDER BY created_at",
                         (session_id,)
                     )
                     graph_edges = cur.fetchall()
         except Exception as e:
+            print(f"[EXPORT] Failed to fetch graph edges: {str(e)}")
             # Graph might not be set up or no session_id in edges
             pass
             

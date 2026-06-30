@@ -7,7 +7,7 @@ from supabase import create_client, Client
 
 load_dotenv()
 
-# Initialize Supabase client for auth verification
+# Initialize Supabase client for auth verificationAh, I apologize! The code editing tool failed to actually apply that change properly the first time, leaving the broken this._fetchWithAuth lines 
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
 if not supabase_url or not supabase_key:

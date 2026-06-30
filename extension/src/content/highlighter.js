@@ -19,8 +19,15 @@ export class Highlighter {
 
         // 2. For br-block/db-block IDs (from scraped/DB pages), skip ID lookup — they never exist on the target page
         let element = null;
-        if (blockId && !blockId.startsWith('br-block-') && !blockId.startsWith('db-block-') && !blockId.startsWith('nb-block-') && !blockId.startsWith('pin-')) {
-            element = document.querySelector(`[data-bi-block-id="${blockId}"]`);
+        // Strip pin-tX- prefix so we can find the native ID on the target page
+        let cleanBlockId = blockId ? blockId.replace(/^pin-t\d+-/, '') : null;
+        
+        if (cleanBlockId && !cleanBlockId.startsWith('br-block-') && !cleanBlockId.startsWith('db-block-') && !cleanBlockId.startsWith('nb-block-')) {
+            // Re-attach bi-block- prefix if it was stripped by App.jsx
+            if (!cleanBlockId.startsWith('bi-block-') && !isNaN(cleanBlockId)) {
+                cleanBlockId = `bi-block-${cleanBlockId}`;
+            }
+            element = document.querySelector(`[data-bi-block-id="${cleanBlockId}"]`);
         }
                 if (!element && text) {
             console.log('[Highlighter] Attempting text search for snippet:', text.substring(0, 60));

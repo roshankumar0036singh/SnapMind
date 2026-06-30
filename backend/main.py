@@ -165,13 +165,15 @@ from api.v1.endpoints import (
     ingest, search, bookmarks, workspaces, 
     graph, research, saved_pages, tags,
     translate, vision, widget, sites,
-    personas, export, admin, status, linkedin, auth
+    personas, export, admin, status, linkedin, auth, chat
 )
+from evolution_api import router as evolution_router
 
 app.include_router(status.router, prefix="/api/v1/status", tags=["System Health"])
 app.include_router(linkedin.router, prefix="/api/v1/linkedin", tags=["LinkedIn Scraper"])
 app.include_router(ingest.router, prefix="/api/v1/ingest", tags=["Ingestion"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["Search & Chat"])
+app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat History Synchronization"])
 app.include_router(bookmarks.router, prefix="/api/v1/bookmarks", tags=["Research"])
 app.include_router(workspaces.router, prefix="/api/v1/workspaces", tags=["Workspace"])
 app.include_router(graph.router, prefix="/api/v1/graph", tags=["Knowledge Graph"])
@@ -186,6 +188,7 @@ app.include_router(personas.router, prefix="/api/v1/personas", tags=["Agent Pers
 app.include_router(export.router, prefix="/api/v1/export", tags=["Data Export"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["Administration"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+app.include_router(evolution_router)
 
 # Legacy Compatibility Routes
 @app.post("/ingest")

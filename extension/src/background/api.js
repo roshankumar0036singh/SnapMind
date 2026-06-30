@@ -750,6 +750,43 @@ export const apiClient = {
         }
     },
 
+    /**
+     * Syncs a complete chat session to the backend for history and MCP export.
+     * @param {string} sessionId - The session ID.
+     * @param {string} title - The generated title for the session.
+     * @param {Array} messages - Array of message objects {role, content}.
+     */
+    async syncChatSession(sessionId, title, messages, workspaceId = null) {
+        const baseUrl = await this.getBaseUrl();
+        const syncEndpoint = `${baseUrl}/api/v1/chat/sync`;
+        
+        try {
+            console.log(`[API] Syncing chat session ${sessionId} to backend...`);
+            const response = await fetch(syncEndpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(await this.getApiKeysHeaders())
+                },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    title: title || "New Chat",
+                    messages: messages,
+                    workspace_id: workspaceId
+                })
+            });
+            
+            if (!response.ok) {
+                console.error(`[API] Failed to sync chat session: ${response.status}`);
+                return { success: false };
+            }
+            return await response.json();
+        } catch (error) {
+            console.error("Sync Chat Error:", error);
+            return { success: false, error: error.message };
+        }
+    },
+
     async getGraphData(sessionId = null) {
         const baseUrl = await this.getBaseUrl();
         const endpoint = sessionId
@@ -933,7 +970,7 @@ export const apiClient = {
                     search_query: search_query,
                     query_lang: query_lang,
                     content_blocks: blocks,
-                    page_content: blocks.map(b => b.text).join('\n\n'),
+                    page_content: blocks.map(b => `[[ SOURCE ${b.id} ]]\n${b.text}`).join('\n\n'),
                     site_id: siteId,
                     session_id: sessionId,
                     history: null,
@@ -950,6 +987,7 @@ export const apiClient = {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let finalMetadata = {};
+            let accumulatedBlocks = [];
             let buffer = '';
 
             while (true) {
@@ -958,7 +996,7 @@ export const apiClient = {
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // Last one is partial
+                buffer = lines.pop() || ''; // Keep the incomplete line in the buffer
 
                 for (const line of lines) {
                     const trimmedLine = line.trim();
@@ -972,6 +1010,7 @@ export const apiClient = {
                         } else if (data.type === 'thought') {
                             if (onThought) onThought(data.data);
                         } else if (data.type === 'retrieved_blocks') {
+                            accumulatedBlocks = [...accumulatedBlocks, ...data.blocks];
                             if (onBlocks) onBlocks(data.blocks);
                         } else if (data.type === 'metadata' || data.type === 'usage' || data.type === 'error') {
                             finalMetadata = { ...finalMetadata, ...data };
@@ -990,6 +1029,7 @@ export const apiClient = {
                     if (data.type === 'token') {
                         onChunk(data.text);
                     } else if (data.type === 'retrieved_blocks') {
+                        accumulatedBlocks = [...accumulatedBlocks, ...data.blocks];
                         if (onBlocks) onBlocks(data.blocks);
                     } else if (data.type === 'usage' || data.type === 'error') {
                         finalMetadata = data;
@@ -999,7 +1039,7 @@ export const apiClient = {
                 }
             }
 
-            return { success: true, ...finalMetadata };
+            return { success: true, blocks: accumulatedBlocks, ...finalMetadata };
 
         } catch (e) {
             console.error("Stream error", e);

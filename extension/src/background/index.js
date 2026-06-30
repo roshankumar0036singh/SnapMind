@@ -167,6 +167,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         handleIngest(request).then(sendResponse);
         return true;
     }
+    if (request.type === 'WIDGET_CHAT_PROXY') {
+        const targetUrl = request.apiUrl.includes('/api/v1') ? `${request.apiUrl}/widget/chat` : `${request.apiUrl}/api/v1/widget/chat`;
+        fetch(targetUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(request.body)
+        })
+            .then(res => res.json())
+            .then(data => sendResponse({ success: true, data }))
+            .catch(err => sendResponse({ success: false, error: err.message }));
+        return true;
+    }
 });
 
 // Store the last captured screenshot to allow follow-up questions

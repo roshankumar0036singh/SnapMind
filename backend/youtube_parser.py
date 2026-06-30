@@ -3,8 +3,19 @@ import os
 import time
 import requests
 import json
+import socket
+import ssl
 from typing import Tuple, List, Dict, Any
 from api_clients import get_firecrawl_key
+
+# Prevent urllib and sockets from hanging indefinitely on dropped connections
+socket.setdefaulttimeout(15)
+
+# Bypass strict SSL interception that causes CERTIFICATE_VERIFY_FAILED or UNEXPECTED_EOF
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
 
 # Global DNS Cache to avoid redundant DoH lookups
 DNS_CACHE = {}
@@ -120,7 +131,55 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
     max_retries = 2
     errors = []
 
-    # --- ATTEMPT 1: youtube-transcript-api ---
+    # --- ATTEMPT 1: pytubefix (Last Resort) ---
+    print(f"[YOUTUBE_PARSER] Falling back to pytubefix for: {video_id}")
+    for attempt in range(max_retries + 1):
+        try:
+            from pytubefix import YouTube
+            yt = YouTube(
+                f"https://www.youtube.com/watch?v={video_id}",
+                use_oauth=False,
+                allow_oauth_cache=False
+            )
+
+            caption = None
+            all_captions = list(yt.captions)
+            for lang_code in ['en', 'a.en', 'en-US', 'en-GB']:
+                for cap in all_captions:
+                    if cap.code == lang_code:
+                        caption = cap
+                        break
+                if caption: break
+
+            if not caption and all_captions:
+                caption = all_captions[0]
+
+            if caption:
+                print(f"[YOUTUBE_PARSER] pytubefix using: {caption.code}")
+                try:
+                    full_text = format_pytubefix_captions(caption)
+                except:
+                    xml_captions = caption.xml_captions
+                    full_text = parse_xml_captions(xml_captions)
+                
+                if full_text:
+                    return True, full_text, "", getattr(yt, 'title', None)
+            
+            if attempt < max_retries:
+                time.sleep(1)
+                continue
+
+        except Exception as e:
+            err_msg = f"pytubefix error (Attempt {attempt+1}): {e}"
+            print(f"[YOUTUBE_PARSER] {err_msg}")
+            if any(key in str(e).lower() for key in ["errno -5", "name_not_resolved", "connection", "ssl", "eof"]):
+                print(f"[YOUTUBE_PARSER] Intermittent network drop detected. Retrying pytubefix in {2 ** attempt} seconds...")
+                time.sleep(2 ** attempt)
+                continue
+            errors.append(err_msg)
+            break
+    
+    # --- ATTEMPT 2: youtube-transcript-api ---
     try:
         import youtube_transcript_api
         # Direct class access to avoid potential import/shadowing issues causing AttributeError
@@ -168,12 +227,25 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
         print(f"[YOUTUBE_PARSER] {err_msg}")
         errors.append(err_msg)
 
-    # --- ATTEMPT 2: yt-dlp (Robust Fallback) ---
+    # --- ATTEMPT 3: Raw InnerTube API (Fast & High Fidelity) ---
+    print(f"[YOUTUBE_PARSER] Falling back to Raw InnerTube for: {video_id}")
+    success, text, it_err = get_innertube_transcript(video_id)
+    if success:
+        return True, text, "", None
+    errors.append(f"InnerTube error: {it_err}")
+    
+    # --- ATTEMPT 4: Embedded Player Scraping (Fast & Reliable) ---
+    print(f"[YOUTUBE_PARSER] Falling back to Embedded Player for: {video_id}")
+    success, text, embed_err = get_embedded_transcript(video_id)
+    if success:
+        return True, text, "", None
+    errors.append(f"Embedded error: {embed_err}")
+
+    # --- ATTEMPT 5: yt-dlp (Robust but Heavy/Slow Fallback) ---
     try:
         import yt_dlp
         print(f"[YOUTUBE_PARSER] Attempting yt-dlp for: {video_id}")
         
-        # Configure yt-dlp to only get subtitles
         import sys
         is_windows = sys.platform == "win32"
         
@@ -185,7 +257,6 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
             'quiet': True,
             'no_warnings': True,
             'nocheckcertificate': True,
-            # AGGRESSIVE: use multiple clients that are less likely to be blocked
             'extractor_args': {
                 'youtube': {
                     'player_client': ['web_embedded', 'tvhtml5', 'ios', 'android', 'mweb'],
@@ -195,7 +266,6 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
             'user_agent': 'Mozilla/5.0 (PlayStation 5 8.20) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
         }
         
-        # Only force source_address on Windows where we know it helps
         if is_windows:
             ydl_opts['source_address'] = '0.0.0.0'
         
@@ -203,7 +273,6 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
             info = ydl.extract_info(url, download=False)
             subtitles = info.get('requested_subtitles') or {}
             
-            # Find any available subtitle
             sub_content = None
             for lang, sub_info in subtitles.items():
                 if sub_info.get('data'):
@@ -212,8 +281,6 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
                     break
             
             if sub_content:
-                # yt-dlp data is often in VTT or JSON format
-                # If it's a simple string, it might need parsing
                 if isinstance(sub_content, str):
                     full_text = parse_vtt_content(sub_content)
                     if full_text:
@@ -224,69 +291,8 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
         print(f"[YOUTUBE_PARSER] {err_msg}")
         errors.append(err_msg)
 
-    # --- ATTEMPT 3: pytubefix (Last Resort) ---
-    print(f"[YOUTUBE_PARSER] Falling back to pytubefix for: {video_id}")
-    for attempt in range(max_retries + 1):
-        try:
-            from pytubefix import YouTube
-            yt = YouTube(
-                f"https://www.youtube.com/watch?v={video_id}",
-                use_oauth=False,
-                allow_oauth_cache=False
-            )
-
-            caption = None
-            all_captions = list(yt.captions)
-            for lang_code in ['en', 'a.en', 'en-US', 'en-GB']:
-                for cap in all_captions:
-                    if cap.code == lang_code:
-                        caption = cap
-                        break
-                if caption: break
-
-            if not caption and all_captions:
-                caption = all_captions[0]
-
-            if caption:
-                print(f"[YOUTUBE_PARSER] pytubefix using: {caption.code}")
-                # Use standard string format to avoid weird XML issues
-                try:
-                    full_text = format_pytubefix_captions(caption)
-                except:
-                    xml_captions = caption.xml_captions
-                    full_text = parse_xml_captions(xml_captions)
-                
-                if full_text:
-                    return True, full_text, "", getattr(yt, 'title', None)
-            
-            if attempt < max_retries:
-                time.sleep(1)
-                continue
-
-        except Exception as e:
-            err_msg = f"pytubefix error (Attempt {attempt+1}): {e}"
-            print(f"[YOUTUBE_PARSER] {err_msg}")
-            if any(key in str(e).lower() for key in ["errno -5", "name_not_resolved", "connection"]):
-                time.sleep(2 ** attempt)
-                continue
-            errors.append(err_msg)
-            break
-    
     combined_errors = " | ".join(errors)
-    
-    # --- ATTEMPT 4: Raw InnerTube API (High Fidelity) ---
-    print(f"[YOUTUBE_PARSER] Falling back to Raw InnerTube for: {video_id}")
-    success, text, it_err = get_innertube_transcript(video_id)
-    if success:
-        return True, text, "", None
-    
-    # --- ATTEMPT 5: Embedded Player Scraping (Last Resort) ---
-    print(f"[YOUTUBE_PARSER] Falling back to Embedded Player for: {video_id}")
-    success, text, embed_err = get_embedded_transcript(video_id)
-    if success:
-        return True, text, "", None
-
-    return False, "", f"Transcript fetch failed. Errors: {combined_errors} | InnerTube: {it_err} | Embed: {embed_err}", None
+    return False, "", f"Transcript fetch failed. Errors: {combined_errors}", None
 
 def get_innertube_transcript(video_id: str) -> Tuple[bool, str, str]:
     """Directly call YouTube's InnerTube API with multiple client fallbacks."""

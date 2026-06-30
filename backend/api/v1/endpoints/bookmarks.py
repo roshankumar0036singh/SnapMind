@@ -31,7 +31,7 @@ async def create_bookmark_endpoint(
              content_to_save = translated
              
         # We use the internal _batch_embed which handles both Mistral and Gemini
-        embedded_list = ingest_svc._batch_embed([{"content": content_to_save}], source_url=request.source_url, api_keys=api_keys)
+        embedded_list = ingest_svc._batch_embed([{"content": content_to_save, "metadata": {}}], source_url=request.source_url, api_keys=api_keys)
         if not embedded_list:
              raise HTTPException(status_code=500, detail="Failed to generate embedding for bookmark")
         

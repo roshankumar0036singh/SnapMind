@@ -31,18 +31,28 @@ import MermaidChart from './components/MermaidChart';
 
 
 const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight, children, index }) => {
-  // Find block content
   // Find block content with robust prefix-agnostic matching
-  const normalizeId = (id) => id?.toLowerCase().replace(/^(bi|nb|db|br|block)-block-/i, '');
+  const normalizeId = (id) => {
+    if (!id) return '';
+    let normalized = id.toLowerCase().replace(/^(bi|nb|db|br|block)-block-/i, '');
+    normalized = normalized.replace(/^pin-t\d+-/i, 'pin-'); // Normalize pinned tab IDs
+    return normalized;
+  };
   const targetId = normalizeId(citation.blockId);
   const block = blocks?.find(b => b.id === citation.blockId || normalizeId(b.id) === targetId);
+  
   const credScore = block?.credibility_score;
   const credTier = block?.credibility_tier;
-  const text = block ? (block.text || block.content || "Content not available.") : "Content not available.";
+  
+  // [FIX] Prioritize securely saved citation data over fuzzy block matching
+  const text = citation.snippet || (block ? (block.text || block.content || "Content not available.") : "Content not available.");
   const preview = typeof text === 'string' && text.length > 200 ? text.substring(0, 200) + "..." : (text || "");
-
+  const activeUrl = citation.url !== undefined ? citation.url : (block?.url || block?.sourceURL || "");
+  
   // [NEW] YouTube Parsing — prefer pre-computed metadata from backend, fall back to regex
-  const isYouTube = block?.source_type === 'youtube' || block?.url?.includes('youtube.com') || block?.url?.includes('youtu.be');
+  const isYouTube = (citation.url && (citation.url.includes('youtube.com') || citation.url.includes('youtu.be'))) || 
+                    (!citation.url && (block?.source_type === 'youtube' || activeUrl.includes('youtube.com') || activeUrl.includes('youtu.be')));
+                    
   let youtubeTimestamp = null;
   let youtubeSeconds = 0;
   let youtubeUrl = block?.youtubeUrl || null;
@@ -74,7 +84,8 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
           <button
             onClick={async () => {
               console.log("Clicked citation:", citation.blockId);
-              const targetUrl = block?.url || block?.sourceURL;
+              // [FIX] Prioritize citation.url which contains the correct cross-tab URL
+              const targetUrl = citation.url || block?.url || block?.sourceURL;
 
               if (isYouTube && (youtubeTimestamp || youtubeUrl)) {
                 // Prefer pre-computed deep-link URL from backend
@@ -119,7 +130,7 @@ const CitationHoverCard = ({ citation, blocks, onSave, isBookmarked, onHighlight
                 };
 
                 // Prefer clean highlight_snippet from backend, fall back to raw text cleaning
-                const rawText = block?.text || block?.content || '';
+                const rawText = block?.text || block?.content || citation.snippet || '';
                 const snippet = block?.highlight_snippet || (rawText ? cleanSnippetText(rawText) : '');
                 console.log(`[Citation] Highlighting ${citation.blockId} with snippet: "${snippet.substring(0, 50)}..."`);
 
@@ -581,7 +592,7 @@ function App() {
     };
 
     // Helper: Send highlight message with retry/wait logic
-    const sendHighlightWithRetry = async (tabId, blockId, text, retries = 5) => {
+    const sendHighlightWithRetry = async (tabId, blockId, text, retries = 10) => {
       for (let i = 0; i < retries; i++) {
         const isAlive = await pingTab(tabId);
         if (!isAlive) {
@@ -599,7 +610,7 @@ function App() {
             text
           }, (resp) => {
             if (chrome.runtime.lastError) resolve(false);
-            else resolve(true);
+            else resolve(resp ? resp.success : false);
           });
         });
 
@@ -695,27 +706,55 @@ function App() {
 
         const allBlocks = [
           ...(contentBlocks || []),
+          ...messages.flatMap(m => m.contextBlocks || []),
           ...pinnedTabs.flatMap(t => t.blocks || [])
         ];
 
-        // [FIX] Find the block by its ID (including namespaced IDs)
         const block = allBlocks.find(b => b.id === blockId);
 
+        let snippet = "";
+        let targetUrl = "";
+        let pageNum = null;
+
         if (block) {
-          const pageNum = block?.metadata?.page || block?.page;
-          handleCitationHighlight(blockId, block.url || block.sourceURL, block.highlight_snippet || "", pageNum);
+          snippet = block.highlight_snippet || block.content || block.snippet || block.text || "";
+          targetUrl = block.url || block.sourceURL;
+          pageNum = block.metadata?.page || block.page;
         } else {
           // Fallback: Check if it's a source-URL block which might not have a full content block but has metadata in citations
           const msgWithCites = messages.findLast(m => m.citations?.some(c => c.blockId === blockId));
           const citeData = msgWithCites?.citations?.find(c => c.blockId === blockId);
 
-          if (citeData?.url) {
-            handleCitationHighlight(blockId, citeData.url, "");
-          } else if (blockId.startsWith('source-')) {
-            // Extract URL from ID: source-https://...
-            const potentialUrl = blockId.replace('source-', '');
-            handleCitationHighlight(blockId, potentialUrl, "");
+          if (citeData) {
+            snippet = citeData.snippet || "";
+            targetUrl = citeData.url;
           }
+        }
+
+        // Failsafe: if snippet is still empty for a pinned tab, find it in the original pinnedTabs blocks
+        if (!snippet && blockId.startsWith('pin-')) {
+          // Extract the original ID by stripping pin-tX- and prepending the original pin- prefix
+          const parts = blockId.split('-');
+          if (parts.length > 2) {
+             const originalId = blockId.replace(/^pin-t\d+-/i, 'pin-').toLowerCase();
+             const pinnedBlock = pinnedTabs.flatMap(t => t.blocks || []).find(b => b.id?.toLowerCase() === originalId);
+             if (pinnedBlock) {
+               snippet = pinnedBlock.highlight_snippet || pinnedBlock.content || pinnedBlock.snippet || pinnedBlock.text || "";
+               if (!targetUrl) targetUrl = pinnedBlock.url || pinnedBlock.sourceURL;
+             }
+          }
+        }
+
+        if (snippet && typeof snippet === 'string') {
+          snippet = snippet.substring(0, 300);
+        }
+
+        if (targetUrl) {
+          handleCitationHighlight(blockId, targetUrl, snippet, pageNum);
+        } else if (blockId.startsWith('source-')) {
+          // Extract URL from ID: source-https://...
+          const potentialUrl = blockId.replace('source-', '');
+          handleCitationHighlight(blockId, potentialUrl, "", pageNum);
         }
       }
     };
@@ -1060,18 +1099,38 @@ function App() {
         const result = await chrome.storage.local.get(['chatSessions']);
         const savedSessions = result.chatSessions || [];
 
+        let currentSession = savedSessions.find(s => s.id === currentSessionId);
+        
+        // Generate real title from first user message if needed
+        let sessionTitle = currentSession?.title || 'New Conversation';
+        if (sessionTitle === 'New Conversation' && messages.length > 1) {
+           const firstUserMsg = messages.find(m => m.role === 'user');
+           if (firstUserMsg && firstUserMsg.text) {
+               sessionTitle = firstUserMsg.text.split(' ').slice(0, 5).join(' ') + '...';
+           }
+        }
+
         const updatedSessions = savedSessions.map(session =>
           session.id === currentSessionId
-            ? { ...session, messages, updatedAt: Date.now() }
+            ? { ...session, title: sessionTitle, messages, updatedAt: Date.now() }
             : session
         );
 
         await chrome.storage.local.set({ chatSessions: updatedSessions });
         setSessions(updatedSessions);
+
+        // Sync to backend when not actively streaming
+        if (!isLoading) {
+            try {
+                await apiClient.syncChatSession(currentSessionId, sessionTitle, messages, currentWorkspace?.id);
+            } catch (error) {
+                console.error("Backend sync failed:", error);
+            }
+        }
       };
       saveMessages();
     }
-  }, [messages, currentSessionId]);
+  }, [messages, currentSessionId, isLoading, currentWorkspace]);
 
   const createNewSession = async () => {
     const newSessionId = `session-${Date.now()}`;
@@ -1723,24 +1782,175 @@ function App() {
       }
 
       const baseUrl = await apiClient.getBaseUrl();
-      const scriptUrl = `${baseUrl}/static/snapmind-widget.js`;
 
-      // Use scripting.executeScript for more robust injection (bypasses "Receiving end does not exist")
+      // Use scripting.executeScript for CSP-immune direct injection
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: (sUrl, sId, sColor) => {
-          if (document.querySelector(`script[src="${sUrl}"]`)) {
+        func: (siteId, apiUrl, themeColor) => {
+          if (document.querySelector('.sm-widget-root')) {
             return { success: true, alreadyExists: true };
           }
-          const script = document.createElement('script');
-          script.src = sUrl;
-          script.dataset.siteId = sId;
-          script.dataset.color = sColor;
-          script.async = true;
-          document.body.appendChild(script);
+
+          const style = document.createElement('style');
+          style.innerHTML = `
+            .sm-widget-root {
+              --sm-bg: #080c10; --sm-bg2: #141c24; --sm-purple: ${themeColor};
+              --sm-text: #e8edf2; --sm-text-muted: #8a9ab0; --sm-border: ${themeColor}33;
+              font-family: 'Inter', system-ui, sans-serif;
+              position: fixed; bottom: 24px; right: 24px; z-index: 999999;
+            }
+            .sm-widget-btn {
+              width: 60px; height: 60px; border-radius: 50%; background: var(--sm-purple);
+              border: none; cursor: pointer; box-shadow: 0 4px 20px ${themeColor}66;
+              display: flex; align-items: center; justify-content: center;
+              transition: transform 0.2s ease, box-shadow 0.2s ease; position: relative;
+            }
+            .sm-widget-btn:hover { transform: scale(1.05); box-shadow: 0 6px 24px ${themeColor}99; }
+            .sm-widget-btn svg { width: 28px; height: 28px; fill: #fff; }
+            .sm-widget-panel {
+              position: absolute; bottom: 80px; right: 0; width: 380px; height: 520px;
+              background: rgba(8, 12, 16, 0.95); backdrop-filter: blur(16px);
+              border: 1px solid var(--sm-border); border-radius: 12px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.5); display: flex; flex-direction: column;
+              overflow: hidden; opacity: 0; pointer-events: none; transform: translateY(20px);
+              transition: opacity 0.3s ease, transform 0.3s ease;
+            }
+            .sm-widget-panel.sm-open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+            .sm-widget-header {
+              padding: 16px 20px; border-bottom: 1px solid var(--sm-border);
+              display: flex; justify-content: space-between; align-items: center; background: rgba(20, 28, 36, 0.8);
+            }
+            .sm-widget-title { color: var(--sm-text); font-weight: 600; font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
+            .sm-widget-title svg { fill: var(--sm-purple); width: 18px; height: 18px; }
+            .sm-widget-close { background: transparent; border: none; color: var(--sm-text-muted); cursor: pointer; font-size: 20px; line-height: 1; }
+            .sm-widget-close:hover { color: var(--sm-text); }
+            .sm-widget-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; text-align: left; }
+            .sm-widget-message { max-width: 85%; padding: 12px 16px; border-radius: 8px; font-size: 14px; line-height: 1.5; color: var(--sm-text); word-wrap: break-word; }
+            .sm-widget-message p { margin-top: 0; margin-bottom: 8px; }
+            .sm-widget-message p:last-child { margin-bottom: 0; }
+            .sm-widget-message a { color: ${themeColor}; }
+            .sm-widget-message.sm-user { align-self: flex-end; background: var(--sm-purple); border-bottom-right-radius: 2px; }
+            .sm-widget-message.sm-bot { align-self: flex-start; background: var(--sm-bg2); border: 1px solid var(--sm-border); border-bottom-left-radius: 2px; }
+            .sm-widget-input-area { padding: 16px; border-top: 1px solid var(--sm-border); background: rgba(20, 28, 36, 0.5); }
+            .sm-widget-form { display: flex; gap: 8px; }
+            .sm-widget-input { flex: 1; background: var(--sm-bg); border: 1px solid var(--sm-border); border-radius: 20px; padding: 10px 16px; color: var(--sm-text); font-size: 14px; outline: none; }
+            .sm-widget-input:focus { border-color: var(--sm-purple); }
+            .sm-widget-submit { background: var(--sm-purple); border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+            .sm-widget-submit:hover { transform: scale(1.05); }
+            .sm-widget-submit svg { width: 16px; height: 16px; fill: #fff; }
+            .sm-typing-indicator { display: flex; gap: 4px; padding: 12px 16px; background: var(--sm-bg2); border: 1px solid var(--sm-border); border-radius: 8px; align-self: flex-start; margin-bottom: 16px; }
+            .sm-typing-dot { width: 6px; height: 6px; background: var(--sm-text-muted); border-radius: 50%; animation: sm-typing 1.4s infinite ease-in-out both; }
+            .sm-typing-dot:nth-child(1) { animation-delay: -0.32s; }
+            .sm-typing-dot:nth-child(2) { animation-delay: -0.16s; }
+            @keyframes sm-typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+            @media (max-width: 480px) { .sm-widget-panel { width: calc(100vw - 40px); height: 80vh; bottom: 80px; right: -4px; } }
+          `;
+          document.head.appendChild(style);
+
+          const root = document.createElement('div');
+          root.className = 'sm-widget-root';
+          root.innerHTML = `
+            <div class="sm-widget-panel" id="sm-chat-panel">
+              <div class="sm-widget-header">
+                <h3 class="sm-widget-title">
+                  <svg viewBox="0 0 18 18"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="10" y="2" width="6" height="6" rx="1" opacity="0.5"/><rect x="2" y="10" width="6" height="6" rx="1" opacity="0.5"/><rect x="10" y="10" width="6" height="6" rx="1" opacity="0.3"/></svg>
+                  SnapMind AI
+                </h3>
+                <button class="sm-widget-close" id="sm-chat-close">&times;</button>
+              </div>
+              <div class="sm-widget-messages" id="sm-chat-messages">
+                <div class="sm-widget-message sm-bot">Hello! I'm trained on this website's content. What can I help you with today?</div>
+              </div>
+              <div class="sm-widget-input-area">
+                <form class="sm-widget-form" id="sm-chat-form">
+                  <input type="text" class="sm-widget-input" id="sm-chat-input" placeholder="Ask a question..." autocomplete="off">
+                  <button type="submit" class="sm-widget-submit">
+                    <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                  </button>
+                </form>
+              </div>
+            </div>
+            <button class="sm-widget-btn" id="sm-chat-btn">
+              <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+            </button>
+          `;
+          document.body.appendChild(root);
+
+          const panel = document.getElementById('sm-chat-panel');
+          const btn = document.getElementById('sm-chat-btn');
+          const closeBtn = document.getElementById('sm-chat-close');
+          const form = document.getElementById('sm-chat-form');
+          const input = document.getElementById('sm-chat-input');
+          const messagesDiv = document.getElementById('sm-chat-messages');
+
+          let sessionId = localStorage.getItem('sm_widget_session_id');
+          if (!sessionId) {
+            sessionId = 'widget-' + Math.random().toString(36).substring(2, 10);
+            localStorage.setItem('sm_widget_session_id', sessionId);
+          }
+
+          let isOpen = false;
+          const togglePanel = () => {
+            isOpen = !isOpen;
+            if (isOpen) { panel.classList.add('sm-open'); input.focus(); }
+            else { panel.classList.remove('sm-open'); }
+          };
+
+          btn.addEventListener('click', togglePanel);
+          closeBtn.addEventListener('click', togglePanel);
+
+          const parseMarkdown = (txt) => {
+            return txt
+              .replace(/\n\n/g, '<br/><br/>')
+              .replace(/\n/g, '<br/>')
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+              .replace(/`(.*?)`/g, '<code>$1</code>')
+              .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
+          };
+
+          const showTyping = () => {
+            const div = document.createElement('div');
+            div.className = 'sm-typing-indicator'; div.id = 'sm-typing';
+            div.innerHTML = '<div class="sm-typing-dot"></div><div class="sm-typing-dot"></div><div class="sm-typing-dot"></div>';
+            messagesDiv.appendChild(div); messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          };
+          const hideTyping = () => { const el = document.getElementById('sm-typing'); if (el) el.remove(); };
+
+          const appendMessage = (txt, sender) => {
+            const div = document.createElement('div');
+            div.className = `sm-widget-message ${sender === 'user' ? 'sm-user' : 'sm-bot'}`;
+            div.innerHTML = sender === 'user' ? txt : parseMarkdown(txt);
+            messagesDiv.appendChild(div); messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          };
+
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const query = input.value.trim();
+            if (!query) return;
+
+            appendMessage(query, 'user');
+            input.value = '';
+            showTyping();
+
+            chrome.runtime.sendMessage({
+              type: 'WIDGET_CHAT_PROXY',
+              apiUrl: apiUrl,
+              body: { query: query, widget_id: siteId, session_id: sessionId }
+            }, (res) => {
+              hideTyping();
+              if (chrome.runtime.lastError || !res || !res.success) {
+                appendMessage('Error: Could not connect to SnapMind AI server.', 'bot');
+              } else if (res.data.error) {
+                appendMessage('Error: ' + res.data.error, 'bot');
+              } else {
+                appendMessage(res.data.answer || 'No response received.', 'bot');
+              }
+            });
+          });
+
           return { success: true };
         },
-        args: [scriptUrl, activeWidgetSite.id, widgetColor]
+        args: [activeWidgetSite.id, baseUrl, widgetColor]
       });
 
       const result = results[0].result;
@@ -2139,6 +2349,7 @@ function App() {
 
         let fullText = "";
         let isFirstToken = true;
+        let lastUpdateTime = Date.now();
         setActiveThoughts([]); // Reset thoughts for new query
 
         // Determine site_id based on activeContext
@@ -2200,9 +2411,13 @@ function App() {
               }]);
             } else {
               fullText += token;
-              setMessages(currentMessages =>
-                currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText, reasoningChain: activeThoughts } : m)
-              );
+              const now = Date.now();
+              if (now - lastUpdateTime > 80) { // Throttle to ~12 FPS
+                lastUpdateTime = now;
+                setMessages(currentMessages =>
+                  currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText, reasoningChain: activeThoughts } : m)
+                );
+              }
             }
           },
           (newBlocks) => {
@@ -2250,7 +2465,7 @@ function App() {
         console.log("[Stream] Looking for citations with regex...");
         // Determine the pool of blocks to search for URLs/metadata
         const localBlocks = streamResult.blocks || [];
-        const blockPool = [...localBlocks, ...contentBlocks, ...pinnedTabs.flatMap(t => t.blocks || [])];
+        const blockPool = [...localBlocks, ...contentBlocks, ...pinnedTabs.flatMap(t => t.blocks || []), ...blocks];
 
         while ((match = citationRegex.exec(fullText)) !== null) {
           const blockId = match[1];
@@ -2267,15 +2482,15 @@ function App() {
             }
 
             // Descriptive snippet override for special types
-            let snippet = label;
+            let snippet = sourceBlock?.content || sourceBlock?.snippet || sourceBlock?.text || label;
 
             if (blockId.startsWith('pin-')) {
               const parts = blockId.split('-');
               const tabIdx = parts[1].replace('t', '');
               const blockIdx = parts[parts.length - 1];
-              snippet = `Pinned Tab ${parseInt(tabIdx) + 1} #${blockIdx}`;
+              snippet = sourceBlock?.content || sourceBlock?.text || `Pinned Tab ${parseInt(tabIdx) + 1} #${blockIdx}`;
             } else if (blockId.startsWith('source-')) {
-              snippet = "Site Header";
+              snippet = sourceBlock?.content || sourceBlock?.text || "Site Header";
             }
 
             citations.push({
@@ -2291,7 +2506,11 @@ function App() {
 
         if (citations.length > 0) {
           setMessages(currentMessages =>
-            currentMessages.map(m => m.id === aiMsgId ? { ...m, citations } : m)
+            currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText, citations } : m)
+          );
+        } else {
+          setMessages(currentMessages =>
+            currentMessages.map(m => m.id === aiMsgId ? { ...m, text: fullText } : m)
           );
         }
 

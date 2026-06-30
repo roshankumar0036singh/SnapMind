@@ -109,7 +109,8 @@ class SearchService:
                 query_text=q,
                 top_k=settings.reranking.candidates,
                 threshold=settings.search.match_threshold,
-                user_id=request.user_id, workspace_id=request.workspace_id
+                user_id=request.user_id, workspace_id=request.workspace_id,
+                filter_source_urls=request.filters.get("source_urls")
             )
             all_candidates.extend(results)
             
@@ -145,15 +146,15 @@ class SearchService:
         
         system_instruction = """You are a highly precise SnapMind research assistant. 
 Your ABSOLUTE MANDATE is to answer using ONLY the provided context blocks.
+DO NOT use your pre-trained general knowledge. If the exact answer is not found in the context blocks below, you MUST reply: "I do not have enough context to answer this question."
 
 CRITICAL CITATION RULES:
 1. Every single fact OR claim you make MUST be followed by the exact source tag like [db-block-1].
 2. Place citations immediately after the relevant sentence.
 3. Example: "The total funding is $5M [db-block-1]. Innovation is key [db-block-2]."
-4. NEVER respond without citations EXCEPT when you don't know the answer.
+4. NEVER respond without citations.
 5. If the user asks for a diagram, flowchart, or technical workflow, use Mermaid syntax in a ```mermaid block.
-6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations.
-7. If the user asks to research a specific person's profile AND the context lacks information, politely tell them: "To research a person's digital footprint, please switch to **Browser Mode** using the globe icon." DO NOT include any citations."""
+6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations."""
 
         prompt = f"""CONTEXT DOCUMENT BLOCKS:
 {full_context}
@@ -161,9 +162,9 @@ CRITICAL CITATION RULES:
 ---
 USER QUERY: {query}
 
-MANDATORY INSTRUCTION: Answer based ONLY on the sources above. 
+MANDATORY INSTRUCTION: Answer based ONLY on the sources above. Do NOT use outside knowledge.
 You MUST cite every fact with the exact tag like [db-block-1].
-If no answer is found, say so and DO NOT include any citations.
+If no answer is found in the sources, say "I do not have enough context to answer this question" and DO NOT include any citations.
 """
         answer = self.router.chat(
             prompt=prompt,
@@ -272,7 +273,8 @@ If no answer is found, say so and DO NOT include any citations.
                 query_text=q,
                 top_k=settings.reranking.candidates,
                 threshold=settings.search.match_threshold,
-                user_id=request.user_id, workspace_id=request.workspace_id
+                user_id=request.user_id, workspace_id=request.workspace_id,
+                filter_source_urls=request.filters.get("source_urls")
             )
             all_candidates.extend(results)
             
@@ -321,15 +323,20 @@ If no answer is found, say so and DO NOT include any citations.
         lang_name = LANG_MAP.get(output_lang, output_lang) if output_lang != "auto" else "English"
         system_prompt = f"""You are a highly precise SnapMind research assistant. 
 Your ABSOLUTE MANDATE is to answer in {lang_name} using ONLY the provided context blocks.
+DO NOT use your pre-trained general knowledge. If the exact answer is not found in the context blocks below, you MUST reply: "I do not have enough context to answer this question."
+
+FORMATTING RULES:
+1. Be highly professional, structured, and easy to read.
+2. Use bolding, bullet points, and numbered lists where appropriate.
+3. Use Markdown tables for comparisons or data.
 
 CRITICAL CITATION RULES:
-1. Every single fact OR claim you make MUST be followed by the exact source tag like [db-block-1].
-2. Place citations immediately after the relevant sentence.
-3. Example: "The project ends in 2026 [db-block-1]. It is funded by DoT [db-block-2]."
-4. NEVER respond without citations EXCEPT when you don't know the answer.
+1. Every single fact OR claim you make MUST be followed by the exact block ID.
+2. Wrap the ID in SINGLE brackets. For example, if the header is [[ SOURCE db-block-1 ]], you must cite it as [db-block-1]. DO NOT output '[[ SOURCE db-block-1 ]]'.
+3. Place citations immediately after the relevant sentence.
+4. NEVER respond without citations.
 5. If requested, provide a diagram or technical visualization using Mermaid syntax in a ```mermaid block.
-6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations.
-7. If the user asks to research a specific person's profile AND the context lacks information, politely tell them: "To research a person's digital footprint, please switch to **Browser Mode** using the globe icon." DO NOT include any citations."""
+6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations."""
         
         context_text = "\n\n".join([f"[[ SOURCE {s.get('mapped_id')} ]]\n{s.get('content', '')}" for s in context_sources])
         
@@ -339,10 +346,10 @@ CRITICAL CITATION RULES:
 ---
 USER QUERY: {query}
 
-FINAL INSTRUCTION: Answer in {lang_name} using the sources above. 
+FINAL INSTRUCTION: Answer in {lang_name} using ONLY the sources above. Do NOT use outside knowledge.
 EVERY fact MUST be cited with the exact tag like [db-block-1].
 Example: "The sky is blue [db-block-1]. Humans breathe air [db-block-2]."
-If no answer is found, say so and DO NOT include any citations.
+If no answer is found in the sources, say "I do not have enough context to answer this question" and DO NOT include any citations.
 """
         
         async for token in self.router.stream(

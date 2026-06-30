@@ -253,40 +253,49 @@ class IngestService:
 
         # Concurrent Analysis: Extract tags and translate in parallel
         # Note: Optimization - only translate if mostly non-English
-        if not is_mostly_non_ascii(p_content[:500]):
-            analysis_tasks = [
-                self.llm_service.extract_tags(p_content),
-                self.llm_service.translate_lingo(p_content, "en")
-            ]
-        else:
-            analysis_tasks = [
-                self.llm_service.extract_tags(p_content),
-                self.llm_service.translate_lingo(p_content, "en")
-            ]
+        is_foreign = is_mostly_non_ascii(p_content[:500])
+        
+        async def mock_translate():
+            return (p_content, "en", False)
+
+        analysis_tasks = [
+            self.llm_service.extract_tags(p_content),
+            self.llm_service.translate_lingo(p_content, "en") if is_foreign else mock_translate()
+        ]
 
         res = await asyncio.gather(*analysis_tasks)
         tags = res[0]
         translated, lang, is_trans = res[1]
 
-        # Semantic Chunking
-        use_agentic = settings.agentic_chunking_enabled and (len(translated) > 3000 or "```" in translated)
+        # Auto-detect Agentic Chunking
+        # Use it for code or medium-length text, but auto-disable for massive texts (>15000 chars) to prevent severe slowdowns.
+        is_structured = "```" in translated
+        is_medium_length = len(translated) > 3000
+        is_too_massive = len(translated) > 15000
         
-        # [NEW] Knowledge Graph Extraction (Parallel)
+        use_agentic = settings.agentic_chunking_enabled and (is_structured or is_medium_length) and not is_too_massive
+        
+        # [NEW] Knowledge Graph Extraction (Fire and Forget)
         if settings.graphrag_enabled:
             from graph_logic import extract_graph_data, insert_graph_data
-            try:
-                # Run extraction in a separate thread if possible, or just call if acceptable latency
-                g_data = extract_graph_data(translated, api_keys)
-                if g_data.get("nodes") or g_data.get("edges"):
-                    insert_graph_data(
-                        g_data, 
-                        source_url=p_url, 
-                        user_id=request.user_id, 
-                        workspace_id=request.workspace_id,
-                        session_id=request.session_id
-                    )
-            except Exception as ge:
-                print(f"[IngestService] Graph extraction failed for {p_url}: {ge}")
+            def run_graph_extraction():
+                try:
+                    g_data = extract_graph_data(translated, api_keys)
+                    if g_data.get("nodes") or g_data.get("edges"):
+                        insert_graph_data(
+                            g_data, 
+                            source_url=p_url, 
+                            user_id=request.user_id, 
+                            workspace_id=request.workspace_id,
+                            session_id=request.session_id
+                        )
+                except Exception as ge:
+                    print(f"[IngestService] Graph extraction failed for {p_url}: {ge}")
+            
+            # Dispatch to a dedicated background thread pool so it doesn't block FastAPI's thread pool
+            if not hasattr(self, '_graph_executor'):
+                self._graph_executor = concurrent.futures.ThreadPoolExecutor(max_workers=5, thread_name_prefix="GraphExt")
+            asyncio.get_running_loop().run_in_executor(self._graph_executor, run_graph_extraction)
 
         if use_agentic:
             chunks = await run_agentic_chunking(

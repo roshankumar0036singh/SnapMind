@@ -21,6 +21,7 @@ class IngestRequestDTO(BaseModel):
     tenant_id: Optional[str] = "default"
     user_id: Optional[str] = None
     workspace_id: Optional[str] = None
+    stream: bool = False
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class JobStatusDTO(BaseModel):

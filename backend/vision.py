@@ -54,12 +54,11 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
         system_instruction = "You are a high-precision OCR engine. Transcribe ALL visible text into structured Markdown. No chat/filler."
         user_message_text = "Extract all text from this image exactly."
     else:
-        is_specific = user_prompt and len(user_prompt.strip()) > 5
-        if is_specific:
-            system_instruction = "Answer the user's question directly and conversationally based ONLY on the visual evidence. Suggest 2 follow-ups at the end."
-            user_message_text = f"Question: {user_prompt}"
+        if user_prompt and len(user_prompt.strip()) > 0:
+            system_instruction = f"You are a helpful AI assistant analyzing an image. Answer the user's question directly and concisely based ONLY on the visual evidence.{context_hint}"
+            user_message_text = user_prompt
         else:
-            system_instruction = f"Provide a structured, detailed description of this visual content.{context_hint} List key sections and notable details. Suggest 2 follow-ups."
+            system_instruction = f"Provide a structured, detailed description of this visual content.{context_hint} List key sections and notable details."
             user_message_text = "Describe this content."
 
     # Check Cache

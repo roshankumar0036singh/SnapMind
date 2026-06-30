@@ -350,7 +350,8 @@
     showTyping();
     
     try {
-      const response = await fetch(`${apiUrl}/widget/chat`, {
+      const chatUrl = apiUrl.includes('/api/v1') ? `${apiUrl}/widget/chat` : `${apiUrl}/api/v1/widget/chat`;
+      const response = await fetch(chatUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -8,7 +8,7 @@ from utils import normalize_url
 from services.crawler_service import CrawlerService
 from services.ingest_service import IngestService
 
-async def ingest_widget_multipage(url: str, widget_id: str, max_pages: int = 50, max_depth: int = 3, api_keys: dict = None) -> Dict[str, Any]:
+async def ingest_widget_multipage(url: str, widget_id: str, max_pages: int = 10, max_depth: int = 3, api_keys: dict = None) -> Dict[str, Any]:
     """
     Crawl and ingest multiple pages from a website specifically for a widget.
     Stores data in widget_documents table.
@@ -58,7 +58,7 @@ async def ingest_widget_multipage(url: str, widget_id: str, max_pages: int = 50,
                 
                 # Embed chunks
                 ingest_svc = IngestService(api_keys=api_keys)
-                embedded_chunks = ingest_svc._parallel_embed(
+                embedded_chunks = await ingest_svc._batch_embed_async(
                     chunks,
                     source_url=page_url,
                     api_keys=api_keys

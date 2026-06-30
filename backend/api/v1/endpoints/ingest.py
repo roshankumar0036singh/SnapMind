@@ -25,6 +25,39 @@ async def ingest_endpoint(
         "apify": x_apify_token
     }
     
+    if request.stream:
+        async def stream_generator():
+            import asyncio
+            import json
+            
+            # Start background task
+            if request.text:
+                task = asyncio.create_task(ingest_service.ingest_text(request=request, api_keys=api_keys))
+            else:
+                task = asyncio.create_task(ingest_service.ingest_url(request=request, api_keys=api_keys))
+            
+            last_status = None
+            last_progress = -1
+            
+            # Poll status and yield NDJSON lines
+            while not task.done():
+                status_dto = ingest_service.get_job_status(request.session_id, user_id)
+                if status_dto.status != last_status or status_dto.progress != last_progress:
+                    yield json.dumps(status_dto.model_dump()) + "\n"
+                    last_status = status_dto.status
+                    last_progress = status_dto.progress
+                await asyncio.sleep(0.5)
+            
+            # Yield final result
+            try:
+                result = task.result()
+                yield json.dumps(result.model_dump()) + "\n"
+            except Exception as e:
+                yield json.dumps({"success": False, "message": str(e)}) + "\n"
+                
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
+
     if request.text:
         return await ingest_service.ingest_text(
             request=request,
