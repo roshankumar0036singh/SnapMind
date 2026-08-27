@@ -813,6 +813,26 @@ MIGRATIONS = [
             CREATE POLICY user_api_keys_service_update ON user_api_keys
                 FOR UPDATE TO service_role USING (true);
         """
+    },
+    {
+        "version": 17,
+        "name": "personas_ownership",
+        "sql": """
+            -- Personas were created before multi-user isolation (v14) and so had
+            -- no owner: every account saw and could delete every persona, and a
+            -- persona id from one account could be applied by another.
+            ALTER TABLE personas ADD COLUMN IF NOT EXISTS user_id UUID;
+            ALTER TABLE personas ADD COLUMN IF NOT EXISTS workspace_id UUID;
+
+            CREATE INDEX IF NOT EXISTS idx_personas_user_id ON personas(user_id);
+            CREATE INDEX IF NOT EXISTS idx_personas_workspace_id ON personas(workspace_id);
+
+            -- Rows that predate this migration keep user_id NULL. There is no way
+            -- to recover who authored them, so the API treats NULL as "shared with
+            -- everyone" rather than deleting them. Assign them an owner by hand if
+            -- that matters for your deployment:
+            --   UPDATE personas SET user_id = '<uuid>' WHERE user_id IS NULL;
+        """
     }
 ]
 

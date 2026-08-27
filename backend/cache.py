@@ -23,6 +23,10 @@ class CacheEntry:
     timestamp: datetime
     hit_count: int = 0
     last_accessed: datetime = field(default_factory=datetime.now)
+    # The scope this answer belongs to (reader, workspace, source filter,
+    # language, retrieval flags). Kept on the entry because the cache key is an
+    # md5 digest and so cannot be inspected after the fact.
+    namespace: str = "all"
 
 
 class SemanticCache:
@@ -148,9 +152,13 @@ class SemanticCache:
             best_similarity = 0.0
             
             with self.lock:
+                ns = site_id or 'all'
                 for key, entry in self.cache.items():
-                    # Skip if different site_id
-                    if site_id and key != exact_key and not key.endswith(f":{site_id or 'all'}"):
+                    # Only ever match inside the same scope. This used to test
+                    # `key.endswith(":site_id")`, but the key is an md5 digest, so
+                    # the check could never pass: semantic hits were dead whenever
+                    # a filter was set, and unscoped when it wasn't.
+                    if entry.namespace != ns:
                         continue
                     
                     # Skip if expired
@@ -200,7 +208,8 @@ class SemanticCache:
             query=query,
             query_embedding=query_embedding,
             results=results,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
+            namespace=site_id or 'all'
         )
         
         with self.lock:
@@ -218,9 +227,14 @@ class SemanticCache:
         with self.lock:
             if site_id:
                 # Invalidate specific site
+                # Substring match against the stored namespace, which is a
+                # composite of reader|workspace|sources|lang|limit|flags. Passing
+                # a single source url or workspace id therefore clears every
+                # cached answer that drew on it, whoever asked and with whichever
+                # retrieval flags.
                 keys_to_remove = [
-                    k for k in self.cache.keys()
-                    if k.endswith(f":{site_id}")
+                    k for k, e in self.cache.items()
+                    if site_id in e.namespace
                 ]
                 for key in keys_to_remove:
                     del self.cache[key]

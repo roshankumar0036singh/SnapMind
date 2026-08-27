@@ -11,22 +11,23 @@ chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
 
 // 1. Install & Context Menu Setup
 const setupContextMenus = () => {
+    const catchErr = () => chrome.runtime.lastError;
     chrome.contextMenus.removeAll(() => {
         chrome.contextMenus.create({
             id: "send-to-snapmind",
             title: "Append to SnapMind Chat",
             contexts: ["selection"]
-        });
+        }, catchErr);
         chrome.contextMenus.create({
             id: "snapmind-visual-search",
             title: "Neural Visual Search",
             contexts: ["page", "image"]
-        });
+        }, catchErr);
         chrome.contextMenus.create({
             id: "snapmind-ai-to-code",
             title: "Neural UI to Code (Alpha)",
             contexts: ["all"]
-        });
+        }, catchErr);
     });
 };
 
@@ -34,14 +35,6 @@ chrome.runtime.onInstalled.addListener(() => {
     console.log("SnapMind Installed/Updated");
     setupContextMenus();
 });
-
-// Also run on startup to be safe
-chrome.runtime.onStartup.addListener(() => {
-    setupContextMenus();
-});
-
-// Initialize on first load
-setupContextMenus();
 
 // 2. Handle Context Menu Click
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {

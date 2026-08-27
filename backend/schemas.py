@@ -39,6 +39,14 @@ class ChatRequest(BaseModel):
     history: Optional[List[Dict[str, Any]]] = None # [NEW] Conversational History
     page_content: Optional[str] = None  # [NEW] Allow direct text context
     content_blocks: Optional[List[Dict[str, Any]]] = None # [NEW] Structured blocks for citation
+    query_notebook: bool = False # [NEW] Phase 20: Research Notebook Correlation
+    persona_id: Optional[str] = None # [NEW] Feature 21: Custom Agent Personas
+
+    # Per-request retrieval overrides. None means "use this deployment's setting"
+    # from config.py, so a client that omits them behaves exactly as before.
+    use_reranking: Optional[bool] = None         # cross-encoder rerank of candidates
+    use_graphrag: Optional[bool] = None          # fuse knowledge-graph context
+    use_query_enhancement: Optional[bool] = None # HyDE + multi-query expansion
 
 class WidgetIngestRequest(BaseModel):
     url: str

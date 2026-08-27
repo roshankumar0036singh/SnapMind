@@ -37,7 +37,62 @@ class SearchService:
             self.reranker = CohereReranker(api_key=self.api_keys.get("cohere"))
         except Exception:
             self.reranker = None # Fallback logic in chat method
-    
+
+    def _retrieval_flags(self, request: SearchRequestDTO) -> Dict[str, bool]:
+        """
+        Resolve the three per-request retrieval switches against this
+        deployment's configuration.
+
+        `None` on a request field means "whatever this deployment configured",
+        so a client that sends nothing keeps the previous behaviour exactly.
+        Query enhancement covers both HyDE and multi-query, which config.py
+        flags separately — it counts as on when either is enabled.
+        """
+        return {
+            "rerank": (
+                settings.reranking.enabled
+                if request.use_reranking is None
+                else bool(request.use_reranking)
+            ),
+            "graphrag": (
+                settings.graphrag_enabled
+                if request.use_graphrag is None
+                else bool(request.use_graphrag)
+            ),
+            "enhance": (
+                (settings.query.hyde_enabled or settings.query.multi_query_enabled)
+                if request.use_query_enhancement is None
+                else bool(request.use_query_enhancement)
+            ),
+        }
+
+    def _cache_namespace(
+        self,
+        request: SearchRequestDTO,
+        flags: Dict[str, bool],
+        output_lang: str,
+    ) -> str:
+        """
+        Everything that changes the answer for the same question text.
+
+        The cache used to be keyed on the query alone, which meant one reader's
+        answer could be served to another and that toggling a retrieval switch
+        appeared to do nothing on a repeat question. Anything that alters what
+        gets retrieved or how it reads belongs in the key.
+        """
+        sources = request.filters.get("source_urls") or []
+        parts = [
+            request.user_id or "anon",
+            request.workspace_id or "no-ws",
+            ",".join(sorted(sources)) or "all",
+            output_lang or "auto",
+            str(request.limit or 5),
+            "r1" if flags["rerank"] else "r0",
+            "g1" if flags["graphrag"] else "g0",
+            "e1" if flags["enhance"] else "e0",
+        ]
+        return "|".join(parts)
+
     async def chat(
         self,
         request: SearchRequestDTO,
@@ -51,16 +106,20 @@ class SearchService:
         Execute a conversational RAG search (Orchestrates Translation -> Retrieval -> Synthesis).
         """
         llm_svc = LLMService(api_keys=api_keys)
-        
+
         query = request.query
         session_id = request.session_id
-        
+        flags = self._retrieval_flags(request)
+
         # 1. Multi-Language Query Routing
         search_query, query_lang, is_translated = await llm_svc.translate(query, target_lang="en")
-        
-        # Check Cache
+
+        # Check Cache — namespaced by reader, workspace, source filter, language
+        # and the retrieval switches, so a hit is only ever a hit for the same
+        # question asked the same way by the same person.
+        cache_ns = self._cache_namespace(request, flags, output_lang)
         query_embedding = await self._get_embedding(search_query, api_keys)
-        cached_result = self.cache.get(search_query, query_embedding)
+        cached_result = self.cache.get(search_query, query_embedding, site_id=cache_ns)
         if cached_result:
             return ChatResponseDTO(**cached_result)
 
@@ -94,13 +153,15 @@ class SearchService:
                     )
         
         # 2. Advanced Retrieval Pipeline
-        # A. Query Expansion (HyDE + Multi-query)
-        enhanced = self.query_processor.enhance_query(search_query)
+        # A. Query Expansion (HyDE + Multi-query) — one extra LLM call and two
+        # extra embeddings per question, so it is worth being able to turn off.
         target_queries = [search_query]
-        if enhanced.hyde_document:
-            target_queries.append(enhanced.hyde_document)
-        target_queries.extend(enhanced.enhanced_queries[:2]) # Top 2 variations
-        
+        if flags["enhance"]:
+            enhanced = self.query_processor.enhance_query(search_query)
+            if enhanced.hyde_document:
+                target_queries.append(enhanced.hyde_document)
+            target_queries.extend(enhanced.enhanced_queries[:2]) # Top 2 variations
+
         all_candidates = []
         for q in target_queries:
             q_emb = await self._get_embedding(q, api_keys)
@@ -113,19 +174,19 @@ class SearchService:
                 filter_source_urls=request.filters.get("source_urls")
             )
             all_candidates.extend(results)
-            
+
         # B. Semantic Deduplication
         unique_candidates = self.optimizer.remove_duplicates(all_candidates)
-        
+
         # C. Reranking
-        if self.reranker and settings.reranking.enabled:
+        if self.reranker and flags["rerank"]:
             reranked_results = self.reranker.rerank(search_query, unique_candidates, top_k=request.limit or 5)
             context_sources = [r.document for r in reranked_results]
         else:
             # Simple score fallback
             unique_candidates.sort(key=lambda x: x.get('score', 0), reverse=True)
             context_sources = unique_candidates[:request.limit or 5]
-        
+
         # Mapped IDs for LLM Citations
         # Use simple numeric blocks so the LLM reliably reproduces them.
         for i, s in enumerate(context_sources):
@@ -134,7 +195,7 @@ class SearchService:
         # 3. LLM Synthesis
         # 3. [NEW] GraphRAG Fusion
         graph_context = ""
-        if settings.graphrag_enabled:
+        if flags["graphrag"]:
             graph_context = get_graph_context(search_query, api_keys=api_keys, user_id=request.user_id, workspace_id=request.workspace_id)
             if graph_context:
                 print(f"[SearchService] Graph context added: {len(graph_context)} chars")
@@ -143,18 +204,18 @@ class SearchService:
         full_context = f"{graph_context}\n\n### Document Context\n{context_text}"
         
         model_id = settings.models.mistral_small
+        lang_name = LANG_MAP.get(output_lang, output_lang) if output_lang != "auto" else "English"
         
-        system_instruction = """You are a highly precise SnapMind research assistant. 
-Your ABSOLUTE MANDATE is to answer using ONLY the provided context blocks.
-DO NOT use your pre-trained general knowledge. If the exact answer is not found in the context blocks below, you MUST reply: "I do not have enough context to answer this question."
+        system_instruction = """You are a highly capable SnapMind research assistant. 
+Your primary goal is to answer the user's question using the provided context blocks.
+If the context blocks contain relevant information, you MUST use them and cite them.
 
 CRITICAL CITATION RULES:
-1. Every single fact OR claim you make MUST be followed by the exact source tag like [db-block-1].
+1. Every fact or claim derived from the context MUST be followed by the exact source tag.
 2. Place citations immediately after the relevant sentence.
 3. Example: "The total funding is $5M [db-block-1]. Innovation is key [db-block-2]."
-4. NEVER respond without citations.
-5. If the user asks for a diagram, flowchart, or technical workflow, use Mermaid syntax in a ```mermaid block.
-6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations."""
+4. If you use your own general knowledge to supplement the answer, do not cite a block for that specific part.
+5. If requested, provide a diagram or technical visualization using Mermaid syntax in a ```mermaid block."""
 
         prompt = f"""CONTEXT DOCUMENT BLOCKS:
 {full_context}
@@ -162,9 +223,8 @@ CRITICAL CITATION RULES:
 ---
 USER QUERY: {query}
 
-MANDATORY INSTRUCTION: Answer based ONLY on the sources above. Do NOT use outside knowledge.
-You MUST cite every fact with the exact tag like [db-block-1].
-If no answer is found in the sources, say "I do not have enough context to answer this question" and DO NOT include any citations.
+INSTRUCTION: Answer the query comprehensively in {lang_name}.
+Prioritize using the provided context blocks. You may supplement with your own general knowledge if the context is incomplete, but you must cite the context blocks (e.g. [db-block-1]) whenever you use information from them.
 """
         answer = self.router.chat(
             prompt=prompt,
@@ -209,7 +269,7 @@ If no answer is found in the sources, say "I do not have enough context to answe
             model_used=model_id,
             metadata={"translated": is_translated}
         )
-        self.cache.set(search_query, query_embedding, result.model_dump())
+        self.cache.set(search_query, query_embedding, result.model_dump(), site_id=cache_ns)
 
         return result
 
@@ -220,6 +280,8 @@ If no answer is found in the sources, say "I do not have enough context to answe
         history: Optional[List[Dict[str, Any]]] = None,
         output_lang: str = "auto",
         skip_reasoning: bool = False,
+        query_notebook: bool = False,
+        persona_id: Optional[str] = None,
         **kwargs
     ):
         """
@@ -227,10 +289,11 @@ If no answer is found in the sources, say "I do not have enough context to answe
         """
         import json
         llm_svc = LLMService(api_keys=api_keys)
-        
+
         query = request.query
         session_id = request.session_id
-        
+        flags = self._retrieval_flags(request)
+
         # 1. Multi-Language Query Routing
         search_query, _, _ = await llm_svc.translate(query, target_lang="en")
 
@@ -259,15 +322,19 @@ If no answer is found in the sources, say "I do not have enough context to answe
         
         # 2. Advanced Retrieval Pipeline
         # A. Query Expansion (HyDE + Multi-query)
-        enhanced = self.query_processor.enhance_query(search_query)
         target_queries = [search_query]
-        if enhanced.hyde_document:
-            target_queries.append(enhanced.hyde_document)
-        target_queries.extend(enhanced.enhanced_queries[:2])
+        if flags["enhance"]:
+            enhanced = self.query_processor.enhance_query(search_query)
+            if enhanced.hyde_document:
+                target_queries.append(enhanced.hyde_document)
+            target_queries.extend(enhanced.enhanced_queries[:2])
         
         all_candidates = []
+        primary_embedding = None
         for q in target_queries:
             q_emb = await self._get_embedding(q, api_keys)
+            if primary_embedding is None:
+                primary_embedding = q_emb
             results = self.doc_repo.search_hybrid(
                 vector=q_emb,
                 query_text=q,
@@ -277,18 +344,18 @@ If no answer is found in the sources, say "I do not have enough context to answe
                 filter_source_urls=request.filters.get("source_urls")
             )
             all_candidates.extend(results)
-            
+
         # B. Semantic Deduplication
         unique_candidates = self.optimizer.remove_duplicates(all_candidates)
-        
+
         # C. Reranking
-        if self.reranker and settings.reranking.enabled:
+        if self.reranker and flags["rerank"]:
             reranked_results = self.reranker.rerank(search_query, unique_candidates, top_k=request.limit or 5)
             context_sources = [r.document for r in reranked_results]
         else:
             unique_candidates.sort(key=lambda x: x.get('score', 0), reverse=True)
             context_sources = unique_candidates[:request.limit or 5]
-        
+
         for i, s in enumerate(context_sources):
             s['mapped_id'] = f"db-block-{i+1}"
 
@@ -313,7 +380,16 @@ If no answer is found in the sources, say "I do not have enough context to answe
                 credibility_tier=cred_tier,
                 highlight_snippet=s.get("content", "")[:150] + "..."
             ))
-        
+
+        # D. Research-notebook correlation. Saved bookmarks are a separate table,
+        # so they get their own nb-block-N namespace and the LLM is told what they
+        # are — a fact the user chose to keep carries different weight to a chunk
+        # that merely happened to be crawled.
+        notebook_sources: List[SearchResultDTO] = []
+        if query_notebook and primary_embedding:
+            notebook_sources = self._notebook_blocks(primary_embedding, request)
+            sources.extend(notebook_sources)
+
         yield json.dumps({
             "type": "retrieved_blocks",
             "blocks": [s.model_dump() for s in sources]
@@ -321,9 +397,9 @@ If no answer is found in the sources, say "I do not have enough context to answe
 
         # 3. LLM Synthesis (Streaming)
         lang_name = LANG_MAP.get(output_lang, output_lang) if output_lang != "auto" else "English"
-        system_prompt = f"""You are a highly precise SnapMind research assistant. 
-Your ABSOLUTE MANDATE is to answer in {lang_name} using ONLY the provided context blocks.
-DO NOT use your pre-trained general knowledge. If the exact answer is not found in the context blocks below, you MUST reply: "I do not have enough context to answer this question."
+        system_prompt = f"""You are a highly capable SnapMind research assistant. 
+Your primary goal is to answer the user's question in {lang_name} using the provided context blocks.
+If the context blocks contain relevant information, you MUST use them and cite them.
 
 FORMATTING RULES:
 1. Be highly professional, structured, and easy to read.
@@ -331,25 +407,49 @@ FORMATTING RULES:
 3. Use Markdown tables for comparisons or data.
 
 CRITICAL CITATION RULES:
-1. Every single fact OR claim you make MUST be followed by the exact block ID.
+1. Every fact or claim derived from the context MUST be followed by the exact block ID.
 2. Wrap the ID in SINGLE brackets. For example, if the header is [[ SOURCE db-block-1 ]], you must cite it as [db-block-1]. DO NOT output '[[ SOURCE db-block-1 ]]'.
 3. Place citations immediately after the relevant sentence.
-4. NEVER respond without citations.
-5. If requested, provide a diagram or technical visualization using Mermaid syntax in a ```mermaid block.
-6. If the context does not contain the answer, politely state that you don't know and DO NOT include any citations."""
-        
+4. If you use your own general knowledge to supplement the answer, do not cite a block for that specific part.
+5. If requested, provide a diagram or technical visualization using Mermaid syntax in a ```mermaid block."""
+
+        addon = self._persona_addon(persona_id, request.user_id)
+        if addon:
+            system_prompt = f"{system_prompt}\n\nPERSONA DIRECTIVE (takes priority on tone and emphasis):\n{addon}"
+
         context_text = "\n\n".join([f"[[ SOURCE {s.get('mapped_id')} ]]\n{s.get('content', '')}" for s in context_sources])
-        
+
+        if notebook_sources:
+            notebook_text = "\n\n".join(
+                f"[[ SOURCE {s.id} ]] (saved by the user in their research notebook)\n{s.content}"
+                for s in notebook_sources
+            )
+            context_text = f"{context_text}\n\n{notebook_text}" if context_text else notebook_text
+
+        # GraphRAG fusion. The non-streaming chat() has always done this; the
+        # streaming path — which is what every current client actually calls —
+        # did not, so the entity graph was effectively unused. It is prepended
+        # rather than mixed into the numbered blocks because it carries no
+        # citable source of its own.
+        if flags["graphrag"]:
+            graph_context = get_graph_context(
+                search_query,
+                api_keys=api_keys,
+                user_id=request.user_id,
+                workspace_id=request.workspace_id,
+            )
+            if graph_context:
+                print(f"[SearchService] Graph context added: {len(graph_context)} chars")
+                context_text = f"{graph_context}\n\n### Document Context\n{context_text}"
+
         prompt = f"""CONTEXT DATA BLOCKS:
 {context_text}
 
 ---
 USER QUERY: {query}
 
-FINAL INSTRUCTION: Answer in {lang_name} using ONLY the sources above. Do NOT use outside knowledge.
-EVERY fact MUST be cited with the exact tag like [db-block-1].
-Example: "The sky is blue [db-block-1]. Humans breathe air [db-block-2]."
-If no answer is found in the sources, say "I do not have enough context to answer this question" and DO NOT include any citations.
+FINAL INSTRUCTION: Answer in {lang_name}. Prioritize using the provided context blocks. 
+You may supplement with your own general knowledge if the context is incomplete, but you must cite the context blocks (e.g. [db-block-1]) whenever you use information from them.
 """
         
         async for token in self.router.stream(
@@ -361,6 +461,104 @@ If no answer is found in the sources, say "I do not have enough context to answe
             yield json.dumps({"type": "token", "text": token}) + "\n"
 
     # --- Private Helper Methods ---
+
+    def _persona_addon(self, persona_id: Optional[str], user_id: Optional[str] = None) -> str:
+        """
+        Extra system-prompt text for a saved agent persona.
+
+        Scoped to the reader, so a persona id belonging to another account can't be
+        applied by passing it in the request. Personas written before migration v17
+        have no owner and stay usable by everyone, matching the personas endpoint.
+
+        Returns "" for a missing persona or a failed lookup: a stale persona id
+        from a stored UI preference must not break the answer. That also covers a
+        deployment that hasn't applied v17 yet — the scoped query fails, and the
+        second attempt below falls back to the unscoped lookup.
+        """
+        if not persona_id:
+            return ""
+        attempts = (
+            [
+                (
+                    "SELECT system_prompt_addon FROM personas WHERE id = %s::uuid AND (user_id = %s OR user_id IS NULL)",
+                    (persona_id, user_id),
+                ),
+                ("SELECT system_prompt_addon FROM personas WHERE id = %s::uuid", (persona_id,)),
+            ]
+            if user_id
+            else [("SELECT system_prompt_addon FROM personas WHERE id = %s::uuid", (persona_id,))]
+        )
+        for index, (sql, params) in enumerate(attempts):
+            try:
+                with self.doc_repo.pool.connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(sql, params)
+                        row = cur.fetchone()
+                return (row[0] or "").strip() if row else ""
+            except Exception as e:
+                # Only the last attempt's failure is worth reporting; an earlier one
+                # just means personas.user_id doesn't exist yet.
+                if index == len(attempts) - 1:
+                    print(f"[SearchService] Persona {persona_id} lookup failed: {e}")
+        return ""
+
+    def _notebook_blocks(
+        self,
+        query_embedding: List[float],
+        request: SearchRequestDTO,
+        limit: int = 4,
+    ) -> List[SearchResultDTO]:
+        """
+        Nearest saved bookmarks for the query, as nb-block-N citation blocks.
+
+        `bookmarks.embedding` is vector(3072) where `documents.embedding` is
+        halfvec(3072), so this cannot go through DocumentRepository.search_hybrid.
+        Bookmarks have no crawl provenance, so they are scored as expert tier —
+        the user vouched for them by saving them.
+        """
+        clauses = ["embedding IS NOT NULL"]
+        filter_params: List[Any] = []
+        if request.user_id:
+            clauses.append("user_id = %s::uuid")
+            filter_params.append(request.user_id)
+        if request.workspace_id:
+            clauses.append("workspace_id = %s::uuid")
+            filter_params.append(request.workspace_id)
+
+        sql = (
+            "SELECT id, content, source_url, metadata, "
+            "1 - (embedding <=> %s::vector) AS similarity "
+            f"FROM bookmarks WHERE {' AND '.join(clauses)} "
+            "ORDER BY similarity DESC LIMIT %s"
+        )
+
+        try:
+            with self.doc_repo.pool.connection() as conn:
+                from psycopg.rows import dict_row
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(sql, [query_embedding, *filter_params, limit])
+                    rows = cur.fetchall()
+        except Exception as e:
+            print(f"[SearchService] Notebook correlation failed: {e}")
+            return []
+
+        blocks: List[SearchResultDTO] = []
+        for i, r in enumerate(rows):
+            content = r.get("content") or ""
+            meta = r.get("metadata") or {}
+            meta = {**meta, "origin": "notebook", "bookmark_id": str(r.get("id"))}
+            blocks.append(SearchResultDTO(
+                id=f"nb-block-{i+1}",
+                url=r.get("source_url") or "",
+                content=content,
+                metadata=meta,
+                similarity=float(r.get("similarity") or 0.0),
+                combined_score=float(r.get("similarity") or 0.0),
+                credibility_score=90,
+                credibility_tier="expert",
+                highlight_snippet=content[:150] + ("..." if len(content) > 150 else "")
+            ))
+        return blocks
 
     async def _get_embedding(self, text: str, api_keys: Dict[str, str]) -> List[float]:
         """

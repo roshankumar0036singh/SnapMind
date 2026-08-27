@@ -18,6 +18,10 @@ async def ingest_endpoint(
     x_apify_token: Optional[str] = Header(None, alias="x-apify-token")
 ):
     request.user_id = user_id
+    if not request.session_id:
+        import uuid
+        request.session_id = str(uuid.uuid4())
+        
     api_keys = {
         "mistral": x_mistral_key, 
         "gemini": x_gemini_key, 
@@ -29,12 +33,18 @@ async def ingest_endpoint(
         async def stream_generator():
             import asyncio
             import json
-            
+
             # Start background task
             if request.text:
                 task = asyncio.create_task(ingest_service.ingest_text(request=request, api_keys=api_keys))
             else:
-                task = asyncio.create_task(ingest_service.ingest_url(request=request, api_keys=api_keys))
+                task = asyncio.create_task(ingest_service.ingest_url(
+                    request=request,
+                    api_keys=api_keys,
+                    crawl_mode=request.crawl_mode,
+                    max_pages=request.max_pages,
+                    max_depth=request.max_depth
+                ))
             
             last_status = None
             last_progress = -1
@@ -66,7 +76,10 @@ async def ingest_endpoint(
     else:
         return await ingest_service.ingest_url(
             request=request,
-            api_keys=api_keys
+            api_keys=api_keys,
+            crawl_mode=request.crawl_mode,
+            max_pages=request.max_pages,
+            max_depth=request.max_depth
         )
 
 @router.post("/file", response_model=IngestResponseDTO)

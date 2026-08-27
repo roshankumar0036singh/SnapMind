@@ -1,0 +1,500 @@
+@import "tailwindcss";
+
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input[type="search"]::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+@theme inline {
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1; /* Indigo */
+  --color-primary-600: #4f46e5; /* Primary SnapMind Indigo */
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+
+  --color-success-50: #ecfdf3;
+  --color-success-500: #ecfdf3;
+  --color-success-600: #12b76a;
+
+  --color-error-50: #fef3f2;
+  --color-error-100: #fee4e2;
+  --color-error-500: #f04438;
+  --color-error-600: #d92d20;
+
+  --color-dark-primary: #171f2e;
+  --color-dark-secondary: #1a2231;
+
+  --text-title-lg: 44px;
+  --text-title-lg--line-height: 52px;
+
+  --shadow-theme-xs: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  --shadow-theme-sm: 0px 8px 20px 0px rgba(0, 0, 0, 0.08);
+  --shadow-theme-lg:
+    0px 12px 16px -4px rgba(16, 24, 40, 0.08),
+    0px 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-ring: 0px 0px 0px 4px rgba(70, 95, 255, 0.12);
+  --shadow-theme-md: 0px 8px 30px 0px rgba(12, 11, 25, 0.04);
+
+  --background-image-gradient-1: linear-gradient(
+    180deg,
+    #f8fcff 0%,
+    #f1efff 50%,
+    #f8dcff 100%
+  );
+  --background-image-gradient-2: linear-gradient(
+    97deg,
+    #4F46E5 0%,
+    #3B82F6 140.21%
+  );
+}
+
+.button-bg {
+  background-image: linear-gradient(97deg, #4F46E5 0%, #3B82F6 140.21%);
+}
+
+.tab-img-bg {
+  background: linear-gradient(
+    90deg,
+    rgba(79, 70, 229, 0.2) 0%,
+    rgba(59, 130, 246, 0.2) 100%
+  );
+  position: relative;
+  z-index: 20;
+}
+
+[data-theme="light"] .tab-img-bg::after {
+  border-radius: 32px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, #fff 93.51%);
+  content: "";
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  position: absolute;
+  z-index: 10;
+}
+
+[data-theme="dark"] .tab-img-bg::after {
+  background: linear-gradient(180deg, rgba(23, 31, 46, 0) 0%, #171f2e 93.51%);
+}
+
+.tab-img-overlay {
+  border-radius: 26px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.3) 67.58%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  backdrop-filter: blur(18.81816291809082px);
+  position: relative;
+  z-index: 20;
+}
+
+@utility wrapper {
+  @apply container px-5 mx-auto sm:px-7;
+}
+
+.shadow-one {
+  box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+}
+
+.benefits-bg {
+  border-radius: 20px;
+  background: linear-gradient(216deg, #a2e4e4 0%, #1c9ef6 100%);
+}
+
+.gradient-bg-two {
+  background-image: var(
+    --Gradient-2,
+    linear-gradient(97deg, #4F46E5 0%, #3B82F6 140.21%)
+  );
+}
+
+@utility hero-glow-bg {
+  background-image: linear-gradient(
+    180deg,
+    rgba(79, 70, 229, 0) 0%,
+    #4F46E5 100%
+  );
+}
+
+.core-feature-wrapper {
+  border-radius: 20px;
+  box-shadow: 0px 30px 50px -32px rgba(107, 110, 148, 0.04);
+}
+
+.core-feature-icon {
+  background-image: linear-gradient(
+    180deg,
+    #4F46E5 0%,
+    rgba(79, 70, 229, 0) 100%
+  );
+  filter: drop-shadow(0px 23px 33px rgba(87, 80, 241, 0.59));
+  width: 76px;
+  height: 76px;
+  align-items: center;
+
+  display: flex;
+  justify-content: center;
+  border-radius: 50px;
+}
+
+/* .dark .core-feature-icon {
+  border: 5px solid #9b8afb;
+} */
+
+.contact-wrapper {
+  border-radius: 24px;
+  box-shadow: 0px 32px 100px -12px rgba(16, 24, 40, 0.05);
+}
+
+.dashboard-gradient {
+  background-image: linear-gradient(
+    92deg,
+    var(--Colors-Brand-500, #4F46E5) 0%,
+    var(--Colors-Brand-200, #3B82F6) 100%
+  );
+}
+
+[data-theme="light"] .widget-bg {
+  background-image: linear-gradient(
+    180deg,
+    #f8fcff 0%,
+    #f1efff 50%,
+    #f8dcff 100%
+  );
+}
+
+[data-theme="dark"] .widget-bg {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@utility custom-scrollbar {
+  &::-webkit-scrollbar {
+    @apply w-4.5;
+  }
+
+  &::-webkit-scrollbar-track {
+    @apply rounded-full;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    @apply bg-gray-200 border-[0.35rem] border-transparent bg-clip-padding rounded-full;
+  }
+
+  [data-theme="dark"] &::-webkit-scrollbar-thumb {
+    @apply bg-gray-700;
+  }
+}
+
+/* Desktop hover behavior */
+@media (min-width: 1024px) {
+  .nav-item:hover .dropdown-menu {
+    display: block;
+  }
+
+  /* Rotate arrow on hover for desktop */
+  .nav-item:hover .dropdown-arrow {
+    transform: rotate(180deg);
+  }
+}
+
+/* Gradient border styles */
+.gradient-border {
+  position: relative;
+  background-clip: padding-box;
+  border: 1.5px solid transparent;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: -1.4px;
+  border-radius: inherit;
+  background: linear-gradient(
+    to right,
+    rgba(79, 70, 229, 0.5),
+    rgba(59, 130, 246, 0.5)
+  );
+  z-index: -1;
+}
+
+[data-theme="dark"] .gradient-border::before {
+  z-index: 5;
+}
+
+/* This hides elements with x-cloak until Alpine.js is ready */
+[x-cloak] {
+  display: none !important;
+}
+
+[data-theme="light"] .white-gradient {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 0%,
+    #fff 44.75%
+  );
+}
+
+[data-theme="dark"] .white-gradient {
+  background-image: linear-gradient(
+    180deg,
+    rgba(23, 31, 46, 0) 0%,
+    #171f2e 44.75%
+  );
+}
+
+.gradient-btn {
+  background-image: linear-gradient(97deg, #4F46E5 0%, #3B82F6 140.21%);
+  color: white;
+  background-size: 200% auto;
+  background-position: 0% center;
+  transition:
+    background-position 0.6s ease-in-out,
+    transform 0.3s ease;
+  will-change: background-position, transform;
+}
+
+.gradient-btn:hover {
+  background-image: linear-gradient(97deg, #3B82F6 0%, #4F46E5 140.21%);
+  background-position: 100% center;
+}
+
+.floating {
+  animation: float 3s ease-in-out infinite;
+}
+
+.history-item {
+  position: relative;
+  height: 40px;
+  mask-image: linear-gradient(
+    90deg,
+    #000,
+    #000 84%,
+    transparent 89%,
+    transparent
+  );
+}
+
+.history-item:hover {
+  mask-image: none;
+}
+
+/* .history-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 40px;
+  height: 40px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 16.49%,
+    #fff 90.64%
+  );
+} */
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+/* Float vertically */
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Float horizontally */
+@keyframes float-x {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(10px);
+  }
+}
+
+/* Float diagonally */
+@keyframes float-xy {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(10px, -10px);
+  }
+}
+
+/* Subtle slow float in reverse */
+@keyframes float-rev {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(8px);
+  }
+}
+
+/* Animation classes */
+.floating-1 {
+  animation: float-y 3s ease-in-out infinite;
+}
+
+.floating-2 {
+  animation: float-x 4s ease-in-out infinite;
+}
+
+.floating-3 {
+  animation: float-xy 5s ease-in-out infinite;
+}
+
+.floating-4 {
+  animation: float-rev 6s ease-in-out infinite;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==========================================================================
+   Dashboard additions
+   ========================================================================== */
+
+/* Syntax highlighting (rehype-highlight emits hljs-* classes).
+   Authored here rather than importing a highlight.js theme so that one rule set
+   serves both themes and the palette stays inside the SnapMind tokens. */
+:root {
+  --hl-comment: #8b93a7;
+  --hl-keyword: #7c3aed;
+  --hl-string: #0e7490;
+  --hl-number: #b45309;
+  --hl-title: #4f46e5;
+  --hl-type: #0369a1;
+  --hl-attr: #be185d;
+  --hl-deletion: #b42318;
+  --hl-addition: #027a48;
+}
+
+[data-theme="dark"] {
+  --hl-comment: #6b7688;
+  --hl-keyword: #c4b5fd;
+  --hl-string: #7dd3fc;
+  --hl-number: #fcd34d;
+  --hl-title: #a5b4fc;
+  --hl-type: #67e8f9;
+  --hl-attr: #f9a8d4;
+  --hl-deletion: #fda29b;
+  --hl-addition: #6ce9a6;
+}
+
+.hljs-comment,
+.hljs-quote { color: var(--hl-comment); font-style: italic; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta .hljs-keyword { color: var(--hl-keyword); }
+.hljs-string,
+.hljs-regexp,
+.hljs-template-string,
+.hljs-meta .hljs-string { color: var(--hl-string); }
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet { color: var(--hl-number); }
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name { color: var(--hl-title); font-weight: 600; }
+.hljs-type,
+.hljs-built_in,
+.hljs-class .hljs-title,
+.hljs-params { color: var(--hl-type); }
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-selector-attr,
+.hljs-selector-class,
+.hljs-selector-id { color: var(--hl-attr); }
+.hljs-deletion { color: var(--hl-deletion); }
+.hljs-addition { color: var(--hl-addition); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+
+/* Rail behind the reasoning timeline and the research agent timeline. */
+.timeline-rail::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  width: 1px;
+  background: var(--color-gray-200);
+}
+
+[data-theme="dark"] .timeline-rail::before {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Zebra striping for dashboard tables. */
+.table-zebra tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-gray-50) 60%, transparent);
+}
+
+[data-theme="dark"] .table-zebra tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Honor the OS motion preference — the landing page floats several blobs. */
+@media (prefers-reduced-motion: reduce) {
+  .floating,
+  .floating-1,
+  .floating-2,
+  .floating-3,
+  .floating-4 {
+    animation: none !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

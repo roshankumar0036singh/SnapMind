@@ -85,33 +85,100 @@ async def deep_research_endpoint(
     user_id: str = Depends(get_user_id)
 ):
     """
-    Explicit multi-hop reasoning endpoint. Decomposes a query into sub-questions 
+    Explicit multi-hop reasoning endpoint. Decomposes a query into sub-questions
     and executes a reasoning chain across web and local sources.
+
+    `ReasoningExecutor.execute_chain` is an *async generator* (it yields
+    `{"type": "thought"|"final", ...}` events), so it has to be iterated, not
+    awaited. This route drains it and returns the terminal `final` event plus the
+    thoughts it passed through, which keeps the single-JSON contract the MCP
+    server's `handle_deep_research` depends on. Use `/deep-research/stream` when
+    the caller wants the events as they happen.
     """
     data = await req.json()
     query = data.get("query")
     session_id = data.get("session_id")
     target_lang = data.get("target_language", "auto")
-    
+
     api_keys = {
         "gemini": req.headers.get("x-gemini-key"),
         "mistral": req.headers.get("x-mistral-key"),
         "groq": req.headers.get("x-groq-key"),
     }
-    
+
     if not query:
         raise HTTPException(status_code=400, detail="Query is required")
-        
+
     print(f"[API] Starting Deep Research for: {query[:50]}...")
-    
+
     from reasoning_chain import ReasoningPlanner, ReasoningExecutor
     planner = ReasoningPlanner(api_keys)
     executor = ReasoningExecutor(api_keys, session_id=session_id, output_lang=target_lang)
-    
+
     plan = planner.plan(query)
-    result = await executor.execute_chain(plan, query)
-    
-    return result
+
+    final = None
+    thoughts = []
+    async for event in executor.execute_chain(plan, query):
+        if event.get("type") == "final":
+            final = event
+        else:
+            thoughts.append(event)
+
+    if final is None:
+        raise HTTPException(status_code=500, detail="Reasoning chain produced no answer")
+
+    return {**final, "plan": plan, "thoughts": thoughts}
+
+
+@router.post("/deep-research/stream")
+async def deep_research_stream_endpoint(
+    req: Request,
+    user_id: str = Depends(get_user_id)
+):
+    """
+    Same reasoning chain, streamed as NDJSON — one JSON object per line, in the
+    order `execute_chain` yields them, terminated by the `final` event.
+
+    A multi-hop run takes minutes, and its per-step `thought` events are the only
+    honest progress signal the pipeline produces, so a UI that wants a live
+    timeline reads it from here rather than guessing at stage timings.
+    """
+    data = await req.json()
+    query = data.get("query")
+    session_id = data.get("session_id")
+    target_lang = data.get("target_language", "auto")
+
+    api_keys = {
+        "gemini": req.headers.get("x-gemini-key"),
+        "mistral": req.headers.get("x-mistral-key"),
+        "groq": req.headers.get("x-groq-key"),
+    }
+
+    if not query:
+        raise HTTPException(status_code=400, detail="Query is required")
+
+    from reasoning_chain import ReasoningPlanner, ReasoningExecutor
+    planner = ReasoningPlanner(api_keys)
+    executor = ReasoningExecutor(api_keys, session_id=session_id, output_lang=target_lang)
+
+    async def emit():
+        import json as _json
+        try:
+            plan = planner.plan(query)
+            yield _json.dumps({"type": "plan", "plan": plan}) + "\n"
+            async for event in executor.execute_chain(plan, query):
+                yield _json.dumps(event) + "\n"
+        except Exception as e:
+            print(f"[API] Deep research stream failed: {e}")
+            yield _json.dumps({"type": "error", "error": str(e)}) + "\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        emit(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 @router.post("/scrape")
 async def live_scrape_endpoint(
@@ -239,8 +306,23 @@ async def debate_endpoint(
     except Exception as e:
         debate_transcript = f"Error generating debate transcript: {str(e)}\n\nProponent:\n{pro_res.get('answer')}\n\nSkeptic:\n{con_res.get('answer')}"
         
-    combined_sources = list(set(pro_res.get("citations", []) + con_res.get("citations", [])))
-    
+    # Citations are dicts (`{blockId, snippet, highlightUrl}` — browser_agents.py:606),
+    # so `set()` could not dedupe them: it raised `TypeError: unhashable type: 'dict'`
+    # and took the whole endpoint down with it after both agents had already run.
+    # Dedupe on the highlight URL instead, keeping the order the two agents produced.
+    combined_sources = []
+    seen_citations = set()
+    for citation in list(pro_res.get("citations", [])) + list(con_res.get("citations", [])):
+        key = (
+            citation.get("highlightUrl") or citation.get("snippet") or citation.get("blockId")
+            if isinstance(citation, dict)
+            else citation
+        )
+        if key in seen_citations:
+            continue
+        seen_citations.add(key)
+        combined_sources.append(citation)
+
     return {
         "success": True,
         "topic": topic,

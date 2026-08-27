@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "SnapMind — AI Research & Knowledge Assistant",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "description": "AI research assistant. Chat with any webpage, ingest documents, build knowledge graphs, and get cited answers in your sidebar.",
     "permissions": [
         "sidePanel",

@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from repositories.workspace_repository import WorkspaceRepository
 from security import get_user_id
 from pydantic import BaseModel
+from uuid import UUID
 
 router = APIRouter()
 repo = WorkspaceRepository()
@@ -12,9 +13,9 @@ class WorkspaceCreate(BaseModel):
     metadata: Dict[str, Any] = {}
 
 class WorkspaceResponse(BaseModel):
-    id: str
+    id: UUID
     name: str
-    owner_id: str
+    owner_id: UUID
     created_at: Any
     metadata: Dict[str, Any]
 

@@ -28,7 +28,11 @@ async def chat_endpoint(
         user_id=user_id,
         workspace_id=request.workspace_id,
         tenant_id="default",
-        filters=filters
+        filters=filters,
+        # None on any of these means "whatever this deployment configured".
+        use_reranking=request.use_reranking,
+        use_graphrag=request.use_graphrag,
+        use_query_enhancement=request.use_query_enhancement,
     )
     
     # If using local RAG via page_content, we can mock the search
@@ -90,11 +94,14 @@ async def chat_stream_endpoint(
             filters["source_urls"] = [s.strip() for s in request.site_id.split(",")]
             
         dto = SearchRequestDTO(
-            query=request.query, 
-            session_id=request.session_id, 
-            user_id=user_id, 
+            query=request.query,
+            session_id=request.session_id,
+            user_id=user_id,
             workspace_id=request.workspace_id,
-            filters=filters
+            filters=filters,
+            use_reranking=request.use_reranking,
+            use_graphrag=request.use_graphrag,
+            use_query_enhancement=request.use_query_enhancement,
         )
         
         fallback_triggered = False
@@ -153,7 +160,9 @@ async def chat_stream_endpoint(
             request=dto,
             api_keys=api_keys,
             output_lang=request.output_lang,
-            history=request.history
+            history=request.history,
+            query_notebook=request.query_notebook,
+            persona_id=request.persona_id
         ):
             yield chunk
 

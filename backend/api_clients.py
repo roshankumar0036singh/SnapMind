@@ -46,9 +46,9 @@ def get_gemini_client(api_keys=None):
     api_keys = api_keys or {}
     key = api_keys.get("gemini")
     if not key:
-        key = os.getenv("GOOGLE_API_KEY")
+        key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not key:
-        raise ValueError("Missing GOOGLE_API_KEY")
+        raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY")
     return genai.Client(api_key=key.strip())
 
 def get_mistral_client(api_keys=None):

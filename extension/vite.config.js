@@ -16,10 +16,11 @@ export default defineConfig({
   ],
   base: './',
   esbuild: {
-    // Re-enable consoles for auth debugging
     drop: ['debugger'],
+    pure: ['console.log', 'console.info', 'console.debug'],
   },
   build: {
+    modulePreload: false,
     rollupOptions: {
       input: {
         sidepanel: resolve(__dirname, 'src/sidepanel/index.html'),

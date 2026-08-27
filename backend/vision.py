@@ -84,7 +84,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                 json={
-                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                    "model": "qwen/qwen3.6-27b",
                     "messages": [
                         {"role": "system", "content": system_instruction},
                         {
@@ -100,7 +100,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
             )
             if res.status_code == 200:
                 answer = res.json()["choices"][0]["message"]["content"]
-                result = {"answer": answer, "success": True, "model_used": "llama-4-scout"}
+                result = {"answer": answer, "success": True, "model_used": "qwen3.6-27b"}
                 save_to_cache(img_hash, mode, final_prompt, result)
                 return result
             else:
@@ -111,7 +111,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
     # 2. Secondary: Gemini 2.0 Flash (Fallback)
     try:
         client = get_gemini_client(api_keys)
-        print("[VISION] Attempting Gemini 2.0 Flash (Fallback)...")
+        print("[VISION] Attempting Gemini Flash (Fallback)...")
         from google.genai import types
         
         response = client.models.generate_content(

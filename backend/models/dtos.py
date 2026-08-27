@@ -11,6 +11,10 @@ class SearchRequestDTO(BaseModel):
     workspace_id: Optional[str] = None
     limit: int = 5
     filters: Dict[str, Any] = Field(default_factory=dict)
+    # Per-request retrieval overrides; None = fall back to config.py.
+    use_reranking: Optional[bool] = None
+    use_graphrag: Optional[bool] = None
+    use_query_enhancement: Optional[bool] = None
 
 class IngestRequestDTO(BaseModel):
     """Standardized ingestion request for URLs or Text"""
@@ -22,6 +26,9 @@ class IngestRequestDTO(BaseModel):
     user_id: Optional[str] = None
     workspace_id: Optional[str] = None
     stream: bool = False
+    crawl_mode: str = "single"  # "single" or "crawl" (multi-page)
+    max_pages: int = 50
+    max_depth: int = 3
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class JobStatusDTO(BaseModel):

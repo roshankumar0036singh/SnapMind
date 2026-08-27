@@ -135,6 +135,15 @@ class ReasoningExecutor:
                 "status": "processing"
             }
 
+            # Initialised before the try so a failing step degrades to an empty
+            # result instead of raising NameError below: `step_sources` and
+            # `step_citations` are both read unconditionally after this block, so
+            # without this one bad step aborts the whole chain.
+            step_answer = ""
+            step_sources = []
+            step_citations = []
+            step_blocks = []
+
             try:
                 if tool == "local_rag":
                     # Call async local rag

@@ -13,9 +13,9 @@ class ModelSettings(BaseSettings):
     mistral_embed: str = Field("mistral-embed", env="MISTRAL_EMBED_MODEL")
     
     # Gemini Models
-    gemini_flash: str = Field("gemini-2.0-flash", env="GEMINI_FLASH_MODEL")
-    gemini_flash_lite: str = Field("gemini-2.0-flash-lite", env="GEMINI_FLASH_LITE_MODEL")
-    gemini_pro: str = Field("gemini-1.5-pro", env="GEMINI_PRO_MODEL")
+    gemini_flash: str = Field("gemini-3.6-flash", env="GEMINI_FLASH_MODEL")
+    gemini_flash_lite: str = Field("gemini-3.6-flash", env="GEMINI_FLASH_LITE_MODEL")
+    gemini_pro: str = Field("gemini-2.5-pro", env="GEMINI_PRO_MODEL")
 
 class DatabaseSettings(BaseSettings):
     """Database configuration"""
