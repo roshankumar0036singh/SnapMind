@@ -79,86 +79,88 @@ function ResearchScreen() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <PageHeader
-        icon={<Compass className="h-6 w-6" />}
-        accent="text-rose-600 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400"
-        title="Research"
-        description="Agents that go out to the live web, read what they find, and cite it. Every run indexes its sources, so anything researched here is answerable in chat afterwards."
-        actions={<Pill tone="neutral">7 modes</Pill>}
-      />
+    <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto custom-scrollbar">
+      <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <PageHeader
+          icon={<Compass className="h-6 w-6" />}
+          accent="text-rose-600 bg-rose-50 dark:bg-rose-500/10 dark:text-rose-400"
+          title="Research"
+          description="Agents that go out to the live web, read what they find, and cite it. Every run indexes its sources, so anything researched here is answerable in chat afterwards."
+          actions={<Pill tone="neutral">7 modes</Pill>}
+        />
 
-      {/* Mode strip. Scrolls sideways on narrow screens rather than wrapping, so
-          the row never reflows the panel underneath it mid-run. */}
-      <div>
-        <div
-          role="tablist"
-          aria-label="Research mode"
-          className="custom-scrollbar flex gap-1.5 overflow-x-auto rounded-2xl bg-gray-50 p-1.5 dark:bg-white/[0.04]"
-        >
-          {MODES.map((m) => {
-            const active = m.id === mode.id;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => select(m.id)}
-                title={m.blurb}
-                className={cn(
-                  'group flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-[12.5px] font-medium transition',
-                  active
-                    ? 'border-gray-200 bg-white text-gray-900 shadow-theme-xs dark:border-white/15 dark:bg-white/10 dark:text-white'
-                    : 'border-transparent text-gray-500 hover:bg-white/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
-                )}
-              >
-                <span
+        {/* Mode strip. Scrolls sideways on narrow screens rather than wrapping, so
+            the row never reflows the panel underneath it mid-run. */}
+        <div>
+          <div
+            role="tablist"
+            aria-label="Research mode"
+            className="custom-scrollbar flex gap-1.5 overflow-x-auto rounded-2xl bg-gray-50 p-1.5 dark:bg-white/[0.04]"
+          >
+            {MODES.map((m) => {
+              const active = m.id === mode.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => select(m.id)}
+                  title={m.blurb}
                   className={cn(
-                    'flex h-6 w-6 items-center justify-center rounded-lg transition',
+                    'group flex shrink-0 items-center gap-2 rounded-xl border px-2.5 py-2 text-[12.5px] font-medium transition',
                     active
-                      ? m.accent
-                      : 'bg-gray-200/70 text-gray-400 group-hover:text-gray-600 dark:bg-white/10 dark:text-gray-500 dark:group-hover:text-gray-300',
+                      ? 'border-gray-200 bg-white text-gray-900 shadow-theme-xs dark:border-white/15 dark:bg-white/10 dark:text-white'
+                      : 'border-transparent text-gray-500 hover:bg-white/70 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white',
                   )}
                 >
-                  <m.icon className="h-3.5 w-3.5" />
-                </span>
-                {m.label}
-              </button>
-            );
-          })}
+                  <span
+                    className={cn(
+                      'flex h-6 w-6 items-center justify-center rounded-lg transition',
+                      active
+                        ? m.accent
+                        : 'bg-gray-200/70 text-gray-400 group-hover:text-gray-600 dark:bg-white/10 dark:text-gray-500 dark:group-hover:text-gray-300',
+                    )}
+                  >
+                    <m.icon className="h-3.5 w-3.5" />
+                  </span>
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2.5 px-1 text-[12.5px] leading-relaxed text-gray-500 dark:text-gray-400">
+            {mode.blurb}.
+          </p>
         </div>
-        <p className="mt-2.5 px-1 text-[12.5px] leading-relaxed text-gray-500 dark:text-gray-400">
-          {mode.blurb}.
-        </p>
-      </div>
 
-      {/* Keyed by mode so switching tabs starts the next mode clean instead of
-          leaving a half-finished run's state behind it. */}
-      <div role="tabpanel" aria-label={mode.label} key={mode.id}>
-        {mode.id === 'browser' && (
-          <BrowserPanel
-            sessionId={sessionId}
-            workspaceId={workspaceId}
-            initialQuery={initialQuery}
-          />
-        )}
-        {mode.id === 'deep' && <DeepPanel sessionId={sessionId} initialQuery={initialQuery} />}
-        {mode.id === 'report' && (
-          <ReportPanel initialQuery={initialQuery} handoffSessions={handoffSessions} />
-        )}
-        {mode.id === 'debate' && <DebatePanel sessionId={sessionId} initialQuery={initialQuery} />}
-        {mode.id === 'person' && <PersonPanel sessionId={sessionId} initialQuery={initialQuery} />}
-        {mode.id === 'lingual' && (
-          <LingualPanel sessionId={sessionId} initialQuery={initialQuery} />
-        )}
-        {mode.id === 'scrape' && (
-          <ScrapePanel
-            sessionId={sessionId}
-            workspaceId={workspaceId}
-            initialQuery={initialQuery}
-          />
-        )}
+        {/* Keyed by mode so switching tabs starts the next mode clean instead of
+            leaving a half-finished run's state behind it. */}
+        <div role="tabpanel" aria-label={mode.label} key={mode.id}>
+          {mode.id === 'browser' && (
+            <BrowserPanel
+              sessionId={sessionId}
+              workspaceId={workspaceId}
+              initialQuery={initialQuery}
+            />
+          )}
+          {mode.id === 'deep' && <DeepPanel sessionId={sessionId} initialQuery={initialQuery} />}
+          {mode.id === 'report' && (
+            <ReportPanel initialQuery={initialQuery} handoffSessions={handoffSessions} />
+          )}
+          {mode.id === 'debate' && <DebatePanel sessionId={sessionId} initialQuery={initialQuery} />}
+          {mode.id === 'person' && <PersonPanel sessionId={sessionId} initialQuery={initialQuery} />}
+          {mode.id === 'lingual' && (
+            <LingualPanel sessionId={sessionId} initialQuery={initialQuery} />
+          )}
+          {mode.id === 'scrape' && (
+            <ScrapePanel
+              sessionId={sessionId}
+              workspaceId={workspaceId}
+              initialQuery={initialQuery}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

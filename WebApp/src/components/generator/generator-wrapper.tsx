@@ -74,13 +74,13 @@ export default function GeneratorWrapper({ children }: { children: React.ReactNo
     >
       <div
         className={cn(
-          'isolate relative grid w-full h-full',
+          'isolate relative grid w-full h-full min-h-0 grid-rows-[100%]',
           showRightRail ? 'grid-cols-[auto_1fr_auto]' : 'grid-cols-[auto_1fr]',
         )}
       >
         <GeneratorSidebar sidebarOpen={sidebarOpen} />
 
-        <div className="flex flex-col min-w-0 h-full overflow-hidden">
+        <div className="flex flex-col min-w-0 h-full min-h-0 overflow-hidden">
           {/* Mobile top bar — the sidebar is a drawer below lg. */}
           <header className="lg:hidden flex items-center gap-3 px-4 h-14 shrink-0 border-b border-gray-200 dark:border-white/10 bg-white dark:bg-dark-secondary">
             <button
