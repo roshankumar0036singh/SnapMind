@@ -222,7 +222,7 @@ function ChatScreen() {
   }
 
   return (
-    <>
+    <div className="flex flex-col flex-1 min-h-0 h-full relative">
       <div className="pointer-events-none absolute right-4 top-4 z-30 sm:right-6 sm:top-6">
         <Button
           variant="soft"
@@ -278,7 +278,7 @@ function ChatScreen() {
       </div>
 
       <IngestionModal isOpen={ingestOpen} onClose={() => setIngestOpen(false)} />
-    </>
+    </div>
   );
 }
 

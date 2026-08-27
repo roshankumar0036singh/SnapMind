@@ -224,11 +224,13 @@ export function AnswerPanel({
 
       <Markdown content={answer} blocks={blocks} />
 
-      {blocks.length > 0 ? (
-        <MessageSources blocks={blocks} />
-      ) : (
-        <SourceLinkList links={links} />
-      )}
+      <div className="border-t border-gray-100 dark:border-white/10 pt-4 mt-6 pb-2">
+        {blocks.length > 0 ? (
+          <MessageSources blocks={blocks} />
+        ) : (
+          <SourceLinkList links={links} />
+        )}
+      </div>
 
       {footnote && (
         <p className="border-t border-gray-100 pt-3 text-[11.5px] leading-relaxed text-gray-500 dark:border-white/10 dark:text-gray-400">

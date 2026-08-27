@@ -84,7 +84,7 @@ function SettingsScreen() {
     router.replace(next === DEFAULT_TAB ? '/settings' : `/settings?tab=${next}`, { scroll: false });
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar bg-gray-50/60 dark:bg-dark-secondary">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-gray-50/60 dark:bg-dark-secondary">
       <div className="mx-auto max-w-6xl space-y-6 p-6 lg:p-8">
         <PageHeader
           icon={<Settings className="h-6 w-6" />}

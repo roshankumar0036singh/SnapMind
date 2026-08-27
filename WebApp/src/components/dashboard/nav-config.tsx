@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   LayoutDashboard,
   Library,
+  MessageSquareText,
   Network,
   Settings,
   Sparkles,
@@ -53,7 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
         href: '/text-generator',
         label: 'RAG Chat',
         blurb: 'Ask your indexed knowledge, with citations',
-        icon: <TextGeneratorIcon className="w-5 h-5" />,
+        icon: ic(MessageSquareText, 'text-primary-500'),
         accent: 'text-primary-600 bg-primary-50 dark:bg-primary-500/10',
       },
       {
