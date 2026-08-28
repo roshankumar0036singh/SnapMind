@@ -240,7 +240,7 @@ function ChatScreen() {
           {chat.isEmpty ? (
             <Welcome onPick={(p) => chat.send(p)} />
           ) : (
-            <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+            <div className="mx-auto w-full max-w-4xl space-y-6 px-4 pb-6 pt-16 sm:px-6 sm:pb-8 sm:pt-20">
               {chat.messages.map((m, i) => (
                 <Message
                   key={m.id}

@@ -3,22 +3,16 @@ import os
 import time
 import requests
 import json
-import socket
 import ssl
 from typing import Tuple, List, Dict, Any
 from api_clients import get_firecrawl_key
-
-# Prevent urllib and sockets from hanging indefinitely on dropped connections
-socket.setdefaulttimeout(15)
+import asyncio
 
 # Bypass strict SSL interception that causes CERTIFICATE_VERIFY_FAILED or UNEXPECTED_EOF
 try:
     ssl._create_default_https_context = ssl._create_unverified_context
 except AttributeError:
     pass
-
-# Global DNS Cache to avoid redundant DoH lookups
-DNS_CACHE = {}
 
 def extract_video_id(url: str) -> str:
     """Extract YouTube video ID from standard or short URLs."""
@@ -33,221 +27,134 @@ def vtt_time_to_seconds(time_str: str) -> float:
         sec += float(part) * (60 ** i)
     return sec
 
+def _fetch_title(video_id: str) -> str | None:
+    """Fast title fetch via YouTube's public oEmbed endpoint (no auth needed)."""
+    try:
+        resp = requests.get(
+            f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json",
+            timeout=3
+        )
+        if resp.ok:
+            return resp.json().get("title")
+    except Exception:
+        pass
+    return None
+
 def get_youtube_transcript(url: str, api_keys: dict = None) -> Tuple[bool, str, str, str | None]:
     """
-    Orchestrates YouTube transcript extraction:
-    1. Primary: Internal robust hybrid logic (yt-dlp, pytubefix, InnerTube)
-    2. Fallback: Embedded player scraping
+    Orchestrates YouTube transcript extraction with a global timeout.
     """
-    # Orchestrate local and hybrid logic
+    import threading
 
-    # Fallback to local logic
-    import socket
-    import sys
-    
-    old_getaddrinfo = socket.getaddrinfo
-    is_windows = sys.platform == "win32"
-    
-    def robust_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-        # 0. Check Cache First
-        cache_key = (host, port, family)
-        if cache_key in DNS_CACHE:
-            return DNS_CACHE[cache_key]
+    def _run_with_timeout(func, args, timeout):
+        result = [False, "", "Global timeout exceeded", None]
+        def _wrapper():
+            try:
+                result[0], result[1], result[2], result[3] = func(*args)
+            except Exception as e:
+                result[2] = f"Unhandled error: {e}"
 
-        # 1. Prevent recursion and handle known IPs directly
-        if host in ["1.1.1.1", "8.8.8.8", "dns.google", "cloudflare-dns.com"]:
-            return old_getaddrinfo(host, port, family, type, proto, flags)
+        thread = threading.Thread(target=_wrapper)
+        thread.start()
+        thread.join(timeout)
+        if thread.is_alive():
+            print(f"[YOUTUBE_PARSER] Global timeout ({timeout}s) exceeded for {url}")
+        return tuple(result)
 
-        # 2. On Windows, we often need to force AF_INET to avoid [Errno -5]
-        effective_family = family
-        if is_windows and (family == socket.AF_UNSPEC or family == 0):
-            effective_family = socket.AF_INET
-        
-        try:
-            res = old_getaddrinfo(host, port, effective_family, type, proto, flags)
-            DNS_CACHE[cache_key] = res
-            return res
-        except socket.gaierror as e:
-            # Fallback level 1: If it fails with AF_INET, try AF_UNSPEC
-            if effective_family == socket.AF_INET:
-                try:
-                    res = old_getaddrinfo(host, port, socket.AF_UNSPEC, type, proto, flags)
-                    DNS_CACHE[cache_key] = res
-                    return res
-                except: pass
-            
-            # Fallback level 2: Common DNS issue for www.youtube.com vs youtube.com
-            if "youtube.com" in host:
-                alt_host = "youtube.com" if host.startswith("www.") else f"www.{host}"
-                try:
-                    res = old_getaddrinfo(alt_host, port, effective_family, type, proto, flags)
-                    DNS_CACHE[cache_key] = res
-                    return res
-                except: pass
-
-            # Fallback level 3: DNS-over-HTTPS (DoH) using Cloudflare
-            if "youtube.com" in host or "youtu.be" in host:
-                try:
-                    print(f"[YOUTUBE_PARSER] [DNS_FALLBACK] Attempting DoH for {host} via 1.1.1.1")
-                    doh_url = "https://1.1.1.1/dns-query"
-                    doh_params = {"name": host, "type": "A"}
-                    doh_headers = {"accept": "application/dns-json"}
-                    
-                    response = requests.get(doh_url, params=doh_params, headers=doh_headers, timeout=3)
-                    if response.status_code == 200:
-                        data = response.json()
-                        ips = [ans["data"] for ans in data.get("Answer", []) if ans.get("type") == 1]
-                        if ips:
-                            print(f"[YOUTUBE_PARSER] [DNS_FALLBACK] DoH Success: Resolved {host} to {ips[0]}")
-                            results = []
-                            for ip in ips:
-                                results.append((socket.AF_INET, socket.SOCK_STREAM, 6, '', (ip, port)))
-                            DNS_CACHE[cache_key] = results
-                            return results
-                except Exception as doh_err:
-                    print(f"[YOUTUBE_PARSER] [DNS_FALLBACK] DoH failed: {doh_err}")
-            
-            raise e
-
-    socket.getaddrinfo = robust_getaddrinfo
-    try:
-        return _get_youtube_transcript_internal(url)
-    finally:
-        socket.getaddrinfo = old_getaddrinfo
-
+    return _run_with_timeout(_get_youtube_transcript_internal, (url,), 60.0)
 
 def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | None]:
     """
     Fetches the transcript for a YouTube video using a robust hybrid approach:
     1. Primary: youtube-transcript-api (Fast, official-ish API)
-    2. Secondary: yt-dlp (Strongest downloader/parser)
-    3. Fallback: pytubefix (Aggressive backup)
-    Returns: (is_success, text_content, error_message)
+    2. Secondary: Raw InnerTube API
+    3. Third: Embedded Player Scraping
+    4. Fourth: pytubefix
+    5. Fallback: yt-dlp
+    Returns: (is_success, text_content, error_message, title)
     """
     video_id = extract_video_id(url)
     if not video_id:
         return False, "", "Invalid YouTube URL format.", None
 
-    max_retries = 2
     errors = []
-
-    # --- ATTEMPT 1: pytubefix (Last Resort) ---
-    print(f"[YOUTUBE_PARSER] Falling back to pytubefix for: {video_id}")
-    for attempt in range(max_retries + 1):
-        try:
-            from pytubefix import YouTube
-            yt = YouTube(
-                f"https://www.youtube.com/watch?v={video_id}",
-                use_oauth=False,
-                allow_oauth_cache=False
-            )
-
-            caption = None
-            all_captions = list(yt.captions)
-            for lang_code in ['en', 'a.en', 'en-US', 'en-GB']:
-                for cap in all_captions:
-                    if cap.code == lang_code:
-                        caption = cap
-                        break
-                if caption: break
-
-            if not caption and all_captions:
-                caption = all_captions[0]
-
-            if caption:
-                print(f"[YOUTUBE_PARSER] pytubefix using: {caption.code}")
-                try:
-                    full_text = format_pytubefix_captions(caption)
-                except:
-                    xml_captions = caption.xml_captions
-                    full_text = parse_xml_captions(xml_captions)
-                
-                if full_text:
-                    return True, full_text, "", getattr(yt, 'title', None)
-            
-            if attempt < max_retries:
-                time.sleep(1)
-                continue
-
-        except Exception as e:
-            err_msg = f"pytubefix error (Attempt {attempt+1}): {e}"
-            print(f"[YOUTUBE_PARSER] {err_msg}")
-            if any(key in str(e).lower() for key in ["errno -5", "name_not_resolved", "connection", "ssl", "eof"]):
-                print(f"[YOUTUBE_PARSER] Intermittent network drop detected. Retrying pytubefix in {2 ** attempt} seconds...")
-                time.sleep(2 ** attempt)
-                continue
-            errors.append(err_msg)
-            break
     
-    # --- ATTEMPT 2: youtube-transcript-api ---
-    try:
-        import youtube_transcript_api
-        # Direct class access to avoid potential import/shadowing issues causing AttributeError
-        YTTA = getattr(youtube_transcript_api, 'YouTubeTranscriptApi', None)
-        
-        if YTTA:
-            print(f"[YOUTUBE_PARSER] Attempting youtube-transcript-api for: {video_id}")
-            
-            # Robust Check for list_transcripts
-            transcript_list = None
-            if hasattr(YTTA, 'list_transcripts'):
-                try:
-                    transcript_list = YTTA.list_transcripts(video_id)
-                except Exception as e:
-                    print(f"[YOUTUBE_PARSER] list_transcripts call failed: {e}")
-            
-            transcript = None
-            if transcript_list:
-                try:
-                    transcript = transcript_list.find_transcript(['en', 'en-US', 'en-GB'])
-                except:
-                    try:
-                        transcript = next(iter(transcript_list))
-                    except StopIteration:
-                        pass
-            
-            data = None
-            if transcript:
-                print(f"[YOUTUBE_PARSER] Using transcript language: {transcript.language} ({transcript.language_code})")
-                data = transcript.fetch()
-            elif hasattr(YTTA, 'get_transcript'):
-                print(f"[YOUTUBE_PARSER] Falling back to direct get_transcript")
-                data = YTTA.get_transcript(video_id)
-            
-            if data:
-                full_text = format_transcript_data(data)
-                if full_text:
-                    return True, full_text, "", None
-        else:
-            print("[YOUTUBE_PARSER] Warning: YouTubeTranscriptApi class not found in module.")
-            errors.append("YouTubeTranscriptApi missing in module")
+    # Pre-fetch title
+    title = _fetch_title(video_id)
 
+    # --- ATTEMPT 1: youtube-transcript-api (v1.2.4 compat) ---
+    try:
+        print(f"[YOUTUBE_PARSER] Attempting youtube-transcript-api for: {video_id}")
+        from youtube_transcript_api import YouTubeTranscriptApi
+        ytt_api = YouTubeTranscriptApi()
+        transcript_data = ytt_api.fetch(video_id, languages=['en', 'en-US', 'en-GB', 'a.en'])
+        if transcript_data:
+            full_text = format_transcript_data(transcript_data)
+            if full_text:
+                return True, full_text, "", title
     except Exception as e:
         err_msg = f"youtube-transcript-api error: {e}"
         print(f"[YOUTUBE_PARSER] {err_msg}")
         errors.append(err_msg)
 
-    # --- ATTEMPT 3: Raw InnerTube API (Fast & High Fidelity) ---
+    # --- ATTEMPT 2: Raw InnerTube API (Fast & High Fidelity) ---
     print(f"[YOUTUBE_PARSER] Falling back to Raw InnerTube for: {video_id}")
     success, text, it_err = get_innertube_transcript(video_id)
     if success:
-        return True, text, "", None
+        return True, text, "", title
     errors.append(f"InnerTube error: {it_err}")
     
-    # --- ATTEMPT 4: Embedded Player Scraping (Fast & Reliable) ---
+    # --- ATTEMPT 3: Embedded Player Scraping (Fast & Reliable) ---
     print(f"[YOUTUBE_PARSER] Falling back to Embedded Player for: {video_id}")
     success, text, embed_err = get_embedded_transcript(video_id)
     if success:
-        return True, text, "", None
+        return True, text, "", title
     errors.append(f"Embedded error: {embed_err}")
+
+    # --- ATTEMPT 4: pytubefix ---
+    print(f"[YOUTUBE_PARSER] Falling back to pytubefix for: {video_id}")
+    try:
+        from pytubefix import YouTube
+        yt = YouTube(
+            f"https://www.youtube.com/watch?v={video_id}",
+            use_oauth=False,
+            allow_oauth_cache=False
+        )
+
+        caption = None
+        all_captions = list(yt.captions)
+        for lang_code in ['en', 'a.en', 'en-US', 'en-GB']:
+            for cap in all_captions:
+                if cap.code == lang_code:
+                    caption = cap
+                    break
+            if caption: break
+
+        if not caption and all_captions:
+            caption = all_captions[0]
+
+        if caption:
+            print(f"[YOUTUBE_PARSER] pytubefix using: {caption.code}")
+            try:
+                full_text = format_pytubefix_captions(caption)
+            except:
+                xml_captions = caption.xml_captions
+                full_text = parse_xml_captions(xml_captions)
+            
+            if full_text:
+                if not title:
+                    title = getattr(yt, 'title', None)
+                return True, full_text, "", title
+
+    except Exception as e:
+        err_msg = f"pytubefix error: {e}"
+        print(f"[YOUTUBE_PARSER] {err_msg}")
+        errors.append(err_msg)
 
     # --- ATTEMPT 5: yt-dlp (Robust but Heavy/Slow Fallback) ---
     try:
         import yt_dlp
         print(f"[YOUTUBE_PARSER] Attempting yt-dlp for: {video_id}")
-        
-        import sys
-        is_windows = sys.platform == "win32"
         
         ydl_opts = {
             'skip_download': True,
@@ -266,9 +173,6 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
             'user_agent': 'Mozilla/5.0 (PlayStation 5 8.20) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
         }
         
-        if is_windows:
-            ydl_opts['source_address'] = '0.0.0.0'
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             subtitles = info.get('requested_subtitles') or {}
@@ -284,7 +188,9 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
                 if isinstance(sub_content, str):
                     full_text = parse_vtt_content(sub_content)
                     if full_text:
-                        return True, full_text, "", info.get('title')
+                        if not title:
+                            title = info.get('title')
+                        return True, full_text, "", title
                 
     except Exception as e:
         err_msg = f"yt-dlp error: {e}"
@@ -292,7 +198,7 @@ def _get_youtube_transcript_internal(url: str) -> Tuple[bool, str, str, str | No
         errors.append(err_msg)
 
     combined_errors = " | ".join(errors)
-    return False, "", f"Transcript fetch failed. Errors: {combined_errors}", None
+    return False, "", f"Transcript fetch failed. Errors: {combined_errors}", title
 
 def get_innertube_transcript(video_id: str) -> Tuple[bool, str, str]:
     """Directly call YouTube's InnerTube API with multiple client fallbacks."""
@@ -324,7 +230,7 @@ def get_innertube_transcript(video_id: str) -> Tuple[bool, str, str]:
                 "X-Goog-Visitor-Id": "Cgt5MWFRS2l2RjB3byippd" # Dummy visitor data
             }
             
-            resp = session.post(player_url, headers=headers, json=player_payload, timeout=5).json()
+            resp = session.post(player_url, headers=headers, json=player_payload, timeout=3).json()
             
             # Look for captions
             captions = resp.get("captions", {}).get("playerCaptionsTracklistRenderer", {})
@@ -334,7 +240,7 @@ def get_innertube_transcript(video_id: str) -> Tuple[bool, str, str]:
                 track_url = tracks[0].get("baseUrl")
                 if "fmt=" not in track_url: track_url += "&fmt=vtt"
                 
-                t_resp = session.get(track_url, timeout=5).text
+                t_resp = session.get(track_url, timeout=3).text
                 full_text = parse_xml_captions(t_resp) if "<transcript>" in t_resp else parse_vtt_content(t_resp)
                 if full_text:
                     return True, full_text, ""
@@ -356,7 +262,7 @@ def get_embedded_transcript(video_id: str) -> Tuple[bool, str, str]:
             "Accept-Language": "en-US,en;q=0.9",
         }
         
-        resp = requests.get(url, headers=headers, timeout=5).text
+        resp = requests.get(url, headers=headers, timeout=3).text
         
         # 1. Try to find ytInitialPlayerResponse
         player_match = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', resp)
@@ -383,7 +289,7 @@ def get_embedded_transcript(video_id: str) -> Tuple[bool, str, str]:
                 
                 if track_url:
                     # Append fmt=vtt for easier parsing if needed
-                    t_resp = requests.get(track_url, timeout=5).text
+                    t_resp = requests.get(track_url, timeout=3).text
                     full_text = parse_xml_captions(t_resp) if "<transcript>" in t_resp else parse_vtt_content(t_resp)
                     if full_text:
                         print(f"[YOUTUBE_PARSER] Embedded success for: {video_id}")
@@ -394,7 +300,7 @@ def get_embedded_transcript(video_id: str) -> Tuple[bool, str, str]:
         if caption_urls:
             url = caption_urls[0].strip('"').replace('\\u0026', '&')
             if "fmt=" not in url: url += "&fmt=vtt"
-            t_resp = requests.get(url, timeout=5).text
+            t_resp = requests.get(url, timeout=3).text
             full_text = parse_vtt_content(t_resp)
             if full_text:
                 return True, full_text, ""
@@ -406,9 +312,7 @@ def get_embedded_transcript(video_id: str) -> Tuple[bool, str, str]:
 
 def format_pytubefix_captions(caption) -> str:
     """Helper to format pytubefix caption data consistently."""
-    # pytubefix captions can be converted to srt or vtt
-    vtt_text = caption.generate_srt_captions() # Actually generates SRT, but we can parse it
-    # Reuse parse_vtt logic with slight adjustment for SRT if needed
+    vtt_text = caption.generate_srt_captions()
     lines = vtt_text.splitlines()
     full_text = ""
     current_timestamp = "[00:00]"
@@ -437,17 +341,22 @@ def format_transcript_data(data: list) -> str:
     """Helper to format youtube-transcript-api data."""
     full_text = ""
     for entry in data:
-        start_sec = entry['start']
+        if isinstance(entry, dict):
+            start_sec = entry.get('start', 0)
+            text = entry.get('text', '')
+        else:
+            start_sec = getattr(entry, 'start', 0)
+            text = getattr(entry, 'text', '')
+            
         mins = int(start_sec // 60)
         secs = int(start_sec % 60)
         timestamp = f"[{mins:02d}:{secs:02d}]"
-        text = entry['text'].replace('\n', ' ').strip()
+        text = text.replace('\n', ' ').strip()
         if text:
             full_text += f"{timestamp} {text} \n"
     return full_text.strip()
 
 def parse_vtt_content(vtt_text: str) -> str:
-    """Simple parser for VTT content from yt-dlp."""
     lines = vtt_text.splitlines()
     full_text = ""
     current_timestamp = "[00:00]"

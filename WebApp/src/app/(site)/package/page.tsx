@@ -17,31 +17,28 @@ export default function PackagePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#0b0f19] text-white selection:bg-primary-500 selection:text-white pb-20">
-      {/* Background Gradients */}
-      <div className="absolute top-0 left-0 w-full h-[600px] bg-gradient-to-b from-primary-900/20 via-transparent to-transparent pointer-events-none z-0" />
-
+    <main className="min-h-screen pt-16 text-gray-900 dark:text-white selection:bg-primary-500 selection:text-white pb-20 relative overflow-hidden">
       <div className="wrapper max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 relative z-10">
         
         {/* Breadcrumb / Top Info */}
         <div className="flex justify-center mb-6">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary-500/10 text-primary-400 border border-primary-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-500/20">
             npm v1.5.2 is live
           </span>
         </div>
 
         {/* Hero Section */}
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight bg-gradient-to-r from-white via-gray-200 to-gray-500 bg-clip-text text-transparent mb-6">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight bg-gradient-to-r from-gray-900 via-gray-700 to-gray-500 dark:from-white dark:via-gray-200 dark:to-gray-500 bg-clip-text text-transparent mb-6">
             SnapMind AI CLI Package
           </h1>
-          <p className="text-lg text-gray-400 leading-relaxed mb-8">
+          <p className="text-lg text-gray-600 dark:text-gray-400 leading-relaxed mb-8">
             Persona-based RAG CLI for local AI, semantic vector search, PDF/code/data ingestion, and terminal-native knowledge workflows with LanceDB and Ollama.
           </p>
 
           {/* Copyable Install Command */}
-          <div className="max-w-md mx-auto p-1.5 bg-gray-900/60 backdrop-blur-md rounded-2xl border border-gray-800 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 pl-3 text-sm text-gray-300 font-mono">
+          <div className="max-w-md mx-auto p-1.5 bg-white dark:bg-gray-900/60 shadow-sm dark:shadow-none backdrop-blur-md rounded-2xl border border-gray-200 dark:border-gray-800 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 pl-3 text-sm text-gray-700 dark:text-gray-300 font-mono">
               <Terminal className="h-4 w-4 text-primary-500" />
               <span>npm install -g snapmind-ai</span>
             </div>
@@ -55,7 +52,7 @@ export default function PackagePage() {
             href="https://www.npmjs.com/package/snapmind-ai"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#cc3534] hover:bg-[#b02e2d] text-white font-semibold transition-all hover:scale-105"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-primary-500 hover:bg-primary-600 shadow-md text-white font-semibold transition-all hover:scale-105"
           >
             <span>View on npmjs.com</span>
             <ExternalLink className="h-4 w-4" />
@@ -64,32 +61,32 @@ export default function PackagePage() {
 
         {/* Core Features Grid */}
         <div className="grid md:grid-cols-3 gap-8 mb-20">
-          <div className="p-6 rounded-2xl bg-gray-900/40 border border-gray-800/80 hover:border-primary-500/50 hover:bg-gray-900/60 transition-all group">
-            <div className="h-12 w-12 rounded-xl bg-primary-500/10 flex items-center justify-center text-primary-400 mb-4 group-hover:scale-110 transition-transform">
+          <div className="p-9 rounded-[20px] bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 shadow-[0px_30px_50px_-32px_rgba(107,110,148,0.04)] dark:shadow-none hover:border-primary-500/50 transition-all group">
+            <div className="h-12 w-12 rounded-xl bg-primary-50 dark:bg-primary-500/10 flex items-center justify-center text-primary-500 dark:text-primary-400 mb-6 group-hover:scale-110 transition-transform">
               <Cpu className="h-6 w-6" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Local-First RAG</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">
-              Vector indexes are stored safely in <code>~/.snapmind/</code> using LanceDB. Runs 100% offline with Ollama or connects to cloud endpoints.
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white/90 mb-3">Local-First RAG</h3>
+            <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+              Vector indexes are stored safely in <code className="bg-gray-100 dark:bg-gray-900 px-1 py-0.5 rounded border border-gray-200 dark:border-gray-800">~/.snapmind/</code> using LanceDB. Runs 100% offline with Ollama or connects to cloud endpoints.
             </p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-gray-900/40 border border-gray-800/80 hover:border-primary-500/50 hover:bg-gray-900/60 transition-all group">
-            <div className="h-12 w-12 rounded-xl bg-primary-500/10 flex items-center justify-center text-primary-400 mb-4 group-hover:scale-110 transition-transform">
+          <div className="p-9 rounded-[20px] bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 shadow-[0px_30px_50px_-32px_rgba(107,110,148,0.04)] dark:shadow-none hover:border-primary-500/50 transition-all group">
+            <div className="h-12 w-12 rounded-xl bg-primary-50 dark:bg-primary-500/10 flex items-center justify-center text-primary-500 dark:text-primary-400 mb-6 group-hover:scale-110 transition-transform">
               <Zap className="h-6 w-6" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Hybrid Search Retrieval</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white/90 mb-3">Hybrid Search Retrieval</h3>
+            <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
               Combines semantic vector similarity with traditional BM25 full-text search for extremely sharp, high-recall retrieval.
             </p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-gray-900/40 border border-gray-800/80 hover:border-primary-500/50 hover:bg-gray-900/60 transition-all group">
-            <div className="h-12 w-12 rounded-xl bg-primary-500/10 flex items-center justify-center text-primary-400 mb-4 group-hover:scale-110 transition-transform">
+          <div className="p-9 rounded-[20px] bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 shadow-[0px_30px_50px_-32px_rgba(107,110,148,0.04)] dark:shadow-none hover:border-primary-500/50 transition-all group">
+            <div className="h-12 w-12 rounded-xl bg-primary-50 dark:bg-primary-500/10 flex items-center justify-center text-primary-500 dark:text-primary-400 mb-6 group-hover:scale-110 transition-transform">
               <FolderKanban className="h-6 w-6" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Multi-Format Ingestion</h3>
-            <p className="text-gray-400 text-sm leading-relaxed">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white/90 mb-3">Multi-Format Ingestion</h3>
+            <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
               Ingest local files (PDFs, spreadsheets, codebases), crawl whole websites, or index full GitHub repositories via CLI flags.
             </p>
           </div>
@@ -97,58 +94,58 @@ export default function PackagePage() {
 
         {/* Command Reference Section */}
         <div className="mb-20">
-          <h2 className="text-3xl font-extrabold tracking-tight text-white text-center mb-12">
+          <h2 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white text-center mb-12">
             CLI Command Reference
           </h2>
           <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-            <div className="p-5 rounded-xl bg-gray-900/50 border border-gray-800 font-mono text-xs">
-              <div className="text-primary-400 mb-2"># Ingest a directory of documents</div>
-              <div className="text-white mb-4">$ snapmind ingest ./docs --tag science</div>
+            <div className="p-6 rounded-[20px] bg-gray-100 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 font-mono text-xs">
+              <div className="text-primary-600 dark:text-primary-400 mb-2"># Ingest a directory of documents</div>
+              <div className="text-gray-800 dark:text-white mb-6">$ snapmind ingest ./docs --tag science</div>
               
-              <div className="text-primary-400 mb-2"># Query with strict citations</div>
-              <div className="text-white">$ snapmind ask "What is the quantum effect?" --tag science</div>
+              <div className="text-primary-600 dark:text-primary-400 mb-2"># Query with strict citations</div>
+              <div className="text-gray-800 dark:text-white">$ snapmind ask "What is the quantum effect?" --tag science</div>
             </div>
 
-            <div className="p-5 rounded-xl bg-gray-900/50 border border-gray-800 font-mono text-xs">
-              <div className="text-primary-400 mb-2"># Index a full github repository</div>
-              <div className="text-white mb-4">$ snapmind ingest-repo https://github.com/org/repo</div>
+            <div className="p-6 rounded-[20px] bg-gray-100 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 font-mono text-xs">
+              <div className="text-primary-600 dark:text-primary-400 mb-2"># Index a full github repository</div>
+              <div className="text-gray-800 dark:text-white mb-6">$ snapmind ingest-repo https://github.com/org/repo</div>
               
-              <div className="text-primary-400 mb-2"># Start interactive terminal chat</div>
-              <div className="text-white">$ snapmind chat --persona coder</div>
+              <div className="text-primary-600 dark:text-primary-400 mb-2"># Start interactive terminal chat</div>
+              <div className="text-gray-800 dark:text-white">$ snapmind chat --persona coder</div>
             </div>
           </div>
         </div>
 
         {/* Version History Table */}
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-3xl font-extrabold tracking-tight text-white text-center mb-8">
+          <h2 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white text-center mb-8">
             Version Release History
           </h2>
-          <div className="overflow-x-auto rounded-2xl border border-gray-800 bg-gray-900/20 backdrop-blur-md">
+          <div className="overflow-x-auto rounded-[20px] border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/20 shadow-[0px_30px_50px_-32px_rgba(107,110,148,0.04)] dark:shadow-none backdrop-blur-md">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-gray-800 bg-gray-900/50">
-                  <th className="p-4 text-xs font-semibold tracking-wider text-gray-400 uppercase">Version</th>
-                  <th className="p-4 text-xs font-semibold tracking-wider text-gray-400 uppercase">Date</th>
-                  <th className="p-4 text-xs font-semibold tracking-wider text-gray-400 uppercase">Release Class</th>
-                  <th className="p-4 text-xs font-semibold tracking-wider text-gray-400 uppercase">Highlights</th>
+                <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                  <th className="p-5 text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">Version</th>
+                  <th className="p-5 text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                  <th className="p-5 text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">Release Class</th>
+                  <th className="p-5 text-xs font-semibold tracking-wider text-gray-500 dark:text-gray-400 uppercase">Highlights</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/60">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800/60">
                 {versions.map((v, i) => (
-                  <tr key={i} className="hover:bg-gray-900/30 transition-colors">
-                    <td className="p-4 text-sm font-mono font-bold text-white">{v.version}</td>
-                    <td className="p-4 text-sm text-gray-400">{v.date}</td>
-                    <td className="p-4">
-                      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        v.tag === 'Latest' ? 'bg-primary-500/20 text-primary-300' :
-                        v.tag === 'Stable' ? 'bg-emerald-500/20 text-emerald-300' :
-                        'bg-gray-800 text-gray-400'
+                  <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors">
+                    <td className="p-5 text-sm font-mono font-bold text-gray-900 dark:text-white">{v.version}</td>
+                    <td className="p-5 text-sm text-gray-500 dark:text-gray-400">{v.date}</td>
+                    <td className="p-5">
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium border ${
+                        v.tag === 'Latest' ? 'bg-primary-50 dark:bg-primary-500/20 text-primary-600 dark:text-primary-300 border-primary-200 dark:border-primary-500/30' :
+                        v.tag === 'Stable' ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30' :
+                        'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700'
                       }`}>
                         {v.tag}
                       </span>
                     </td>
-                    <td className="p-4 text-sm text-gray-300">{v.desc}</td>
+                    <td className="p-5 text-sm text-gray-600 dark:text-gray-300">{v.desc}</td>
                   </tr>
                 ))}
               </tbody>

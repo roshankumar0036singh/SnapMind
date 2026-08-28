@@ -177,13 +177,12 @@ class IngestService:
             
             if is_video and crawl_mode != "crawl":
                 self._notify(session_id, "processing", "Extracting video transcript...", 15, request.user_id)
-                success, content, err, title = get_youtube_transcript(url, api_keys)
+                success, content, err, title = await asyncio.to_thread(get_youtube_transcript, url, api_keys)
                 if success:
                     pages = [{"url": url, "content": content, "title": title}]
                 else:
-                    print(f"[IngestService] Video parsing failed: {err}. Falling back to web scraping.")
-                    content, title = await self.crawler_service.scrape_url(url, api_keys)
-                    pages = [{"url": url, "content": content, "title": title}] if content else []
+                    self._notify(session_id, "failed", f"Could not extract transcript: {err}", 100, request.user_id)
+                    return IngestResponseDTO(success=False, url=url, message=f"Transcript extraction failed: {err}")
             elif crawl_mode == "crawl":
                 self._notify(session_id, "processing", "Crawling site nodes...", 15, request.user_id)
                 pages = await self.crawler_service.crawl_site(url, max_pages, max_depth, api_keys)
@@ -318,6 +317,14 @@ class IngestService:
         # [FIX] Determine source type for metadata tagging
         # Default to 'automated' for URL scraping; IngestRequest might override with 'local' for syncs
         source_type = request.metadata.get("source_type", "automated")
+        video_id = None
+        if any(k in p_url.lower() for k in ["youtube.com", "youtu.be"]):
+            source_type = "youtube"
+            try:
+                from youtube_parser import extract_video_id
+                video_id = extract_video_id(p_url)
+            except:
+                pass
 
         # Enrich chunks
         for c in chunks:
@@ -328,6 +335,8 @@ class IngestService:
                 "workspace_id": request.workspace_id,
                 "source_type": source_type
             })
+            if video_id:
+                c["metadata"]["video_id"] = video_id
         return chunks
 
     async def _batch_embed_async(self, chunks: List[dict], source_url: str, api_keys: dict) -> List[dict]:

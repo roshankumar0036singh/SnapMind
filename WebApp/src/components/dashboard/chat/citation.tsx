@@ -10,7 +10,7 @@
  * sentence: `#page=N` for PDFs, a W3C text fragment for everything else.
  */
 
-import { PANEL } from '@/components/dashboard/ui';
+import { PANEL, Spinner } from '@/components/dashboard/ui';
 import {
   citationHandle,
   citationHref,
@@ -23,8 +23,11 @@ import {
 } from '@/lib/format';
 import type { RetrievedBlock } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { BookMarked, ExternalLink, FileText } from 'lucide-react';
+import { BookMarked, ExternalLink, FileText, Save, Check } from 'lucide-react';
 import { useState } from 'react';
+import { api } from '@/lib/api-client';
+import { useWorkspace } from '@/context/WorkspaceContext';
+import { toast } from 'sonner';
 
 /** Credibility tiers the backend assigns (services/search_service.py). */
 const TIER_STYLE: Record<string, string> = {
@@ -55,9 +58,34 @@ export function SourcePreview({ id, block }: { id: string; block?: RetrievedBloc
   const isNotebook = id.startsWith('nb-');
   const page = block?.metadata?.page;
 
+  const { activeWorkspace } = useWorkspace();
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const saveToNotebook = async () => {
+    if (saved || saving || !block?.content) return;
+    setSaving(true);
+    const title = blockTitle(block) ?? citationHandle(id);
+    const contentToSave = `${title}\n\n${block.content}`;
+    try {
+      await api.post('bookmarks', {
+        content: contentToSave,
+        source_url: url || null,
+        workspace_id: activeWorkspace?.id ?? null,
+        metadata: { origin: 'web', citation_id: id },
+      });
+      setSaved(true);
+      toast.success('Saved to your notebook');
+    } catch (err) {
+      toast.error('Could not save to notebook');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className={cn(PANEL, 'w-80 max-w-[85vw] p-3.5 text-left')}>
-      <div className="flex items-start gap-2.5">
+    <span className={cn(PANEL, 'block w-80 max-w-[85vw] p-3.5 text-left')}>
+      <span className="flex items-start gap-2.5">
         <span
           className={cn(
             'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
@@ -67,27 +95,27 @@ export function SourcePreview({ id, block }: { id: string; block?: RetrievedBloc
           {isNotebook ? <BookMarked className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
         </span>
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-gray-900 dark:text-white">
+        <span className="min-w-0 flex-1 block">
+          <span className="block truncate text-[13px] font-semibold text-gray-900 dark:text-white">
             {blockTitle(block) ?? citationHandle(id)}
-          </p>
-          <p className="mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">
+          </span>
+          <span className="block mt-0.5 truncate text-[11px] text-gray-500 dark:text-gray-400">
             {isNotebook ? 'Saved in your notebook' : url ? prettyUrl(url, 44) : SOURCE_LABELS[kind]}
-          </p>
-        </div>
-      </div>
+          </span>
+        </span>
+      </span>
 
       {block?.content ? (
-        <p className="mt-2.5 line-clamp-4 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+        <span className="block mt-2.5 line-clamp-4 text-xs leading-relaxed text-gray-600 dark:text-gray-300">
           {truncate(block.highlight_snippet || block.content, 260)}
-        </p>
+        </span>
       ) : (
-        <p className="mt-2.5 text-xs italic text-gray-400 dark:text-gray-500">
+        <span className="block mt-2.5 text-xs italic text-gray-400 dark:text-gray-500">
           This source was not returned with the answer.
-        </p>
+        </span>
       )}
 
-      <div className="mt-3 flex items-center gap-1.5">
+      <span className="flex mt-3 items-center gap-1.5">
         {tier && (
           <span
             className={cn(
@@ -100,7 +128,7 @@ export function SourcePreview({ id, block }: { id: string; block?: RetrievedBloc
         )}
         {typeof block?.similarity === 'number' && (
           <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-white/10 dark:text-gray-300">
-            {Math.round(block.similarity * 100)}% match
+            {block.similarity < 0.01 && block.similarity > 0 ? '<1' : Math.round(block.similarity * 100)}% match
           </span>
         )}
         {typeof page === 'number' && (
@@ -109,20 +137,34 @@ export function SourcePreview({ id, block }: { id: string; block?: RetrievedBloc
           </span>
         )}
         <span className="ml-auto font-mono text-[10px] text-gray-400 dark:text-gray-500">{id}</span>
-      </div>
+      </span>
 
-      {url && (
-        <a
-          href={citationHref(url, block?.highlight_snippet || block?.content, typeof page === 'number' ? page : undefined)}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400"
-        >
-          Open at the cited text
-          <ExternalLink className="h-3 w-3" />
-        </a>
-      )}
-    </div>
+      <span className="mt-2.5 flex items-center justify-between">
+        {url ? (
+          <a
+            href={citationHref(url, block?.highlight_snippet || block?.content, typeof page === 'number' ? page : undefined)}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400"
+          >
+            Open at the cited text
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : <span />}
+
+        {!isNotebook && block?.content && (
+          <button
+            type="button"
+            onClick={saveToNotebook}
+            disabled={saved || saving}
+            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 transition hover:text-gray-700 disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            {saving ? <Spinner className="h-3 w-3" /> : saved ? <Check className="h-3 w-3 text-success-500" /> : <Save className="h-3 w-3" />}
+            {saved ? 'Saved' : 'Save to notebook'}
+          </button>
+        )}
+      </span>
+    </span>
   );
 }
 

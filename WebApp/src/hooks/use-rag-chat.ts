@@ -107,6 +107,9 @@ export function useRagChat({
   defaults,
 }: UseRagChatArgs) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  
   const [streaming, setStreaming] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -370,10 +373,7 @@ export function useRagChat({
     (question: string, opts: SendOptions = {}) => {
       const text = question.trim();
       if (!text || streaming) return;
-      setMessages((prev) => {
-        void run(text, prev, { ...defaultsRef.current, ...opts });
-        return prev;
-      });
+      void run(text, messagesRef.current, { ...defaultsRef.current, ...opts });
     },
     [run, streaming],
   );
@@ -382,14 +382,12 @@ export function useRagChat({
   const regenerate = useCallback(
     (assistantId: string, opts: SendOptions = {}) => {
       if (streaming) return;
-      setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === assistantId);
-        if (idx < 1) return prev;
-        const question = prev[idx - 1]?.content;
-        if (!question) return prev;
-        void run(question, prev.slice(0, idx - 1), { ...defaultsRef.current, ...opts });
-        return prev;
-      });
+      const prev = messagesRef.current;
+      const idx = prev.findIndex((m) => m.id === assistantId);
+      if (idx < 1) return;
+      const question = prev[idx - 1]?.content;
+      if (!question) return;
+      void run(question, prev.slice(0, idx - 1), { ...defaultsRef.current, ...opts });
     },
     [run, streaming],
   );
@@ -399,12 +397,10 @@ export function useRagChat({
     (userId: string, nextText: string, opts: SendOptions = {}) => {
       const text = nextText.trim();
       if (!text || streaming) return;
-      setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === userId);
-        if (idx < 0) return prev;
-        void run(text, prev.slice(0, idx), { ...defaultsRef.current, ...opts });
-        return prev;
-      });
+      const prev = messagesRef.current;
+      const idx = prev.findIndex((m) => m.id === userId);
+      if (idx < 0) return;
+      void run(text, prev.slice(0, idx), { ...defaultsRef.current, ...opts });
     },
     [run, streaming],
   );

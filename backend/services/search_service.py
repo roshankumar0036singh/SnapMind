@@ -252,6 +252,7 @@ Prioritize using the provided context blocks. You may supplement with your own g
                 url=s.get("url", s.get("source_url", "")),
                 content=s.get("content", ""),
                 metadata=meta,
+                similarity=s.get("vector_score", 0.0),
                 combined_score=s.get("score", 0.0),
                 credibility_score=cred_score,
                 credibility_tier=cred_tier,
@@ -375,6 +376,7 @@ Prioritize using the provided context blocks. You may supplement with your own g
                 url=s.get("url", s.get("source_url", "")),
                 content=s.get("content", ""),
                 metadata=meta,
+                similarity=s.get("vector_score", 0.0),
                 combined_score=s.get("score", 0.0),
                 credibility_score=cred_score,
                 credibility_tier=cred_tier,
@@ -452,13 +454,18 @@ FINAL INSTRUCTION: Answer in {lang_name}. Prioritize using the provided context 
 You may supplement with your own general knowledge if the context is incomplete, but you must cite the context blocks (e.g. [db-block-1]) whenever you use information from them.
 """
         
-        async for token in self.router.stream(
-            prompt=prompt,
-            system_instruction=system_prompt,
-            model_id=settings.models.mistral_small,
-            history=history
-        ):
-            yield json.dumps({"type": "token", "text": token}) + "\n"
+        try:
+            async for token in self.router.stream(
+                prompt=prompt,
+                system_instruction=system_prompt,
+                model_id=settings.models.mistral_small,
+                history=history
+            ):
+                yield json.dumps({"type": "token", "text": token}) + "\n"
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield json.dumps({"type": "error", "error": f"LLM generation failed: {str(e)}"}) + "\n"
 
     # --- Private Helper Methods ---
 
