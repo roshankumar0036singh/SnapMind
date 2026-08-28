@@ -33,8 +33,8 @@ export default function AIToolsTabs() {
       id: 'chat',
       label: 'Chat Interface',
       icon: <TextGeneratorIcon className="w-8 h-8" />,
-      lightImage: '/images/tab-image/tab-image-1.jpg',
-      darkImage: '/images/tab-image/tab-image-1-dark.jpg',
+      lightImage: '/images/tab-image/tab-image-1.png',
+      darkImage: '/images/tab-image/tab-image-1-dark.png',
       title: 'Real-time streaming chat with citations',
       description:
         'Engage with your indexed knowledge. Every fact is cited with inline block IDs that link directly to the source text fragments.',
