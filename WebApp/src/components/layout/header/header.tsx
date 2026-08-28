@@ -31,17 +31,17 @@ export default function Header() {
       <div className="px-4 sm:px-6 lg:px-7">
         <div className="grid grid-cols-2 items-center lg:grid-cols-[1fr_auto_1fr]">
           <div className={cn("flex items-center transition-all duration-500 ease-in-out", isScrolled ? "opacity-0 pointer-events-none -translate-x-4" : "opacity-100 translate-x-0")}>
-            <Link href="/" className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-1.5 sm:gap-2">
               <Image
                 src="/images/logo-transparent.png"
-                className="object-contain h-11 w-auto"
+                className="object-contain h-8 sm:h-11 w-auto"
                 alt="SnapMind Logo"
                 width={130}
                 height={80}
                 priority
               />
 
-              <span className="inline-block px-1.5 py-0.5 rounded-lg rounded-bl-none bg-primary-500/90 text-white text-xs font-medium mb-0.5">
+              <span className="inline-block px-1.5 py-0.5 rounded-lg rounded-bl-none bg-primary-500/90 text-white text-[10px] sm:text-xs font-medium mb-0.5">
                 Beta
               </span>
             </Link>
@@ -65,7 +65,7 @@ export default function Header() {
 
             <Link
               href="/signin"
-              className="px-6 py-2.5 text-sm font-medium text-white transition-all bg-primary-600 rounded-full hover:bg-primary-700 active:scale-95"
+              className="hidden sm:inline-flex px-6 py-2.5 text-sm font-medium text-white transition-all bg-primary-600 rounded-full hover:bg-primary-700 active:scale-95"
             >
               Get Started
             </Link>

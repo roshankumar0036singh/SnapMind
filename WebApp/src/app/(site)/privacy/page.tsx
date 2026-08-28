@@ -2,114 +2,69 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy',
+  title: 'Privacy Policy | SnapMind',
+  description: 'Privacy Policy for the SnapMind Web Application and Browser Extension',
 };
 
 export default function PrivacyPage() {
   return (
-    <section className="py-20">
-      <div className="wrapper">
-        <div className="max-w-[800px] mx-auto">
-          <p className="text-gray-500 dark:text-gray-400 font-medium mb-2">
-            Updated
-            <span className="text-gray-800 ml-1 inline-block dark:text-white/90">
-              15 Jan, 2028
-            </span>
+    <section className="py-20 bg-[#F8FAFC] dark:bg-[#06080C] min-h-screen">
+      <div className="max-w-[800px] mx-auto px-5">
+        <p className="text-primary-500 font-bold mb-3 tracking-wider text-sm uppercase">
+          Legal
+        </p>
+        <h1 className="mb-4 text-4xl md:text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+          Privacy Policy
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 font-medium mb-12">
+          Last Updated: <span className="text-gray-800 dark:text-gray-300">August 28, 2026</span>
+        </p>
+
+        <div className="prose prose-lg dark:prose-invert max-w-none text-gray-600 dark:text-gray-300">
+          
+          <p className="lead text-xl text-gray-800 dark:text-gray-200 font-medium mb-8">
+            At SnapMind, we believe that your second brain belongs entirely to you. We are committed to transparency and to protecting the data you entrust to us while using our Web Dashboard, Browser Extension, and Local MCP Server.
           </p>
-          <h2 className="mb-12 text-4xl font-semibold text-gray-800 dark:text-white/90">
-            Privacy Policy
-          </h2>
-          <div className="mb-6">
-            <p className="text-gray-500 dark:text-gray-400 font-normal leading-6 mb-6">
-              All of our registered users information ( Name, Email, Phone
-              Number & Address ) are secure to us. We are committed to taking
-              care of all information and we are promised to our customers that
-              we are never going to share their information with.
-            </p>
-            <p className="text-gray-500 dark:text-gray-400 font-normal leading-6">
-              Also, We do not store any credit card information in server, all
-              payments are processed by world leading payment gateway PayPal and
-              Paddle and our site is secured by SSL encryption.
-            </p>
-          </div>
-          <div className="mb-6">
-            <h2 className="mb-4 text-2xl dark:text-white/90 font-semibold text-gray-800">
-              Rights you have over your data
-            </h2>
-            <p className="text-gray-500 font-normal dark:text-gray-400 leading-6 mb-4">
-              lineicons collects data about visits to lineicons.com.
-            </p>
-            <p className="text-gray-500 font-normal dark:text-gray-400 leading-6">
-              If you have an account on this site, or have left comments, you
-              can request to receive an exported file of the personal data we
-              hold about you, including any data you have provided to us. You
-              can also request that we erase any personal data we hold about
-              you. This does not include any data we are obliged to keep for
-              administrative, legal, or security purposes.
-            </p>
-          </div>
-          <div className="mb-12">
-            <h2 className="mb-4 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              We grant refund if :
-            </h2>
-            <ul className="list-disc list-inside space-y-4">
-              <li className="text-gray-500 dark:text-gray-400 font-normal leading-6 mb-4">
-                The product purchased has stopped functioning or displaying that
-                we described to it’s details, or broken and we are not able to
-                give you solution.
-              </li>
-              <li className="text-gray-500 dark:text-gray-400 font-normal leading-6 mb-4">
-                The product purchased has stopped functioning or displaying that
-                we described to it’s details, or broken and we are not able to
-                give you solution.
-              </li>
-              <li className="text-gray-500 dark:text-gray-400 font-normal leading-6 mb-4">
-                If you opened any dispute before telling our support team about
-                your problem.
-              </li>
-            </ul>
-          </div>
-          <div className="mb-12">
-            <h2 className="mb-4 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              We don’t grant refund if :
-            </h2>
-            <ul className="list-disc list-inside space-y-4">
-              <li className="text-gray-500 dark:text-gray-400 font-normal leading-6 mb-4">
-                The product purchased has stopped functioning or displaying that
-                we described to it’s details, or broken and we are not able to
-                give you solution.
-              </li>
-              <li className="text-gray-500 dark:text-gray-400 font-normal leading-6 mb-4">
-                If you opened any dispute before telling our support team about
-                your problem.
-              </li>
-              <li className="text-gray-500 dark:text-gray-400 font-normal leading-6 mb-4">
-                The product purchased has stopped functioning or displaying that
-                we described to it’s details, or broken and we are not able to
-                give you solution.
-              </li>
-            </ul>
-          </div>
-          <div className="mb-12">
-            <h2 className="mb-4 text-2xl font-semibold dark:text-white/90 text-gray-800">
-              Membership cancellation
-            </h2>
-            <div className="space-y-4">
-              <p className="text-gray-500 font-normal dark:text-gray-400 leading-6">
-                You can cancel your membership with us anytime you want by
-                sending an email to our support or openning a support ticket.
-                Unfortunately, we don’t have option to cancel Membership from
-                account settings right now but we are working on it.
-              </p>
-              <p className="text-gray-500 font-normal dark:text-gray-400 leading-6">
-                Still have any questions? feel free to open{' '}
-                <Link href="/" className="text-primary-500 font-semibold">
-                  Support Ticket
-                </Link>{' '}
-                to communicate directly!
-              </p>
-            </div>
-          </div>
+
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-10 mb-4">1. Information We Collect</h2>
+          <p className="mb-4">SnapMind collects information strictly necessary to provide you with our Knowledge Graph and AI Chat capabilities. This includes:</p>
+          <ul className="list-disc pl-6 space-y-2 mb-6">
+            <li><strong>Account Information:</strong> Name, email address, and authentication tokens provided via our auth partner (Supabase).</li>
+            <li><strong>Ingested Knowledge Data:</strong> URLs, YouTube transcripts, PDF contents, and GitHub repositories that you explicitly choose to ingest into SnapMind.</li>
+            <li><strong>Local Context (MCP):</strong> When using the Model Context Protocol, SnapMind accesses your local files only when explicitly authorized during an active session.</li>
+          </ul>
+
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-10 mb-4">2. How We Use Your Data</h2>
+          <p className="mb-4">Your data is processed to generate semantic embeddings and multi-hop knowledge graphs. Specifically:</p>
+          <ul className="list-disc pl-6 space-y-2 mb-6">
+            <li><strong>AI Processing:</strong> Your ingested texts are securely transmitted to our LLM partners (OpenAI, Anthropic, Google) to generate summaries and embeddings.</li>
+            <li><strong>Storage:</strong> Embeddings are stored securely in our Vector Database (Qdrant/Pinecone), and relational data is stored in our secured Postgres database.</li>
+            <li><strong>No Training:</strong> We <strong>do not</strong> use your personal data or private repositories to train our own foundational AI models. We opt-out of data sharing for training with our enterprise LLM partners.</li>
+          </ul>
+
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-10 mb-4">3. Browser Extension Specifics</h2>
+          <p className="mb-6">
+            The SnapMind Chrome Extension requires permissions to read the current webpage to extract articles and highlight text. 
+            The extension <strong>does not</strong> track your browsing history in the background. Data is only transmitted to our servers when you actively click "Capture" or interact with the SnapMind sidebar.
+          </p>
+
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-10 mb-4">4. Third-Party Services</h2>
+          <p className="mb-4">We employ world-class third-party infrastructure providers to run SnapMind securely:</p>
+          <ul className="list-disc pl-6 space-y-2 mb-6">
+            <li><strong>Supabase:</strong> For identity management and secure Postgres hosting.</li>
+            <li><strong>Vercel & Cloudflare:</strong> For edge routing, web hosting, and low-latency API execution.</li>
+            <li><strong>Hugging Face:</strong> For executing open-source embedding models securely.</li>
+            <li><strong>Stripe / Paddle:</strong> For processing subscription payments. We never see or store your raw credit card information.</li>
+          </ul>
+
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mt-10 mb-4">5. Your Data Rights</h2>
+          <p className="mb-4">You have full control over your second brain. At any time, you have the right to:</p>
+          <ul className="list-disc pl-6 space-y-2 mb-6">
+            <li><strong>Access:</strong> View all knowledge bases, graphs, and chat histories stored in your account.</li>
+            <li><strong>Export:</strong> Download a full archive of your semantic data and original texts.</li>
+            <li><strong>Delete:</strong> Permanently delete your account and all associated vectors and graphs. When you delete a workspace, the underlying vector embeddings are purged instantly.</li>
+          </ul>
+
         </div>
       </div>
     </section>

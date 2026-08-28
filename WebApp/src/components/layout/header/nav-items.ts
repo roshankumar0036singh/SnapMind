@@ -15,23 +15,23 @@ export const navItems = [
   },
   {
     type: 'link',
-    label: 'BLOG',
-    href: '/blog',
+    label: 'DOCS',
+    href: '/docs',
   },
   {
     type: 'link',
-    label: 'TEAM',
-    href: '/team',
+    label: 'SUPPORT',
+    href: '/contact',
   },
 ] satisfies NavItem[];
 
 type NavItem = Record<string, string | unknown> &
   (
     | {
-        type: 'link';
-        href: string;
-      }
+      type: 'link';
+      href: string;
+    }
     | {
-        type: 'dropdown';
-      }
+      type: 'dropdown';
+    }
   );

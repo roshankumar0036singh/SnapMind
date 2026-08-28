@@ -1,6 +1,7 @@
 import { getCurrentYear } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
+import { PlayCircle, BookOpen, MessageCircle } from "lucide-react";
 
 export default function Footer() {
   return (
@@ -58,65 +59,16 @@ export default function Footer() {
                 <p className="block text-sm text-gray-400 mb-9">
                   SnapMind is the most powerful AI-driven platform for knowledge management and workflow optimization. Unleash the power of artificial intelligence to streamline your tasks.
                 </p>
-                <div className="flex">
+                <div className="flex gap-4">
                   <a
-                    href="https://www.linkedin.com/company/pimjo/posts/?feedView=all"
+                    href="https://github.com/roshankumar0036singh/SnapMind"
                     target="_blank"
-                    className="text-gray-400 hover:text-white/80 size-10"
+                    className="text-gray-400 hover:text-white/80 transition-colors"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="17"
-                      viewBox="0 0 16 17"
-                      fill="none"
-                    >
-                      <g clipPath="url(#clip0_11105_879)">
-                        <path
-                          d="M13.5447 3.68965C12.5249 3.22173 11.4313 2.87699 10.2879 2.67954C10.2671 2.67573 10.2463 2.68525 10.2356 2.7043C10.0949 2.95444 9.93915 3.28077 9.83006 3.53727C8.60027 3.35316 7.37679 3.35316 6.17221 3.53727C6.0631 3.27507 5.90166 2.95444 5.76038 2.7043C5.74966 2.68589 5.72886 2.67636 5.70803 2.67954C4.56527 2.87636 3.47171 3.2211 2.45129 3.68965C2.44246 3.69346 2.43488 3.69982 2.42986 3.70806C0.355594 6.80697 -0.212634 9.82971 0.0661201 12.815C0.0673814 12.8296 0.0755799 12.8435 0.086932 12.8524C1.45547 13.8574 2.78114 14.4676 4.08219 14.872C4.10301 14.8784 4.12507 14.8707 4.13832 14.8536C4.44608 14.4333 4.72043 13.9902 4.95565 13.5241C4.96953 13.4968 4.95628 13.4645 4.92791 13.4537C4.49275 13.2886 4.0784 13.0873 3.67982 12.8588C3.64829 12.8404 3.64577 12.7953 3.67477 12.7737C3.75865 12.7108 3.84255 12.6454 3.92264 12.5794C3.93713 12.5674 3.95732 12.5648 3.97435 12.5724C6.59286 13.7679 9.4277 13.7679 12.0153 12.5724C12.0323 12.5642 12.0525 12.5667 12.0677 12.5788C12.1478 12.6448 12.2316 12.7108 12.3161 12.7737C12.3451 12.7953 12.3433 12.8404 12.3117 12.8588C11.9131 13.0918 11.4988 13.2886 11.063 13.453C11.0346 13.4638 11.022 13.4968 11.0359 13.5241C11.2762 13.9895 11.5505 14.4327 11.8526 14.853C11.8652 14.8707 11.8879 14.8784 11.9087 14.872C13.2161 14.4676 14.5417 13.8574 15.9103 12.8524C15.9223 12.8435 15.9298 12.8302 15.9311 12.8156C16.2647 9.36431 15.3723 6.36636 13.5655 3.7087C13.5611 3.69982 13.5535 3.69346 13.5447 3.68965ZM5.34668 10.9973C4.55833 10.9973 3.90876 10.2735 3.90876 9.38464C3.90876 8.49578 4.54574 7.77202 5.34668 7.77202C6.15392 7.77202 6.79721 8.50214 6.78459 9.38464C6.78459 10.2735 6.14761 10.9973 5.34668 10.9973ZM10.6632 10.9973C9.87484 10.9973 9.22526 10.2735 9.22526 9.38464C9.22526 8.49578 9.86222 7.77202 10.6632 7.77202C11.4704 7.77202 12.1137 8.50214 12.1011 9.38464C12.1011 10.2735 11.4704 10.9973 10.6632 10.9973Z"
-                          fill="currentColor"
-                          fillOpacity="0.8"
-                        />
-                      </g>
-                      <defs>
-                        <clipPath id="clip0_11105_879">
-                          <rect
-                            width="16"
-                            height="16"
-                            fill="currentColor"
-                            transform="translate(0 0.919434)"
-                          />
-                        </clipPath>
-                      </defs>
-                    </svg>
-                  </a>
-                  <a
-                    href="https://x.com/PimjoHQ"
-                    target="_blank"
-                    className="text-gray-400 hover:text-white/80 size-10"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="17"
-                      viewBox="0 0 16 17"
-                      fill="none"
-                    >
-                      <path
-                        d="M12.2176 2.18848H14.4666L9.55323 7.80414L15.3334 15.4458H10.8076L7.26277 10.8112L3.20671 15.4458H0.956369L6.2117 9.43921L0.666748 2.18848H5.30749L8.51168 6.4247L12.2176 2.18848ZM11.4283 14.0997H12.6745L4.63034 3.4639H3.29306L11.4283 14.0997Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                  </a>
-                  <a
-                    href="https://github.com/PIMJO"
-                    target="_blank"
-                    className="text-gray-400 hover:text-white/80 size-10"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="16"
-                      height="17"
+                      width="20"
+                      height="20"
                       viewBox="0 0 16 17"
                       fill="none"
                     >
@@ -169,34 +121,25 @@ export default function Footer() {
                     </svg>
                   </a>
                   <a
-                    href="https://www.facebook.com/PimjoHQ"
+                    href="https://medium.com/@roshankumar00036/i-built-an-ai-that-remembers-everything-i-research-meet-snapmind-7834806ceb20"
                     target="_blank"
-                    className="text-gray-400 hover:text-white/80 size-10"
+                    className="text-gray-400 hover:text-white/80 transition-colors"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="18"
-                      height="19"
-                      viewBox="0 0 18 19"
-                      fill="none"
-                    >
-                      <g clipPath="url(#clip0_11105_895)">
-                        <path
-                          d="M10.5 11.0444H12.375L13.125 8.04443H10.5V6.54443C10.5 5.7724 10.5 5.04443 12 5.04443H13.125V2.52451C12.8807 2.49207 11.9573 2.41943 10.9822 2.41943C8.9463 2.41943 7.5 3.66208 7.5 5.94422V8.04443H5.25V11.0444H7.5V17.4194H10.5V11.0444Z"
-                          fill="currentColor"
-                        />
-                      </g>
-                      <defs>
-                        <clipPath id="clip0_11105_895">
-                          <rect
-                            width="18"
-                            height="18"
-                            fill="currentColor"
-                            transform="translate(0 0.919434)"
-                          />
-                        </clipPath>
-                      </defs>
-                    </svg>
+                    <BookOpen size={20} />
+                  </a>
+                  <a
+                    href="https://www.reddit.com/r/lingodotdev/comments/1rvhvz0/snapmind_an_ai_powered_rag_based_comprehensive/"
+                    target="_blank"
+                    className="text-gray-400 hover:text-white/80 transition-colors"
+                  >
+                    <MessageCircle size={20} />
+                  </a>
+                  <a
+                    href="https://youtu.be/nNg8kVpigPU"
+                    target="_blank"
+                    className="text-gray-400 hover:text-white/80 transition-colors"
+                  >
+                    <PlayCircle size={22} />
                   </a>
                 </div>
               </div>
@@ -216,7 +159,7 @@ export default function Footer() {
                     </Link>
                     <Link
                       href="/pricing"
-                      className="text-sm font-normal text-gray-400 transition hover:text-white"
+                      className="text-sm font-normal text-gray-400 transition hover:text-white hidden"
                     >
                       Pricing
                     </Link>
@@ -246,34 +189,34 @@ export default function Footer() {
                   </span>
                   <nav className="flex flex-col space-y-3">
                     <Link
-                      href="/"
+                      href="/#architecture"
                       className="text-sm font-normal text-gray-400 transition hover:text-white"
                     >
-                      HTML File Upload
+                      GraphRAG Engine
                     </Link>
                     <Link
-                      href="/"
+                      href="/#architecture"
                       className="text-sm font-normal text-gray-400 transition hover:text-white"
                     >
-                      HTML website hosting
+                      YouTube Transcript Parsing
                     </Link>
                     <Link
-                      href="/"
+                      href="/#architecture"
                       className="text-sm font-normal text-gray-400 transition hover:text-white"
                     >
-                      Free Image Hosting
+                      GitHub Repo Syncing
                     </Link>
                     <Link
-                      href="/"
+                      href="/#architecture"
                       className="text-sm font-normal text-gray-400 transition hover:text-white"
                     >
-                      Upload PDF Online
+                      Multi-model Chat
                     </Link>
                     <Link
-                      href="/"
+                      href="/extension"
                       className="text-sm font-normal text-gray-400 transition hover:text-white"
                     >
-                      Free Zip file hosting
+                      Chrome Extension
                     </Link>
                   </nav>
                 </div>
@@ -294,12 +237,7 @@ export default function Footer() {
                     >
                       Sign Up
                     </Link>
-                    <Link
-                      href="/reset-password"
-                      className="text-sm font-normal text-gray-400 transition hover:text-white"
-                    >
-                      Reset Password
-                    </Link>
+
                     <Link
                       href="/contact"
                       className="text-sm font-normal text-gray-400 transition hover:text-white"

@@ -4,7 +4,7 @@ import FsLightbox from 'fslightbox-react';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-const videoUrl = 'https://www.youtube.com/watch?v=_iHmNaQBtKk';
+const videoUrl = 'https://youtu.be/nNg8kVpigPU';
 
 export function IntroVideo() {
   const [isMounted, setIsMounted] = useState(false);

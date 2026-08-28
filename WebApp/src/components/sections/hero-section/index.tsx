@@ -1,8 +1,9 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import Image from 'next/image';
 import HeroLogos from '../hero-logos';
 import { Subheading } from './subheading';
 import { IntroVideo } from './intro-video';
+import HeroGraphic from './hero-graphic';
 
 export default function HeroSection() {
   return (
@@ -10,7 +11,7 @@ export default function HeroSection() {
       <div className="max-w-[120rem] mx-auto relative">
         <div className="wrapper">
           <div className="max-w-[800px] mx-auto">
-            <div className="text-center pb-16">
+            <div className="text-center pb-8">
               <Subheading text="AI-Driven Knowledge Management" />
 
               <h1 className="text-gray-700 mx-auto font-bold mb-4 text-4xl sm:text-[50px] dark:text-white/90 sm:leading-[64px] max-w-[700px]">
@@ -23,7 +24,7 @@ export default function HeroSection() {
 
               <div className="mt-9 flex sm:flex-row flex-col gap-3 relative z-30 items-center justify-center">
                 <Link
-                  href="/text-generator"
+                  href="/signin"
                   className="bg-primary-500 transition h-12 inline-flex items-center justify-center hover:bg-primary-600 px-6 py-3 rounded-full text-white text-sm"
                 >
                   Explore app
@@ -33,24 +34,18 @@ export default function HeroSection() {
               </div>
             </div>
           </div>
-          <div className="max-w-[1000px] mx-auto relative">
-            <div className="p-3 sm:p-[18px] relative z-30 rounded-[32px] border border-white/30 dark:border-white/10 bg-white/20">
-              <Image
-                src="/hero-light.jpg"
-                alt="SnapMind Hero"
-                className="w-full rounded-2xl dark:hidden block"
+          <div className="max-w-[1000px] mx-auto relative mt-6 md:mt-8">
+            <div className="p-3 sm:p-[18px] relative z-30 rounded-[32px] border border-white/30 dark:border-white/10 bg-white/20 backdrop-blur-sm">
+              <Image 
+                src="/images/hero/hero-image-new.jpg"
+                alt="SnapMind Dashboard"
                 width={1920}
                 height={1080}
-              />
-              <Image
-                src="/hero-dark.jpg"
-                alt="SnapMind Hero Dark"
-                className="w-full rounded-2xl hidden dark:block"
-                width={1920}
-                height={1080}
+                className="w-full rounded-2xl shadow-2xl border border-gray-200/20 dark:border-white/10 object-cover"
+                priority
               />
             </div>
-            <div className="absolute hidden lg:block z-10 -top-20 -translate-y-20 left-1/2 -translate-x-1/2">
+            <div className="absolute hidden lg:block z-10 -top-20 -translate-y-20 left-1/2 -translate-x-1/2 pointer-events-none">
               <svg
                 width="1300"
                 height="1001"
