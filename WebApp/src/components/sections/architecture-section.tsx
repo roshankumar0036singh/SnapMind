@@ -96,7 +96,7 @@ export default function ArchitectureSection() {
                     popupData={{ title: "GitHub Integration", description: "Continuously syncs repositories using OAuth apps. Listens to webhooks for real-time code updates and file tracking.", tags: ["Git", "OAuth", "Webhooks"] }}
                   />
                   <ComponentBox 
-                    icon={<VideoGeneratorIcon className="w-6 h-6 text-red-500" />}
+                    icon={<VideoGeneratorIcon className="w-8 h-8 text-red-500" />}
                     title="YouTube Transcripts"
                     subtitle="Multi-lang Parsing"
                     popupData={{ title: "YouTube Ingestion", description: "Bypasses rate limits using a waterfall cascade of proxies to extract accurate, timestamped video transcripts.", tags: ["PyTube", "Transcript API", "Proxies"] }}
@@ -155,14 +155,14 @@ export default function ArchitectureSection() {
                     />
                     
                     <ComponentBox 
-                      icon={<TextGeneratorIcon className="w-5 h-5 text-rose-500" />}
+                      icon={<TextGeneratorIcon className="w-8 h-8 text-rose-500" />}
                       title="Async Workers"
                       subtitle="Celery Tasks"
                       popupData={{ title: "Async Ingestion", description: "Scalable background workers handling heavy I/O operations like web scraping and video downloading without blocking the main thread.", tags: ["Celery", "RabbitMQ"] }}
                     />
                     
                     <ComponentBox 
-                      icon={<CodeGeneratorIcon className="w-5 h-5 text-purple-500" />}
+                      icon={<CodeGeneratorIcon className="w-8 h-8 text-purple-500" />}
                       title="GraphRAG"
                       subtitle="Entity Mapping"
                       popupData={{ title: "GraphRAG Engine", description: "Uses LLMs to extract nodes (entities) and edges (relationships), building a multi-hop semantic knowledge graph from unstructured text.", tags: ["Graph Extraction", "Multi-hop"] }}
@@ -170,7 +170,7 @@ export default function ArchitectureSection() {
 
                     <ComponentBox 
                       icon={<Cpu className="w-5 h-5 text-emerald-400" />}
-                      title="Memory Manager"
+                      title="Memory"
                       subtitle="State & Context"
                       popupData={{ title: "Memory Manager", description: "Maintains session state, long-term memory, and context window optimization across multi-turn conversations.", tags: ["Context Window", "Session State"] }}
                     />
@@ -186,14 +186,14 @@ export default function ArchitectureSection() {
                   <div className="grid grid-cols-2 gap-4">
                     <ComponentBox 
                       icon={<Layers className="w-6 h-6 text-emerald-500" />}
-                      title="Semantic Chunker"
+                      title="Chunker"
                       subtitle="Context-Aware Splits"
                       popupData={{ title: "Semantic Chunking", description: "Intelligently splits large documents into cohesive chunks based on semantic boundaries rather than fixed token limits.", tags: ["Recursive Splitting"] }}
                     />
                     
                     <ComponentBox 
                       icon={<SettingsIcon className="w-6 h-6 text-orange-500" />}
-                      title="Cross-Encoder"
+                      title="Reranker"
                       subtitle="Reranking Layer"
                       popupData={{ title: "Reranker", description: "A secondary neural model that scores and reranks the initial retrieved chunks to dramatically improve final context relevance.", tags: ["Cohere", "BGE-Reranker"] }}
                     />
@@ -202,9 +202,9 @@ export default function ArchitectureSection() {
                   <div className="grid grid-cols-2 gap-4">
                     <ComponentBox 
                       icon={<Globe className="w-5 h-5 text-blue-500" />}
-                      title="lingo.dev"
-                      subtitle="Crosslingual Mode"
-                      popupData={{ title: "Localization", description: "Provides real-time crosslingual browser translation and localization for AI responses across 100+ languages.", tags: ["lingo.dev", "i18n"] }}
+                      title="Firecrawl"
+                      subtitle="Web Crawling API"
+                      popupData={{ title: "Firecrawl", description: "Turns entire websites into clean markdown or structured data for seamless LLM ingestion.", tags: ["Scraping", "Data Ingestion"] }}
                     />
                     
                     <ComponentBox 

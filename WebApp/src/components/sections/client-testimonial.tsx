@@ -1,7 +1,7 @@
 "use client";
 
 import Image from 'next/image';
-import { useState } from 'react';
+
 
 const testimonials = [
   {
@@ -55,13 +55,6 @@ const testimonials = [
 ];
 
 export default function TestimonialsSection() {
-  const [showAll, setShowAll] = useState(false);
-
-  // Determine which testimonials to display
-  const visibleTestimonials = showAll
-    ? testimonials
-    : testimonials.slice(0, 6);
-
   return (
     <section className="md:py-28 py-14 relative">
       <div className="wrapper">
@@ -76,9 +69,8 @@ export default function TestimonialsSection() {
             </p>
           </div>
 
-          {/* Testimonials Grid */}
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-3 max-w-[72rem] mx-auto">
-            {visibleTestimonials.map((testimonial) => (
+            {testimonials.map((testimonial) => (
               <TestimonialCard
                 key={testimonial.id}
                 testimonial={testimonial}
@@ -86,22 +78,8 @@ export default function TestimonialsSection() {
             ))}
           </div>
 
-          {/* Show More Button */}
-          <div className="mt-8 text-center relative z-10">
-            <button
-              onClick={() => setShowAll(!showAll)}
-              className="inline-flex items-center dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400 px-6 py-3.5 text-sm font-medium text-gray-800 bg-white border border-gray-200 dark:hover:bg-gray-900 rounded-full shadow-theme-xs hover:bg-gray-50 focus:outline-none"
-            >
-              <span>{showAll ? 'Show less...' : 'Show more...'}</span>
-            </button>
-          </div>
         </div>
       </div>
-
-      {/* Gradient overlay when collapsed */}
-      {!showAll && (
-        <div className="white-gradient h-[264px]  w-full absolute bottom-0"></div>
-      )}
     </section>
   );
 }

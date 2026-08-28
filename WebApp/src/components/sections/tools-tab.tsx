@@ -43,8 +43,8 @@ export default function AIToolsTabs() {
       id: 'vision',
       label: 'Vision Engine',
       icon: <ImageGeneratorIcon className="w-8 h-8" />,
-      lightImage: '/images/tab-image/tab-image-2.jpg',
-      darkImage: '/images/tab-image/tab-image-2-dark.jpg',
+      lightImage: '/images/tab-image/tab-image-1.png',
+      darkImage: '/images/tab-image/tab-image-1-dark.png',
       title: 'Multimodal Visual Q&A',
       description:
         'Upload or capture screenshots of complex diagrams and let Groq Vision analyze and extract actionable text instantly.',
@@ -53,8 +53,8 @@ export default function AIToolsTabs() {
       id: 'graph',
       label: 'Graph Map',
       icon: <CodeGeneratorIcon className="w-8 h-8" />,
-      lightImage: '/images/tab-image/tab-image-3.jpg',
-      darkImage: '/images/tab-image/tab-image-3-dark.jpg',
+      lightImage: '/images/tab-image/tab-image-1.png',
+      darkImage: '/images/tab-image/tab-image-1-dark.png',
       title: 'Interactive Knowledge Graph',
       description:
         'Visualize multi-hop relationships between people, concepts, and organizations automatically extracted via GraphRAG.',
@@ -63,8 +63,8 @@ export default function AIToolsTabs() {
       id: 'report',
       label: 'Report Generator',
       icon: <VideoGeneratorIcon className="w-8 h-8" />,
-      lightImage: '/images/tab-image/tab-image-4.jpg',
-      darkImage: '/images/tab-image/tab-image-4-dark.jpg',
+      lightImage: '/images/tab-image/tab-image-1.png',
+      darkImage: '/images/tab-image/tab-image-1-dark.png',
       title: 'Academic Report Generation',
       description:
         'Transform your entire research session into a fully formatted, downloadable DOCX academic paper with one click.',
@@ -73,8 +73,8 @@ export default function AIToolsTabs() {
       id: 'notebook',
       label: 'Research Notebook',
       icon: <EmailGeneratorIcon className="w-8 h-8" />,
-      lightImage: '/images/tab-image/tab-image-5.jpg',
-      darkImage: '/images/tab-image/tab-image-5-dark.jpg',
+      lightImage: '/images/tab-image/tab-image-1.png',
+      darkImage: '/images/tab-image/tab-image-1-dark.png',
       title: 'Semantic Bookmarks',
       description:
         'Save important snippets. SnapMind embeds your bookmarks into a separate silo to discover non-obvious correlations.',
