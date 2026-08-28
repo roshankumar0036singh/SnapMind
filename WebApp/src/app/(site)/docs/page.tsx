@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function DocsPage() {
   return (
-    <section className="py-20 bg-[#F8FAFC] dark:bg-[#06080C] min-h-screen">
+    <section className="py-20 bg-transparent min-h-screen">
       <div className="max-w-[800px] mx-auto px-5">
         <p className="text-primary-500 font-bold mb-3 tracking-wider text-sm uppercase">
           Documentation
@@ -21,7 +21,7 @@ export default function DocsPage() {
         </p>
 
         <div className="grid md:grid-cols-2 gap-6">
-          <div className="p-6 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="p-6 bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 hover:dark:bg-white/10 transition-colors">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Getting Started</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               Learn the basics of SnapMind, how to set up your account, and connect your first data sources.
@@ -31,7 +31,7 @@ export default function DocsPage() {
             </Link>
           </div>
           
-          <div className="p-6 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="p-6 bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 hover:dark:bg-white/10 transition-colors">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Browser Extension</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               Install and configure the Chrome extension to capture knowledge seamlessly while you browse.
@@ -41,7 +41,7 @@ export default function DocsPage() {
             </Link>
           </div>
 
-          <div className="p-6 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="p-6 bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 hover:dark:bg-white/10 transition-colors">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">GraphRAG Engine</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               Dive deep into how our GraphRAG pipeline structures your data into a cohesive knowledge graph.
@@ -51,7 +51,7 @@ export default function DocsPage() {
             </Link>
           </div>
 
-          <div className="p-6 bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800">
+          <div className="p-6 bg-white dark:bg-white/5 rounded-2xl shadow-sm border border-gray-100 dark:border-white/10 hover:dark:bg-white/10 transition-colors">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Model Context Protocol</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
               Connect local directories and IDEs to your SnapMind brain using MCP standard.

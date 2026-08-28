@@ -8,18 +8,46 @@ import ArchitectureSection from '@/components/sections/architecture-section';
 import UseCasesSection from '@/components/sections/use-cases';
 import CtaSection from '@/components/sections/cta-section';
 
+import { ScrollReveal } from '@/components/ui/scroll-reveal';
+
 export default async function Home() {
   return (
     <>
-      <HeroSection />
-      <ArchitectureSection />
-      <CoreFeatures />
-      <ToolsTab />
-      <BenefitsGrid />
-      <UseCasesSection />
-      <TestimonialsSection />
-      <FaqAccordion />
-      <CtaSection />
+      <ScrollReveal>
+        <HeroSection />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <ArchitectureSection />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <CoreFeatures />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <ToolsTab />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <BenefitsGrid />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <UseCasesSection />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <TestimonialsSection />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <FaqAccordion />
+      </ScrollReveal>
+      
+      <ScrollReveal delay={0.1}>
+        <CtaSection />
+      </ScrollReveal>
     </>
   );
 }
