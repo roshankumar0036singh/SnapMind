@@ -440,9 +440,11 @@ class BrowserOrchestrator:
                         "status": "needs_more_info"
                     }
                 
-                # Prioritize the first LinkedIn result
+                # Prioritize the first LinkedIn result, but add secondary results as fallbacks
                 top_urls = [linkedin_results[0]['url']]
-                print(f"[BrowserOrchestrator] Prioritizing LinkedIn profile: {top_urls[0]}")
+                other_urls = [r['url'] for r in raw_results if r.get('url') and r['url'] != top_urls[0]]
+                top_urls.extend(other_urls[:4]) # Keep up to 4 backup sources
+                print(f"[BrowserOrchestrator] Prioritizing LinkedIn profile: {top_urls[0]} with {len(top_urls)-1} fallback sources")
             else:
                 # 4. Rank Results (General Mode)
                 top_urls = self.ranker.rank(user_query, raw_results)
@@ -668,6 +670,27 @@ class BrowserOrchestrator:
             top_urls = list(dict.fromkeys(top_urls))
         else:
             print("[BrowserOrchestrator] Skipping web search. Found sufficient local memory.")
+
+        # If direct scraping yielded 0 content (e.g. Auth Wall / anti-bot), fall back to raw search snippets
+        if not scraped_contexts and 'raw_results' in locals() and raw_results:
+            print("[BrowserOrchestrator] Direct scraping yielded 0 content (e.g. LinkedIn Auth Wall). Falling back to search snippets...")
+            for idx, r in enumerate(raw_results[:6]):
+                r_title = r.get('title', 'Web Snippet')
+                r_url = r.get('url', '')
+                r_snippet = r.get('snippet', '') or r.get('description', '')
+                if not r_snippet and not r_title:
+                    continue
+                snippet_text = f"Source: {r_title}\nURL: {r_url}\nSummary Snippet: {r_snippet}"
+                sub_block_id = f"br-block-snippet-{run_id}-{idx}"
+                scraped_contexts.append(f"[{sub_block_id}] Source URL: {r_url}\n{snippet_text}")
+                citations.append({"blockId": sub_block_id, "snippet": r_snippet[:100] if r_snippet else r_title, "highlightUrl": r_url})
+                blocks.append({
+                    "id": sub_block_id,
+                    "text": snippet_text,
+                    "highlight_snippet": r_snippet[:100] if r_snippet else r_title,
+                    "url": r_url,
+                    "source_type": "web"
+                })
 
         # 6. Final Context Synthesis
         # Respect ContextConfig.MAX_CONTEXT_LENGTH (8000)

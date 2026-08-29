@@ -24,17 +24,15 @@ class CrawlerService:
     async def scrape_url(cls, url: str, api_keys: dict = None, max_retries: int = 2) -> tuple[str, str | None]:
         """Scrape a single URL with direct high-fidelity routing for specific platforms."""
         
-        # [NEW] Direct High-Fidelity LinkedIn Routing
+        # [OPTIMIZED] Use Jina / Firecrawl with built-in proxy rotation
         if "linkedin.com" in url:
-            print(f"[CrawlerService] Direct High-Fidelity LinkedIn routing for {url}...")
-            from services.scrapers.linkedin_scraper import LinkedInCustomScraper
+            print(f"[CrawlerService] Using Jina proxy network for LinkedIn URL {url}...")
             try:
-                content, title = await LinkedInCustomScraper.scrape(url)
-                if content and len(content) > 500:
+                content, title = await cls.jina_scrape_fallback(url, api_keys)
+                if content and len(content) > 300 and "Join LinkedIn" not in content and "authwall" not in content.lower():
                     return content, title
-            except Exception as le:
-                print(f"[CrawlerService] LinkedIn Custom Scraper failed: {le}")
-                # Fall through to standard flow if custom fails
+            except Exception as je:
+                print(f"[CrawlerService] Jina LinkedIn scrape failed: {je}")
         firecrawl_key = get_firecrawl_key(api_keys)
         
         if not firecrawl_key:
@@ -45,7 +43,8 @@ class CrawlerService:
         payload = {
             "url": url,
             "formats": ["markdown"],
-            "onlyMainContent": True
+            "onlyMainContent": True,
+            "waitFor": 1500
         }
         headers = {
             "Authorization": f"Bearer {firecrawl_key}",
@@ -84,7 +83,7 @@ class CrawlerService:
 
     @classmethod
     async def jina_scrape_fallback(cls, url: str, api_keys: dict = None) -> tuple[str, str | None]:
-        """Premium fallback using r.jina.ai."""
+        """Premium fallback using r.jina.ai with automated lazy-load waiting."""
         jina_key = (api_keys or {}).get("jina") or os.getenv("JINA_API_KEY")
         if not jina_key:
             return "", None
@@ -93,7 +92,9 @@ class CrawlerService:
         headers = {
             "Authorization": f"Bearer {jina_key}",
             "X-With-Images-Summary": "true",
-            "X-Target-Language": "en"
+            "X-Target-Language": "en",
+            "X-Wait-For-Selector": "main, article, body",
+            "X-Timeout": "15"
         }
         try:
             resp = await cls._client.get(jina_url, headers=headers, timeout=30.0)
