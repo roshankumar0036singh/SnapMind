@@ -17,7 +17,7 @@ function formatMessages(messages) {
   return messages.map((m) => {
     if (Array.isArray(m)) return { role: m[0], content: m[1] };
     return {
-      role: m.role || (m._getType?.() === 'human' ? 'user' : 'assistant'),
+      role: m.role || (m._getType?.() === 'system' ? 'system' : (m._getType?.() === 'human' ? 'user' : 'assistant')),
       content: m.content || m.text || '',
     };
   });
@@ -191,7 +191,7 @@ export async function getLLM(options = {}) {
     case 'mistral':
       return new ChatMistralAI({
         apiKey: await requireApiKey('mistral'),
-        model: 'mistral-large-latest',
+        model: options.model || config.get('model') || 'mistral-small-latest',
         temperature,
       });
     case 'openai': {

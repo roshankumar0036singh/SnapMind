@@ -1,6 +1,6 @@
 {
   "name": "snapmind-ai",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Persona-based RAG CLI for local AI, semantic vector search, PDF/code/data ingestion, and terminal-native knowledge workflows with LanceDB and Ollama.",
   "keywords": [
     "snapmind-ai",

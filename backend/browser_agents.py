@@ -763,7 +763,7 @@ User Query: {user_query}
         try:
             raw_answer = router.chat(
                 prompt=prompt,
-                model_id=settings.models.mistral_large
+                model_id=settings.models.mistral_small
             )
             # 1. Strip Emojis and standard Markdown footnotes
             import re

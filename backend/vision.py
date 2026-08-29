@@ -84,7 +84,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                 json={
-                    "model": "qwen/qwen3.6-27b",
+                    "model": "llama-3.2-11b-vision-preview",
                     "messages": [
                         {"role": "system", "content": system_instruction},
                         {
@@ -100,7 +100,7 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
             )
             if res.status_code == 200:
                 answer = res.json()["choices"][0]["message"]["content"]
-                result = {"answer": answer, "success": True, "model_used": "qwen3.6-27b"}
+                result = {"answer": answer, "success": True, "model_used": "llama-3.2-11b-vision-preview"}
                 save_to_cache(img_hash, mode, final_prompt, result)
                 return result
             else:
