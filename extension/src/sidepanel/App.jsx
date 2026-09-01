@@ -2743,24 +2743,6 @@ function App() {
           )}
           {/* Right: Workspaces & Icon Navigation */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Workspace Selector */}
-            {workspaces.length > 0 && (
-              <select
-                value={currentWorkspace?.id || ''}
-                onChange={(e) => {
-                  const ws = workspaces.find(w => w.id === e.target.value);
-                  setCurrentWorkspace(ws);
-                  if (ws) toast.success(`Switched to workspace: ${ws.name}`);
-                }}
-                className="bg-transparent border border-slate-200 text-xs text-slate-600 rounded-md py-1 px-2 focus:ring-2 focus:ring-indigo-500/50 cursor-pointer hover:bg-slate-50 transition-colors"
-                style={{ maxWidth: '120px' }}
-                title="Select Active Workspace"
-              >
-                {workspaces.map(ws => (
-                  <option key={ws.id} value={ws.id}>{ws.name}</option>
-                ))}
-              </select>
-            )}
             {/* Index Button */}
             <button
               onClick={handleIngest}
