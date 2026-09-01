@@ -104,22 +104,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const refreshWorkspaces = useCallback(async () => {
     setIsLoading(true);
     try {
-      let list = await load();
-
-      // A brand-new account has none, and every scoped endpoint needs one, so the
-      // first visit creates it rather than showing an unusable empty shell.
-      if (list.length === 0) {
-        const created = await fetch('/api/workspaces', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Default Workspace', metadata: {} }),
-        });
-        if (created.ok) {
-          const one = normalize(await created.json());
-          if (one) list = [one];
-        }
-      }
-
+      const list = await load();
       setWorkspaces(list);
     } catch (error) {
       console.error('Failed to fetch workspaces:', error);

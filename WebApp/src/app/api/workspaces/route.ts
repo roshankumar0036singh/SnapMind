@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const { data: workspaces, error } = await supabaseAdmin
+    let { data: workspaces, error } = await supabaseAdmin
       .from('workspaces')
       .select('*')
       .eq('owner_id', session.user.id)
@@ -22,6 +22,24 @@ export async function GET(req: NextRequest) {
     if (error) {
       console.error('Supabase GET Error:', error);
       return new Response(`Database Error: ${error.message}`, { status: 500 });
+    }
+
+    // Backend fallback: if the user has absolutely no workspaces, create one synchronously
+    // This prevents the frontend from ever seeing an empty list and triggering race conditions.
+    if (!workspaces || workspaces.length === 0) {
+      const { data: defaultWorkspace, error: createError } = await supabaseAdmin
+        .from('workspaces')
+        .insert({
+          name: 'Personal Workspace',
+          owner_id: session.user.id,
+          metadata: {}
+        })
+        .select()
+        .single();
+
+      if (!createError && defaultWorkspace) {
+        workspaces = [defaultWorkspace];
+      }
     }
 
     return Response.json(workspaces || []);
