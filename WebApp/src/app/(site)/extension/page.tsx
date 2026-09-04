@@ -53,7 +53,7 @@ export default function ExtensionPage() {
           {/* Action Download Buttons */}
           <div className="flex justify-center gap-4 flex-wrap">
             <a
-              href="https://microsoftedge.microsoft.com/addons/detail/snapmind-context-intellig/mhnehfblnadiendningkgcbmjcpjlamg"
+              href="https://microsoftedge.microsoft.com/addons/detail/snapmind-%E2%80%94-ai-research-/nhdepgffhbdbcmoophlhcgjjckbpeabn"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-3 px-8 py-4 rounded-full bg-primary-500 hover:bg-primary-600 text-white font-bold transition-all hover:scale-105 shadow-lg shadow-primary-500/20 hover:shadow-primary-500/30"
