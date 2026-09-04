@@ -126,23 +126,33 @@ export default function McpPage() {
               </div>
             </div>
 
-            {/* Method 2: Smithery */}
+            {/* Method 2: PyPI Installation */}
             <div className="p-9 rounded-[20px] bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 shadow-[0px_30px_50px_-32px_rgba(107,110,148,0.04)] dark:shadow-none">
               <div className="flex items-center gap-3 mb-4">
                 <span className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary-50 dark:bg-primary-500/20 text-primary-600 dark:text-primary-400 font-bold text-sm">
                   2
                 </span>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Installation via Smithery</h3>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">Installation via PyPI (pip)</h3>
               </div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-6 leading-relaxed">
-                Install SnapMind for Claude Desktop or other MCP clients automatically using Smithery:
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 leading-relaxed">
+                Install the SnapMind MCP server globally from PyPI using pip:
               </p>
-              <div className="max-w-xl p-1.5 bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-between gap-4 shadow-sm dark:shadow-none">
+              <div className="max-w-xl p-1.5 bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 flex items-center justify-between gap-4 mb-6 shadow-sm dark:shadow-none">
                 <div className="flex items-center gap-3 pl-3 text-sm text-gray-700 dark:text-gray-300 font-mono">
                   <Terminal className="h-4 w-4 text-primary-500" />
-                  <span>npx -y @smithery/cli install snapmind-mcp --client claude</span>
+                  <span>pip install snapmind-mcp</span>
                 </div>
-                <CopyButton text="npx -y @smithery/cli install snapmind-mcp --client claude" />
+                <CopyButton text="pip install snapmind-mcp" />
+              </div>
+
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-4 leading-relaxed">
+                Once installed, add this configuration block to your MCP client:
+              </p>
+              <div className="relative rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 p-4 font-mono text-xs text-gray-700 dark:text-gray-300 overflow-x-auto leading-relaxed shadow-sm dark:shadow-none">
+                <pre>{localConfigJson}</pre>
+                <div className="absolute top-3 right-3">
+                  <CopyButton text={localConfigJson} />
+                </div>
               </div>
             </div>
 
