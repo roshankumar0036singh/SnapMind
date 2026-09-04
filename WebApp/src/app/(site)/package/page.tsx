@@ -9,7 +9,8 @@ export const metadata: Metadata = {
 
 export default function PackagePage() {
   const versions = [
-    { version: '1.5.2', date: '2026-06-22', tag: 'Latest', desc: 'Adds deep reasoning agent capabilities and local LanceDB fixes' },
+    { version: '1.5.3', date: '2026-09-04', tag: 'Latest', desc: 'Dynamic LLM model routing updates and bug fixes' },
+    { version: '1.5.2', date: '2026-06-22', tag: 'Stable', desc: 'Adds deep reasoning agent capabilities and local LanceDB fixes' },
     { version: '1.5.1', date: '2026-06-22', tag: 'Stable', desc: 'Optimized vector search recall rates and multi-hop routing stability' },
     { version: '1.5.0', date: '2026-06-20', tag: 'Stable', desc: 'Introduces support for multi-provider LLMs (Claude, Gemini, Mistral)' },
     { version: '1.3.4', date: '2026-05-31', tag: 'Legacy', desc: 'Performance patches for codebase context indexing' },
@@ -23,7 +24,7 @@ export default function PackagePage() {
         {/* Breadcrumb / Top Info */}
         <div className="flex justify-center mb-6">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-500/20">
-            npm v1.5.2 is live
+            npm v1.5.3 is live
           </span>
         </div>
 
