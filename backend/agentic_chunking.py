@@ -42,9 +42,13 @@ async def run_agentic_chunking(text: str, api_keys: dict = None, target_chunk_si
     import asyncio
     
     # Smart Dynamic Concurrency:
-    # If user has 1 key, it runs strictly sequentially with a 1s delay (no 429s).
-    # If user has 5 keys, it runs 5 parallel tasks (blazing fast).
-    num_keys = get_key_count("ingest")
+    # If the user provides a custom key from the extension, assume they only have 1 key.
+    # Otherwise, check the backend's key pool count.
+    if api_keys and api_keys.get("mistral"):
+        num_keys = 1
+    else:
+        num_keys = get_key_count("ingest")
+        
     semaphore = asyncio.Semaphore(max(1, num_keys)) 
 
     async def sem_process(seg, index):
@@ -107,8 +111,15 @@ async def _process_segment(text: str, api_keys: dict = None, target_chunk_size: 
                 )
                 res_data = json.loads(response.choices[0].message.content)
                 break
-            except Exception:
+            except Exception as e:
                 attempts += 1
+                if "429" in str(e) and api_keys and api_keys.get("mistral"):
+                    print(f"[AGENTIC_CHUNKING] User key rate limited. Switching to backend pool...")
+                    # Seamlessly fall back to backend pool key by passing empty api_keys
+                    mistral_client = get_mistral_async_client({}, task="ingest")
+                    await asyncio.sleep(0.5)
+                    continue
+                
                 if attempts == 3: res_data = {"chunk_content": ""}
                 await asyncio.sleep(0.5)
 

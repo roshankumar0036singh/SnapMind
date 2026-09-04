@@ -43,29 +43,40 @@ class MistralProvider(BaseLLMProvider):
         return response.choices[0].message.content
 
     def stream(self, system_content: str, messages: List[Dict[str, str]], **kwargs) -> Generator[str, None, None]:
-        client = get_mistral_client(self.api_keys, task="chat")
-        if not client:
-            raise ValueError("Mistral API key is missing. Please configure it in Settings -> Models.")
-        try:
-            stream_response = client.chat.stream(
-                model=self.model_target,
-                messages=messages,
-            )
-            for chunk in stream_response:
-                if chunk.data.choices[0].delta.content:
-                    text_chunk = chunk.data.choices[0].delta.content
-                    yield text_chunk
-        except Exception as mistral_stream_err:
-            print(f"[LLM] Mistral streaming failed ({mistral_stream_err}). Falling back to non-streaming...")
-            fallback_response = client.chat.complete(
-                model=self.model_target,
-                messages=messages,
-            )
-            full_response = fallback_response.choices[0].message.content or ""
-            if full_response:
-                yield full_response
-            else:
-                raise ValueError("Mistral non-streaming fallback returned empty response.")
+        max_retries = 3
+        for attempt in range(max_retries):
+            client = get_mistral_client(self.api_keys, task="chat")
+            if not client:
+                raise ValueError("Mistral API key is missing. Please configure it in Settings -> Models.")
+            try:
+                stream_response = client.chat.stream(
+                    model=self.model_target,
+                    messages=messages,
+                )
+                for chunk in stream_response:
+                    if chunk.data.choices[0].delta.content:
+                        text_chunk = chunk.data.choices[0].delta.content
+                        yield text_chunk
+                return
+            except Exception as mistral_stream_err:
+                error_str = str(mistral_stream_err)
+                if "429" in error_str or "rate_limit" in error_str.lower() or "Rate limit" in error_str:
+                    if self.api_keys and self.api_keys.get("mistral"):
+                        print(f"[LLM] User key rate limited (attempt {attempt + 1}/{max_retries}). Switching to backend pool...")
+                        self.api_keys["mistral"] = None
+                        continue
+                
+                print(f"[LLM] Mistral streaming failed ({mistral_stream_err}). Falling back to non-streaming...")
+                fallback_response = client.chat.complete(
+                    model=self.model_target,
+                    messages=messages,
+                )
+                full_response = fallback_response.choices[0].message.content or ""
+                if full_response:
+                    yield full_response
+                    return
+                else:
+                    raise ValueError("Mistral non-streaming fallback returned empty response.")
 
 
 class OpenAIProvider(BaseLLMProvider):

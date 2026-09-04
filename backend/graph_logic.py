@@ -50,6 +50,23 @@ Output strictly in JSON format:
         return json.loads(content)
         
     except Exception as e:
+        if "429" in str(e) and api_keys and api_keys.get("mistral"):
+            print("[GRAPH] User key rate limited. Switching to backend pool...")
+            client = get_mistral_client({}, task="graph")
+            try:
+                response = client.chat.complete(
+                    model=settings.models.mistral_small,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Extract the knowledge graph from this text:\n\n{sample_text}"}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                return json.loads(response.choices[0].message.content)
+            except Exception as inner_e:
+                print(f"[GRAPH] Backend pool also failed: {inner_e}")
+                return {"nodes": [], "edges": []}
+                
         print(f"[GRAPH] Extraction error: {e}")
         return {"nodes": [], "edges": []}
 
