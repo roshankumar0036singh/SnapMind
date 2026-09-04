@@ -126,9 +126,9 @@ export function SourcePreview({ id, block }: { id: string; block?: RetrievedBloc
             {tier}
           </span>
         )}
-        {typeof block?.similarity === 'number' && (
+        {typeof block?.similarity === 'number' && block.similarity > 0 && Math.round(block.similarity * 100) > 0 && (
           <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-white/10 dark:text-gray-300">
-            {block.similarity < 0.01 && block.similarity > 0 ? '<1' : Math.round(block.similarity * 100)}% match
+            {Math.round(block.similarity * 100)}% match
           </span>
         )}
         {typeof page === 'number' && (
