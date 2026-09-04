@@ -299,8 +299,14 @@ Provide your final synthesized answer:"""
                     full_text += chunk.text
             return full_text.strip()
         except Exception as e:
-            print(f"[REASONING] Synthesis failed: {e}")
-            return "\n\n".join([f"**Step:** {s.get('thought')}\n**Answer:** {s['answer']}" for s in chain])
+            print(f"[REASONING] Gemini synthesis failed ({e}). Falling back to LLMRouter...")
+            try:
+                from llm_router import LLMRouter
+                router = LLMRouter(self.api_keys)
+                return router.chat(prompt=prompt)
+            except Exception as fallback_err:
+                print(f"[REASONING] LLMRouter fallback also failed: {fallback_err}")
+                return "\n\n".join([f"**Step:** {s.get('thought')}\n**Answer:** {s['answer']}" for s in chain])
 
 
 def is_multi_hop_query(query: str, api_keys: dict = None) -> bool:
