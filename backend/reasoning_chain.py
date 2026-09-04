@@ -25,9 +25,9 @@ class ReasoningPlanner:
         Returns:
             [{"step": 1, "question": "...", "tool": "web_search"|"local_rag", "depends_on": []}]
         """
-        from api_clients import get_mistral_client
+        from api_clients import get_gemini_client
 
-        client = get_mistral_client(self.api_keys, task="research")
+        client = get_gemini_client(self.api_keys, task="research")
         if not client:
             return [{"step": 1, "question": query, "tool": "web_search", "depends_on": []}]
 
@@ -54,13 +54,14 @@ Output ONLY a valid JSON array of objects with these fields:
 User Query: {query}"""
 
         try:
-            response = client.chat.complete(
-                model=settings.models.mistral_large,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"}
+            from google.genai import types
+            response = client.models.generate_content(
+                model=settings.models.gemini_flash,
+                contents=prompt,
+                config=types.GenerateContentConfig(response_mime_type="application/json")
             )
 
-            text = response.choices[0].message.content.strip()
+            text = response.text.strip()
             # Clean markdown wrappers
             from utils import strip_json_fences
             text = strip_json_fences(text)
@@ -250,16 +251,16 @@ class ReasoningExecutor:
 
     async def _synthesize(self, original_query: str, chain: List[Dict]) -> str:
         """Generate final synthesized answer from all chain steps."""
-        from api_clients import get_mistral_client
+        from api_clients import get_gemini_client
 
-        client = get_mistral_client(self.api_keys, task="research")
+        client = get_gemini_client(self.api_keys, task="research")
         if not client:
             # Fallback: concatenate step answers
             return "\n\n".join([f"**Action:** {s.get('action')}\n**Answer:** {s['answer']}" for s in chain])
 
         chain_summary = ""
-        for step in chain:
-            chain_summary += f"\n**Question:** {step.get('thought')}\n**Finding:** {step['answer'][:800]}\n"
+        for i, step in enumerate(chain, 1):
+            chain_summary += f"\n### Step {i}: {step.get('thought')}\n**Findings:**\n{step.get('answer', '').strip()}\n"
 
         lang_instruction = ""
         if self.output_lang and self.output_lang != "auto":
@@ -267,11 +268,17 @@ class ReasoningExecutor:
             lang_name = LANG_MAP.get(self.output_lang, self.output_lang)
             lang_instruction = f"\n\nCRITICAL: Output your entire response in {lang_name}."
 
-        prompt = f"""You are an advanced research assistant. A multi-step reasoning chain was executed to answer the user's complex question.
+        prompt = f"""You are an advanced deep research assistant. A multi-step reasoning chain was executed to investigate and answer the user's question.
 
-Synthesize ALL the findings below into a single, comprehensive, well-structured answer.
-Include key facts from each step. Use citations from the steps where applicable.
-Do NOT just repeat the steps — create a flowing, cohesive answer.{lang_instruction}
+Synthesize ALL the findings below into a single, comprehensive, highly detailed, and well-structured answer.
+
+CRITICAL CITATION RULES:
+1. Every specific fact, profile detail, metric, affiliation, or finding derived from the steps MUST retain its original block citation (e.g. [br-block-snippet-1995-1], [db-block-1], [pin-t0-1]).
+2. Write citations inline immediately after the sentence or claim.
+3. Write each citation in its own brackets, e.g. [br-block-snippet-1995-1] [br-block-snippet-1995-5].
+4. Do NOT drop or invent citation IDs.
+
+Do NOT just repeat the steps mechanically — construct a coherent, rigorous research report with clear sections and bullet points.{lang_instruction}
 
 ORIGINAL QUESTION: {original_query}
 
@@ -281,15 +288,15 @@ REASONING CHAIN RESULTS:
 Provide your final synthesized answer:"""
 
         try:
-            response = await client.chat.stream_async(
-                model=settings.models.mistral_large,
-                messages=[{"role": "user", "content": prompt}]
+            response = await client.aio.models.generate_content_stream(
+                model=settings.models.gemini_flash,
+                contents=prompt
             )
             # For simplicity in synthesis, we return the full text
             full_text = ""
             async for chunk in response:
-                if chunk.choices[0].delta.content:
-                    full_text += chunk.choices[0].delta.content
+                if chunk.text:
+                    full_text += chunk.text
             return full_text.strip()
         except Exception as e:
             print(f"[REASONING] Synthesis failed: {e}")

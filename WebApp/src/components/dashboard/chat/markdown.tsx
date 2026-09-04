@@ -11,7 +11,7 @@
  * untouched for free, because those elements simply don't opt in.
  */
 
-import { CITATION_RE } from '@/lib/format';
+import { CITATION_ID_PATTERN, CITATION_RE } from '@/lib/format';
 import type { RetrievedBlock } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Check, Copy } from 'lucide-react';
@@ -47,12 +47,31 @@ function linkify(text: string, blocks: RetrievedBlock[] | undefined, keyBase: st
   let n = 0;
 
   while ((match = CITATION_RE.exec(text)) !== null) {
+    const rawMatch = match[0];
+    const bracketContent = match[1];
+
+    // Extract all citation IDs inside this bracket (handles single [id] or multiple [id1 & id2])
+    const idRegex = new RegExp(CITATION_ID_PATTERN, 'gi');
+    const ids: string[] = [];
+    let idMatch: RegExpExecArray | null;
+    while ((idMatch = idRegex.exec(bracketContent)) !== null) {
+      ids.push(idMatch[0].toLowerCase());
+    }
+
+    if (ids.length === 0) {
+      continue;
+    }
+
     if (match.index > last) out.push(text.slice(last, match.index));
-    n += 1;
-    out.push(
-      <CitationChip key={`${keyBase}-c${n}`} id={match[1].toLowerCase()} blocks={blocks} index={n} />,
-    );
-    last = match.index + match[0].length;
+
+    ids.forEach((id) => {
+      n += 1;
+      out.push(
+        <CitationChip key={`${keyBase}-c${n}`} id={id} blocks={blocks} index={n} />,
+      );
+    });
+
+    last = match.index + rawMatch.length;
   }
 
   if (!n) return [text];

@@ -192,15 +192,15 @@ export function citationHandle(id: string, title?: string | null): string {
 }
 
 /**
- * Matches single-bracket block ids the model emits.
+ * Matches citation block ids the model emits, including single IDs or grouped IDs
+ * separated by commas, ampersands, or 'and' (e.g. `[br-block-snippet-1995-1 & br-block-snippet-1995-5]`).
  * Prefixes verified in the backend: `db-block-N` (search_service.py:297),
- * `nb-block-N` (:454), `br-block-{run}-N` / `br-block-local-N` / `br-block-force-N`
- * (browser_agents.py:355-597), `hop-N` (search_service.py:87), the deep-research
- * form `hop{N}-{inner}` (reasoning_chain.py:177 — note there is no dash after
- * `hop` there, which is why the digits are optional), `pin-tN-M`, and the bare
- * `local` used when answering from page content (search.py:58).
+ * `nb-block-N` (:454), `br-block-{run}-N` / `br-block-snippet-{run}-N` / `br-block-local-N` / `br-block-force-N`
+ * (browser_agents.py:355-684), `hop-N` (search_service.py:87), the deep-research
+ * form `hop{N}-{inner}` (reasoning_chain.py:177), `pin-tN-M`, and `local`.
  */
-export const CITATION_RE = /\[((?:db|nb|br|pin|hop)\d*-[a-z0-9-]*\d|local)\]/gi;
+export const CITATION_ID_PATTERN = '(?:db|nb|br|pin|hop)\\d*-[a-z0-9_-]+|local';
+export const CITATION_RE = /\[([^\]]*?(?:(?:db|nb|br|pin|hop)\d*-[a-z0-9_-]+|local)[^\]]*?)\]/gi;
 
 /**
  * Build a deep link that scrolls the source to the cited text.
