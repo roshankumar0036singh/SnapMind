@@ -87,7 +87,7 @@ async def save_page(request: SavePageRequest, req: Request, user_id: str = Depen
             try:
                 from api_clients import get_mistral_client
                 from config import settings
-                client = get_mistral_client(api_keys)
+                client = get_mistral_client(api_keys, task="utility")
                 prompt = f"Analyze the following webpage text and extract a concise title, a 2-3 sentence summary, 3-5 keywords, and 1-2 emotional tones. Return ONLY a JSON object with keys: 'title', 'summary', 'keywords' (list of strings), and 'emotions' (list of strings).\n\nText:\n{request.text[:4000]}"
                 response = client.chat.complete(
                     model=settings.models.mistral_large,

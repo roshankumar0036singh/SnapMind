@@ -27,7 +27,7 @@ class ReasoningPlanner:
         """
         from api_clients import get_mistral_client
 
-        client = get_mistral_client(self.api_keys)
+        client = get_mistral_client(self.api_keys, task="research")
         if not client:
             return [{"step": 1, "question": query, "tool": "web_search", "depends_on": []}]
 
@@ -252,7 +252,7 @@ class ReasoningExecutor:
         """Generate final synthesized answer from all chain steps."""
         from api_clients import get_mistral_client
 
-        client = get_mistral_client(self.api_keys)
+        client = get_mistral_client(self.api_keys, task="research")
         if not client:
             # Fallback: concatenate step answers
             return "\n\n".join([f"**Action:** {s.get('action')}\n**Answer:** {s['answer']}" for s in chain])

@@ -38,15 +38,26 @@ async def run_agentic_chunking(text: str, api_keys: dict = None, target_chunk_si
 
     print(f"[AGENTIC_CHUNKING] Split into {len(segments)} parallel segments.")
     
+    from mistral_key_pool import get_key_count
     import asyncio
-    # Limit concurrency to avoid hitting API rate limits too hard
-    semaphore = asyncio.Semaphore(10) 
+    
+    # Smart Dynamic Concurrency:
+    # If user has 1 key, it runs strictly sequentially with a 1s delay (no 429s).
+    # If user has 5 keys, it runs 5 parallel tasks (blazing fast).
+    num_keys = get_key_count("ingest")
+    semaphore = asyncio.Semaphore(max(1, num_keys)) 
 
-    async def sem_process(seg):
+    async def sem_process(seg, index):
+        # Stagger the start of each task by 1 second * index to prevent burst rate limits
+        if num_keys == 1 and index > 0:
+            await asyncio.sleep(1.0 * index)
+        elif index > 0:
+            await asyncio.sleep(0.2 * index) # slight stagger even for multi-key to be safe
+
         async with semaphore:
             return await _process_segment(seg, api_keys, target_chunk_size)
 
-    tasks = [sem_process(seg) for seg in segments]
+    tasks = [sem_process(seg, i) for i, seg in enumerate(segments)]
     results = await asyncio.gather(*tasks)
     
     # Flatten results
@@ -57,7 +68,7 @@ async def run_agentic_chunking(text: str, api_keys: dict = None, target_chunk_si
 async def _process_segment(text: str, api_keys: dict = None, target_chunk_size: int = 1000) -> List[Dict[str, Any]]:
     """Internal helper to process a single segment sequentially (agentic)."""
     from api_clients import get_mistral_async_client
-    mistral_client = get_mistral_async_client(api_keys)
+    mistral_client = get_mistral_async_client(api_keys, task="ingest")
     
     if not mistral_client:
         return [{"content": text[i:i+target_chunk_size]} for i in range(0, len(text), target_chunk_size)]

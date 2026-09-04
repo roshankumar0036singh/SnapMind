@@ -51,22 +51,26 @@ def get_gemini_client(api_keys=None):
         raise ValueError("Missing GEMINI_API_KEY or GOOGLE_API_KEY")
     return genai.Client(api_key=key.strip())
 
-def get_mistral_client(api_keys=None):
+def get_mistral_client(api_keys=None, task: str = None):
     api_keys = api_keys or {}
     key = api_keys.get("mistral")
+    if not key and task:
+        # Use the round-robin key pool for the given task category
+        from mistral_key_pool import get_key
+        key = get_key(task)
     if not key:
         key = os.getenv("MISTRAL_API_KEY")
     if not key:
         return None
     return Mistral(api_key=key.strip())
 
-def get_mistral_async_client(api_keys=None):
+def get_mistral_async_client(api_keys=None, task: str = None):
     """
     Mistral modern SDK (v1.0.0+) supports async natively on the same client 
     but often requires specific async instantiation for some versions.
     We'll return a client and then use its async methods.
     """
-    return get_mistral_client(api_keys)
+    return get_mistral_client(api_keys, task=task)
 
 def get_firecrawl_key(api_keys=None):
     api_keys = api_keys or {}

@@ -17,7 +17,7 @@ def extract_graph_data(text: str, api_keys: dict = None) -> Dict[str, Any]:
     """
     Uses Mistral to extract entities and their relationships from the given text.
     """
-    client = get_mistral_client(api_keys)
+    client = get_mistral_client(api_keys, task="graph")
     if not client:
         return {"nodes": [], "edges": []}
 
@@ -38,7 +38,7 @@ Output strictly in JSON format:
     try:
         print(f"[GRAPH] Extracting entities from {len(sample_text)} characters...")
         response = client.chat.complete(
-            model=settings.models.mistral_large,
+            model=settings.models.mistral_small,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Extract the knowledge graph from this text:\n\n{sample_text}"}
@@ -114,7 +114,7 @@ def get_graph_context(query: str, api_keys: dict = None, user_id: str = None, wo
     Given a query, finds relevant entities in the graph and returns 
     their relationships as a text block for the LLM.
     """
-    client = get_mistral_client(api_keys)
+    client = get_mistral_client(api_keys, task="graph")
     if not client:
         return ""
 
@@ -122,7 +122,7 @@ def get_graph_context(query: str, api_keys: dict = None, user_id: str = None, wo
     extract_prompt = f"Identify the primary entities (names, organizations, concepts) in this query: {query}. Return ONLY a comma-separated list."
     try:
         res = client.chat.complete(
-            model=settings.models.mistral_large,
+            model=settings.models.mistral_small,
             messages=[{"role": "user", "content": extract_prompt}]
         )
         entities = [e.strip() for e in res.choices[0].message.content.split(",") if e.strip()]

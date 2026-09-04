@@ -1103,7 +1103,7 @@ class RankerAgent:
         if len(unique_results) <= 3:
             return [r['url'] for r in unique_results]
             
-        client = get_mistral_client(self.api_keys)
+        client = get_mistral_client(self.api_keys, task="research")
         
         # Prepare context for LLM
         items_str = ""

@@ -13,7 +13,7 @@ from utils import LANG_MAP
 class ReportGenerator:
     def __init__(self, api_keys):
         self.api_keys = api_keys
-        self.client = get_mistral_client(api_keys)
+        self.client = get_mistral_client(api_keys, task="utility")
 
     def generate(self, session_ids: list, query: str, workspace_id: str = None, source_urls=None, output_lang: str = "auto", user_id: str = None):
         """

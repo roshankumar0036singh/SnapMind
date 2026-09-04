@@ -181,7 +181,7 @@ CONTEXT FROM WEBSITE:
                 # Attempt 2: Mistral fallback
                 try:
                     from api_clients import get_mistral_client
-                    mistral_client = get_mistral_client(api_keys=api_keys)
+                    mistral_client = get_mistral_client(api_keys=api_keys, task="utility")
                     if mistral_client:
                         mistral_response = mistral_client.chat.complete(
                             model=settings.models.mistral_small,

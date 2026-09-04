@@ -266,7 +266,7 @@ class HybridSearcher:
             # 1. Mistral Embedding Flow
             if "mistral" in model_name.lower():
                 from api_clients import get_mistral_client
-                client = get_mistral_client(self.api_keys)
+                client = get_mistral_client(self.api_keys, task="chat")
                 if client:
                     result = client.embeddings.create(
                         model=model_name,

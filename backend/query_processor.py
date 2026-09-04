@@ -33,7 +33,7 @@ class QueryProcessor:
         """Initialize query processor with LLM client"""
         try:
             from api_clients import get_mistral_client
-            self.mistral_client = get_mistral_client(api_keys)
+            self.mistral_client = get_mistral_client(api_keys, task="utility")
             
             if not self.mistral_client:
                 print("[QUERY] Warning: Mistral client not initialized")

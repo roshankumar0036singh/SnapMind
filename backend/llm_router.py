@@ -24,7 +24,7 @@ class BaseLLMProvider:
 
 class MistralProvider(BaseLLMProvider):
     def generate(self, system_content: str, messages: List[Dict[str, str]], query: str, **kwargs) -> str:
-        client = get_mistral_client(self.api_keys)
+        client = get_mistral_client(self.api_keys, task="chat")
         response = client.chat.complete(
             model=self.model_target,
             messages=messages,
@@ -43,7 +43,7 @@ class MistralProvider(BaseLLMProvider):
         return response.choices[0].message.content
 
     def stream(self, system_content: str, messages: List[Dict[str, str]], **kwargs) -> Generator[str, None, None]:
-        client = get_mistral_client(self.api_keys)
+        client = get_mistral_client(self.api_keys, task="chat")
         if not client:
             raise ValueError("Mistral API key is missing. Please configure it in Settings -> Models.")
         try:
