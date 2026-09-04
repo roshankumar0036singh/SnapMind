@@ -60,23 +60,43 @@ class MistralProvider(BaseLLMProvider):
                 return
             except Exception as mistral_stream_err:
                 error_str = str(mistral_stream_err)
-                if "429" in error_str or "rate_limit" in error_str.lower() or "Rate limit" in error_str:
+                # Mistral SDK sometimes throws ResponseNotRead on stream rate limits, so we check both
+                if "429" in error_str or "rate_limit" in error_str.lower() or "Rate limit" in error_str or "ResponseNotRead" in error_str:
                     if self.api_keys and self.api_keys.get("mistral"):
-                        print(f"[LLM] User key rate limited (attempt {attempt + 1}/{max_retries}). Switching to backend pool...")
+                        print(f"[LLM] User key stream rate limited (attempt {attempt + 1}/{max_retries}). Switching to backend pool...")
                         self.api_keys["mistral"] = None
                         continue
-                
-                print(f"[LLM] Mistral streaming failed ({mistral_stream_err}). Falling back to non-streaming...")
-                fallback_response = client.chat.complete(
-                    model=self.model_target,
-                    messages=messages,
-                )
-                full_response = fallback_response.choices[0].message.content or ""
-                if full_response:
-                    yield full_response
-                    return
-                else:
-                    raise ValueError("Mistral non-streaming fallback returned empty response.")
+
+                print(f"[LLM] Mistral streaming failed ({error_str}). Falling back to non-streaming...")
+                try:
+                    fallback_response = client.chat.complete(
+                        model=self.model_target,
+                        messages=messages,
+                    )
+                    full_response = fallback_response.choices[0].message.content or ""
+                    if full_response:
+                        yield full_response
+                        return
+                    else:
+                        raise ValueError("Mistral non-streaming fallback returned empty response.")
+                except Exception as fallback_err:
+                    fallback_err_str = str(fallback_err)
+                    if "429" in fallback_err_str or "rate_limit" in fallback_err_str.lower() or "Rate limit" in fallback_err_str:
+                        if self.api_keys and self.api_keys.get("mistral"):
+                            print(f"[LLM] User key fallback rate limited (attempt {attempt + 1}/{max_retries}). Switching to backend pool...")
+                            self.api_keys["mistral"] = None
+                            continue
+                        
+                        wait_time = 2 ** attempt
+                        print(f"[LLM] Backend pool rate limited (attempt {attempt + 1}/{max_retries}). Retrying in {wait_time}s...")
+                        import time
+                        time.sleep(wait_time)
+                        continue
+                    
+                    if attempt < max_retries - 1:
+                        print(f"[LLM] Fallback error ({fallback_err_str}). Retrying...")
+                        continue
+                    raise ValueError(f"Mistral failed after {max_retries} retries: {fallback_err_str}")
 
 
 class OpenAIProvider(BaseLLMProvider):
