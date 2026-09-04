@@ -74,17 +74,18 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
     elif image_bytes.startswith(b"GIF"): mime_type = "image/gif"
     elif image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP": mime_type = "image/webp"
 
-    # 1. Primary: Groq (Llama Scout) - User Preferred
+    import re
+    # 1. Primary: Groq (Qwen 3.6 27B Vision) - Free Tier
     groq_key = get_groq_key(api_keys)
     if groq_key:
-        print("[VISION] Attempting Groq (Primary Choice)...")
+        print("[VISION] Attempting Groq (Qwen 3.6 27B Vision)...")
         try:
             base64_image = base64.b64encode(image_bytes).decode('utf-8')
             res = requests.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
                 json={
-                    "model": "llama-3.2-11b-vision-preview",
+                    "model": "qwen/qwen3.6-27b",
                     "messages": [
                         {"role": "system", "content": system_instruction},
                         {
@@ -94,13 +95,16 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
                                 {"type": "text", "text": user_message_text}
                             ]
                         }
-                    ]
+                    ],
+                    "max_tokens": 2048
                 },
-                timeout=20
+                timeout=30
             )
             if res.status_code == 200:
-                answer = res.json()["choices"][0]["message"]["content"]
-                result = {"answer": answer, "success": True, "model_used": "llama-3.2-11b-vision-preview"}
+                raw_answer = res.json()["choices"][0]["message"]["content"]
+                # Strip out <think>...</think> reasoning blocks if present
+                clean_answer = re.sub(r'<think>.*?</think>', '', raw_answer, flags=re.DOTALL).strip()
+                result = {"answer": clean_answer or raw_answer, "success": True, "model_used": "qwen/qwen3.6-27b (Groq)"}
                 save_to_cache(img_hash, mode, final_prompt, result)
                 return result
             else:
@@ -108,9 +112,9 @@ def analyze_image_logic(image_bytes: bytes, user_prompt: str = None, mode: str =
         except Exception as e:
             print(f"[VISION] Groq error: {e}")
 
-    # 2. Secondary: Gemini 2.0 Flash (Fallback)
+    # 2. Secondary: Gemini 3.6 Flash (Fallback)
     try:
-        client = get_gemini_client(api_keys)
+        client = get_gemini_client(api_keys, task="utility")
         print("[VISION] Attempting Gemini Flash (Fallback)...")
         from google.genai import types
         
