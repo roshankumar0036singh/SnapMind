@@ -8,7 +8,7 @@ class ModelSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
     
     # Mistral Models
-    mistral_small: str = Field("mistral-small-latest", env="MISTRAL_SMALL_MODEL")
+    mistral_small: str = Field("mistral-large-2512", env="MISTRAL_SMALL_MODEL")
     mistral_large: str = Field("ministral-3b-2512", env="MISTRAL_LARGE_MODEL")
     mistral_embed: str = Field("mistral-embed", env="MISTRAL_EMBED_MODEL")
     

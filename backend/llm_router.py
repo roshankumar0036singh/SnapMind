@@ -60,8 +60,16 @@ class MistralProvider(BaseLLMProvider):
                 return
             except Exception as mistral_stream_err:
                 error_str = str(mistral_stream_err)
+                err_type = type(mistral_stream_err).__name__
                 # Mistral SDK sometimes throws ResponseNotRead on stream rate limits, so we check both
-                if "429" in error_str or "rate_limit" in error_str.lower() or "Rate limit" in error_str or "ResponseNotRead" in error_str:
+                is_rate_limit = (
+                    "429" in error_str or 
+                    "rate_limit" in error_str.lower() or 
+                    "Rate limit" in error_str or 
+                    err_type == "ResponseNotRead" or
+                    "Attempted to access streaming response content" in error_str
+                )
+                if is_rate_limit:
                     if self.api_keys and self.api_keys.get("mistral"):
                         print(f"[LLM] User key stream rate limited (attempt {attempt + 1}/{max_retries}). Switching to backend pool...")
                         self.api_keys["mistral"] = None
