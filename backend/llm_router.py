@@ -74,6 +74,12 @@ class MistralProvider(BaseLLMProvider):
                         print(f"[LLM] User key stream rate limited (attempt {attempt + 1}/{max_retries}). Switching to backend pool...")
                         self.api_keys["mistral"] = None
                         continue
+                    else:
+                        wait_time = 2 ** attempt
+                        print(f"[LLM] Backend pool stream rate limited (attempt {attempt + 1}/{max_retries}). Retrying stream in {wait_time}s...")
+                        import time
+                        time.sleep(wait_time)
+                        continue
 
                 print(f"[LLM] Mistral streaming failed ({error_str}). Falling back to non-streaming...")
                 try:
