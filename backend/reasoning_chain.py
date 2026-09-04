@@ -182,14 +182,23 @@ class ReasoningExecutor:
                 "status": "completed"
             }
 
-            # Namespace citations to avoid collisions
+            # Namespace citations to avoid collisions while keeping raw IDs findable
             for c in step_citations:
-                c["blockId"] = f"hop{step_num}-{c.get('blockId', '')}"
-            for b in step_blocks:
-                b["id"] = f"hop{step_num}-{b.get('id', '')}"
+                orig_cid = c.get('blockId', '')
+                c["blockId"] = f"hop{step_num}-{orig_cid}"
+                all_citations.append(c)
+                if orig_cid and orig_cid != c["blockId"]:
+                    c_raw = dict(c)
+                    c_raw["blockId"] = orig_cid
+                    all_citations.append(c_raw)
 
-            all_citations.extend(step_citations)
-            all_blocks.extend(step_blocks)
+            for b in step_blocks:
+                orig_bid = b.get('id', '')
+                b_hop = dict(b)
+                b_hop["id"] = f"hop{step_num}-{orig_bid}"
+                all_blocks.append(b_hop)
+                if orig_bid and orig_bid != b_hop["id"]:
+                    all_blocks.append(b)
 
         # Final synthesis
         yield {

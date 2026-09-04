@@ -24,7 +24,7 @@ import {
 import type { RetrievedBlock } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { BookMarked, ExternalLink, FileText, Save, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { api } from '@/lib/api-client';
 import { useWorkspace } from '@/context/WorkspaceContext';
 import { toast } from 'sonner';
@@ -181,10 +181,29 @@ export default function CitationChip({
   index?: number;
 }) {
   const [open, setOpen] = useState(false);
-  const block = blocks?.find((b) => b.id === id);
+  const [placement, setPlacement] = useState<'top' | 'bottom'>('top');
+  const chipRef = useRef<HTMLSpanElement>(null);
+
+  const normalizedId = id.toLowerCase();
+  const block = blocks?.find((b) => {
+    const bId = b.id?.toLowerCase();
+    if (!bId) return false;
+    if (bId === normalizedId) return true;
+    if (bId.replace(/^hop\d+-/, '') === normalizedId.replace(/^hop\d+-/, '')) return true;
+    return false;
+  });
+
   const url = blockUrl(block);
   const page = block?.metadata?.page;
   const handle = citationHandle(id, blockTitle(block)) || `SRC ${index ?? ''}`.trim();
+
+  const handleOpen = () => {
+    if (chipRef.current) {
+      const rect = chipRef.current.getBoundingClientRect();
+      setPlacement(rect.top < 260 ? 'bottom' : 'top');
+    }
+    setOpen(true);
+  };
 
   const chip = (
     <span
@@ -202,8 +221,9 @@ export default function CitationChip({
 
   return (
     <span
+      ref={chipRef}
       className="relative inline-block"
-      onMouseEnter={() => setOpen(true)}
+      onMouseEnter={handleOpen}
       onMouseLeave={() => setOpen(false)}
     >
       {url ? (
@@ -211,7 +231,7 @@ export default function CitationChip({
           href={citationHref(url, block?.highlight_snippet || block?.content, typeof page === 'number' ? page : undefined)}
           target="_blank"
           rel="noreferrer noopener"
-          onFocus={() => setOpen(true)}
+          onFocus={handleOpen}
           onBlur={() => setOpen(false)}
           aria-label={`Source ${handle}. Opens ${hostname(url)} at the cited text.`}
         >
@@ -220,8 +240,11 @@ export default function CitationChip({
       ) : (
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
-          onFocus={() => setOpen(true)}
+          onClick={() => {
+            if (!open) handleOpen();
+            else setOpen(false);
+          }}
+          onFocus={handleOpen}
           onBlur={() => setOpen(false)}
           aria-label={`Source ${handle}`}
         >
@@ -230,7 +253,12 @@ export default function CitationChip({
       )}
 
       {open && (
-        <span className="absolute bottom-full left-1/2 z-50 block -translate-x-1/2 pb-2">
+        <span
+          className={cn(
+            'absolute z-50 block max-w-[85vw] left-1/2 -translate-x-1/2 pointer-events-auto',
+            placement === 'top' ? 'bottom-full pb-2' : 'top-full pt-2',
+          )}
+        >
           <SourcePreview id={id} block={block} />
         </span>
       )}
