@@ -76,7 +76,7 @@ class ChatResponseDTO(BaseModel):
 class IngestResponseDTO(BaseModel):
     """Data Transfer Object for ingestion status"""
     success: bool
-    url: str
+    url: Optional[str] = ""
     document_id: Optional[str] = None
     tenant_id: Optional[str] = "default"
     user_id: Optional[str] = None

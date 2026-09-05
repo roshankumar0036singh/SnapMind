@@ -583,9 +583,9 @@ class IngestService:
         )
         
         if result.get("success"):
-            return IngestResponseDTO(success=True, url=repo_url, message=result.get("message", "Repo ingested."))
+            return IngestResponseDTO(success=True, url=repo_url or "", message=result.get("message", "Repo ingested."))
         else:
-            return IngestResponseDTO(success=False, url=repo_url, message=result.get("message", "Repo ingestion failed."))
+            return IngestResponseDTO(success=False, url=repo_url or "", message=result.get("message", "Repo ingestion failed."))
 
     def get_embedding(self, text: str, api_keys: dict = None) -> List[float]:
         """Provides a single embedding for a string."""

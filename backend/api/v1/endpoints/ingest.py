@@ -110,6 +110,12 @@ async def ingest_github_endpoint(
     req: Request,
     user_id: str = Depends(get_user_id)
 ):
+    if not request.url:
+        return IngestResponseDTO(
+            success=False,
+            url="",
+            message="GitHub repository URL is required. None provided."
+        )
     request.user_id = user_id
     # IngestRequestDTO is used here as it contains both url and session_id
     api_keys = {
