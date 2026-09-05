@@ -38,13 +38,13 @@ async def run_agentic_chunking(text: str, api_keys: dict = None, target_chunk_si
 
     print(f"[AGENTIC_CHUNKING] Split into {len(segments)} parallel segments.")
     
-    from mistral_key_pool import get_key_count
+    from gemini_key_pool import get_key_count
     import asyncio
     
     # Smart Dynamic Concurrency:
     # If the user provides a custom key from the extension, assume they only have 1 key.
     # Otherwise, check the backend's key pool count.
-    if api_keys and api_keys.get("mistral"):
+    if api_keys and api_keys.get("gemini"):
         num_keys = 1
     else:
         num_keys = get_key_count("ingest")
@@ -71,10 +71,10 @@ async def run_agentic_chunking(text: str, api_keys: dict = None, target_chunk_si
 
 async def _process_segment(text: str, api_keys: dict = None, target_chunk_size: int = 1000) -> List[Dict[str, Any]]:
     """Internal helper to process a single segment sequentially (agentic)."""
-    from api_clients import get_mistral_async_client
-    mistral_client = get_mistral_async_client(api_keys, task="ingest")
+    from api_clients import get_gemini_client
+    gemini_client = get_gemini_client(api_keys, task="ingest")
     
-    if not mistral_client:
+    if not gemini_client:
         return [{"content": text[i:i+target_chunk_size]} for i in range(0, len(text), target_chunk_size)]
 
     chunks = []
@@ -93,6 +93,8 @@ async def _process_segment(text: str, api_keys: dict = None, target_chunk_size: 
     {text_snippet}
     """
 
+    from google.genai import types
+
     while len(remaining_text) > 50:
         snippet_size = target_chunk_size + 1500
         text_snippet = remaining_text[:snippet_size]
@@ -101,22 +103,23 @@ async def _process_segment(text: str, api_keys: dict = None, target_chunk_size: 
         res_data = {}
         while attempts < 3:
             try:
-                response = await mistral_client.chat.complete_async(
-                    model=settings.models.mistral_large,
-                    messages=[{"role": "user", "content": prompt_template.format(
+                response = await gemini_client.aio.models.generate_content(
+                    model=settings.models.gemini_flash,
+                    contents=prompt_template.format(
                         target_size=target_chunk_size,
                         text_snippet=text_snippet
-                    )}],
-                    response_format={"type": "json_object"}
+                    ),
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
                 )
-                res_data = json.loads(response.choices[0].message.content)
+                res_data = json.loads(response.text)
                 break
             except Exception as e:
                 attempts += 1
-                if "429" in str(e) and api_keys and api_keys.get("mistral"):
+                if "429" in str(e) and api_keys and api_keys.get("gemini"):
                     print(f"[AGENTIC_CHUNKING] User key rate limited. Switching to backend pool...")
-                    # Seamlessly fall back to backend pool key by passing empty api_keys
-                    mistral_client = get_mistral_async_client({}, task="ingest")
+                    gemini_client = get_gemini_client({}, task="ingest")
                     await asyncio.sleep(0.5)
                     continue
                 

@@ -42,9 +42,13 @@ def get_openai_async_client(api_keys=None):
     import openai
     return openai.AsyncOpenAI(api_key=key.strip())
 
-def get_gemini_client(api_keys=None):
+def get_gemini_client(api_keys=None, task: str = None):
     api_keys = api_keys or {}
     key = api_keys.get("gemini")
+    if not key and task:
+        # Use the round-robin key pool for the given task category
+        from gemini_key_pool import get_key
+        key = get_key(task)
     if not key:
         key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not key:

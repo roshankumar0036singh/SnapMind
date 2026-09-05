@@ -6,7 +6,7 @@ import threading
 from typing import List, Dict, Any
 import psycopg
 from psycopg import errors
-from api_clients import get_mistral_client
+from api_clients import get_gemini_client
 from database import get_db_pool, db_retry
 from config import settings
 
@@ -17,7 +17,7 @@ def extract_graph_data(text: str, api_keys: dict = None) -> Dict[str, Any]:
     """
     Uses Mistral to extract entities and their relationships from the given text.
     """
-    client = get_mistral_client(api_keys, task="graph")
+    client = get_gemini_client(api_keys, task="graph")
     if not client:
         return {"nodes": [], "edges": []}
 
@@ -35,34 +35,29 @@ Output strictly in JSON format:
     # Limit text to avoid token limits during extraction
     sample_text = text[:8000]
 
+    from google.genai import types
     try:
         print(f"[GRAPH] Extracting entities from {len(sample_text)} characters...")
-        response = client.chat.complete(
-            model=settings.models.mistral_large,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Extract the knowledge graph from this text:\n\n{sample_text}"}
-            ],
-            response_format={"type": "json_object"}
+        response = client.models.generate_content(
+            model=settings.models.gemini_flash,
+            contents=f"{system_prompt}\n\nExtract the knowledge graph from this text:\n\n{sample_text}",
+            config=types.GenerateContentConfig(response_mime_type="application/json")
         )
         
-        content = response.choices[0].message.content
+        content = response.text
         return json.loads(content)
         
     except Exception as e:
-        if "429" in str(e) and api_keys and api_keys.get("mistral"):
+        if "429" in str(e) and api_keys and api_keys.get("gemini"):
             print("[GRAPH] User key rate limited. Switching to backend pool...")
-            client = get_mistral_client({}, task="graph")
+            client = get_gemini_client({}, task="graph")
             try:
-                response = client.chat.complete(
-                    model=settings.models.mistral_large,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Extract the knowledge graph from this text:\n\n{sample_text}"}
-                    ],
-                    response_format={"type": "json_object"}
+                response = client.models.generate_content(
+                    model=settings.models.gemini_flash,
+                    contents=f"{system_prompt}\n\nExtract the knowledge graph from this text:\n\n{sample_text}",
+                    config=types.GenerateContentConfig(response_mime_type="application/json")
                 )
-                return json.loads(response.choices[0].message.content)
+                return json.loads(response.text)
             except Exception as inner_e:
                 print(f"[GRAPH] Backend pool also failed: {inner_e}")
                 return {"nodes": [], "edges": []}
