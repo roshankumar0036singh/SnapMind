@@ -106,10 +106,10 @@ export default function MainMobileNav({ isOpen }: MobileMenuProps) {
           </Link>
 
           <Link
-            href="/signin"
+            href="/signup"
             className="px-6 py-2.5 text-center text-sm font-medium text-white transition-all bg-primary-600 rounded-full hover:bg-primary-700 active:scale-95"
           >
-            Get Started
+            Start for free
           </Link>
         </div>
       </div>

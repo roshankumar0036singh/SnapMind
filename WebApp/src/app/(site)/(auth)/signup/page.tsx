@@ -3,30 +3,30 @@
 import Link from 'next/link';
 import { SignInWithGithub, SignInWithGoogle } from '../_components/social-auth';
 
-export default function SignInPage() {
+export default function SignUpPage() {
   return (
     <section className="py-28 relative overflow-hidden">
       <div className="wrapper">
         <div className="relative max-w-[600px] mx-auto">
-          <div className="contact-wrapper border p-8 sm:p-14 relative z-30 bg-white dark:bg-dark-primary dark:border-dark-primary border-gray-100">
+          <div className="contact-wrapper border p-8 sm:p-14 relative z-30 bg-white dark:bg-dark-primary dark:border-dark-primary border-gray-100 rounded-2xl shadow-xl">
             <div className="text-center mb-8">
               <h3 className="text-gray-800 dark:text-white/90 font-bold text-3xl mb-2">
-                Sign In
+                Create an Account
               </h3>
               <p className="text-gray-500 dark:text-gray-400">
-                Enter your email and password to sign in!
+                Get started with SnapMind for free!
               </p>
             </div>
             <div className="flex flex-col sm:flex-row justify-center gap-y-3.5 gap-x-5 mt-8 mb-4">
-              <SignInWithGoogle />
-              <SignInWithGithub />
+              <SignInWithGoogle label="Sign up with Google" />
+              <SignInWithGithub label="Sign up with Github" />
             </div>
 
             <div className="mt-8">
               <p className="text-gray-700 dark:text-gray-400 text-sm text-center">
-                Don&apos;t have an account?{' '}
-                <Link href="/signup" className="text-primary-500 hover:underline font-medium">
-                  Sign up for free
+                Already have an account?{' '}
+                <Link href="/signin" className="text-primary-500 hover:underline font-medium">
+                  Sign in
                 </Link>
               </p>
             </div>
@@ -34,7 +34,7 @@ export default function SignInPage() {
         </div>
       </div>
 
-      <div className="absolute -bottom-32 left-1/2 -translate-x-1/2 z-0">
+      <div className="absolute -bottom-32 left-1/2 -translate-x-1/2 z-0 pointer-events-none">
         <svg
           width="930"
           height="760"
