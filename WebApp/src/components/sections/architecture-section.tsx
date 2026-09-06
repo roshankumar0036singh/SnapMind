@@ -47,20 +47,20 @@ export default function ArchitectureSection() {
   }) => (
     <button 
       onClick={() => openPopup(popupData)}
-      className={`flex items-center gap-3 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 p-3 rounded-xl transition-all duration-300 hover:bg-gray-50 hover:dark:bg-white/10 hover:border-primary-500/50 hover:shadow-[0_0_15px_rgba(70,179,240,0.15)] hover:-translate-y-0.5 text-left w-full group ${className}`}
+      className={`flex items-center gap-2.5 sm:gap-3 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 p-2.5 sm:p-3 rounded-xl transition-all duration-300 hover:bg-gray-50 hover:dark:bg-white/10 hover:border-primary-500/50 hover:shadow-[0_0_15px_rgba(70,179,240,0.15)] hover:-translate-y-0.5 text-left w-full min-w-0 group ${className}`}
     >
-      <div className="shrink-0 transition-transform group-hover:scale-110">
+      <div className="shrink-0 transition-transform group-hover:scale-110 flex items-center justify-center">
         {icon}
       </div>
-      <div className="flex flex-col">
-        <span className="text-sm font-bold text-gray-800 dark:text-white leading-tight">{title}</span>
-        {subtitle && <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</span>}
+      <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+        <span className="text-xs sm:text-sm font-bold text-gray-800 dark:text-white leading-tight truncate">{title}</span>
+        {subtitle && <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">{subtitle}</span>}
       </div>
     </button>
   );
 
   return (
-    <section id="architecture" className="py-20 lg:py-32 bg-[#F8FAFC] dark:bg-[#06080C] px-5 border-y border-gray-200 dark:border-white/5 relative overflow-hidden">
+    <section id="architecture" className="py-20 lg:py-32 bg-[#F8FAFC] dark:bg-[#06080C] px-3 sm:px-5 border-y border-gray-200 dark:border-white/5 relative overflow-hidden">
       
       {/* Background Grid Pattern */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
@@ -77,38 +77,38 @@ export default function ArchitectureSection() {
         </div>
 
         {/* Professional Architecture Diagram */}
-        <div className="relative w-full mx-auto bg-white/80 dark:bg-[#0A0D14]/90 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-[32px] p-8 md:p-12 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]">
+        <div className="relative w-full mx-auto bg-white/80 dark:bg-[#0A0D14]/90 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-[24px] sm:rounded-[32px] p-3 sm:p-6 md:p-12 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]">
           
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 relative z-10">
             
             {/* 1. Inputs & Edge (Col 1-3) */}
-            <div className="xl:col-span-3 flex flex-col gap-8">
+            <div className="xl:col-span-3 flex flex-col gap-6 sm:gap-8">
               
-              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-5 rounded-2xl">
+              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-3.5 sm:p-5 rounded-2xl">
                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-blue-500"></div> Data Sources
                 </div>
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5 sm:gap-3">
                   <ComponentBox 
-                    icon={<GithubIcon className="w-6 h-6 text-gray-700 dark:text-gray-300" />}
+                    icon={<GithubIcon className="w-5 h-5 sm:w-6 sm:h-6 text-gray-700 dark:text-gray-300" />}
                     title="GitHub Repos"
                     subtitle="OAuth App / Webhooks"
                     popupData={{ title: "GitHub Integration", description: "Continuously syncs repositories using OAuth apps. Listens to webhooks for real-time code updates and file tracking.", tags: ["Git", "OAuth", "Webhooks"] }}
                   />
                   <ComponentBox 
-                    icon={<VideoGeneratorIcon className="w-8 h-8 text-red-500" />}
+                    icon={<VideoGeneratorIcon className="w-5 h-5 sm:w-6 sm:h-6 text-red-500" />}
                     title="YouTube Transcripts"
                     subtitle="Multi-lang Parsing"
                     popupData={{ title: "YouTube Ingestion", description: "Bypasses rate limits using a waterfall cascade of proxies to extract accurate, timestamped video transcripts.", tags: ["PyTube", "Transcript API", "Proxies"] }}
                   />
                   <ComponentBox 
-                    icon={<AttachmentIcon className="w-6 h-6 text-orange-500" />}
+                    icon={<AttachmentIcon className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />}
                     title="Local Documents"
                     subtitle="PDFs, DOCX, TXT"
                     popupData={{ title: "Document Parser", description: "Applies advanced OCR and structural layout detection to parse complex PDFs, tables, and images.", tags: ["OCR", "Layout Parser", "PDF.js"] }}
                   />
                   <ComponentBox 
-                    icon={<CodeXmlIcon className="w-6 h-6 text-blue-500" />}
+                    icon={<CodeXmlIcon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />}
                     title="Web Pages"
                     subtitle="Dynamic Scraping"
                     popupData={{ title: "Web Crawler", description: "Navigates dynamic JS-heavy websites to extract semantic article content and clean markdown.", tags: ["Headless Browser", "Markdown"] }}
@@ -116,12 +116,12 @@ export default function ArchitectureSection() {
                 </div>
               </div>
 
-              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-5 rounded-2xl">
+              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-3.5 sm:p-5 rounded-2xl">
                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-cyan-500"></div> Local Context
                 </div>
                 <ComponentBox 
-                  icon={<SettingsIcon className="w-6 h-6 text-cyan-500" />}
+                  icon={<SettingsIcon className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-500" />}
                   title="MCP Server"
                   subtitle="Model Context Protocol"
                   popupData={{ title: "MCP Server", description: "A local daemon that connects your IDE and local file system securely to the cloud inference engine, providing deep context.", tags: ["Daemon", "IDE Integration", "Secure RPC"] }}
@@ -138,31 +138,31 @@ export default function ArchitectureSection() {
 
             {/* 2. Core Processing Backend (Col 5-8) */}
             <div className="xl:col-span-4 flex flex-col">
-              <div className="flex-1 border border-primary-500/30 bg-primary-500/[0.02] rounded-[32px] p-6 md:p-8 relative shadow-inner">
-                <div className="absolute -top-3 left-10 bg-white dark:bg-[#0B0E14] px-4 py-1 text-xs font-bold text-primary-500 uppercase tracking-widest border border-primary-500/30 rounded-full">
+              <div className="flex-1 border border-primary-500/30 bg-primary-500/[0.02] rounded-[24px] sm:rounded-[32px] p-3 sm:p-6 md:p-8 relative shadow-inner">
+                <div className="absolute -top-3 left-6 sm:left-10 bg-white dark:bg-[#0B0E14] px-3 sm:px-4 py-0.5 sm:py-1 text-[10px] sm:text-xs font-bold text-primary-500 uppercase tracking-widest border border-primary-500/30 rounded-full">
                   AI Orchestrator Engine
                 </div>
                 
-                <div className="space-y-4 mt-6">
+                <div className="space-y-3 sm:space-y-4 mt-4 sm:mt-6">
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
                     <ComponentBox 
                       icon={<SettingsIcon className="w-5 h-5 text-indigo-500" />}
                       title="API Gateway"
                       subtitle="Rate Limiting"
-                      className="col-span-2"
+                      className="col-span-1 sm:col-span-2"
                       popupData={{ title: "API Gateway", description: "The central entry point handling authentication, rate limiting, and routing requests to specialized background workers.", tags: ["FastAPI", "Redis Rate Limits"] }}
                     />
                     
                     <ComponentBox 
-                      icon={<TextGeneratorIcon className="w-8 h-8 text-rose-500" />}
+                      icon={<TextGeneratorIcon className="w-5 h-5 sm:w-6 sm:h-6 text-rose-500" />}
                       title="Async Workers"
                       subtitle="Celery Tasks"
                       popupData={{ title: "Async Ingestion", description: "Scalable background workers handling heavy I/O operations like web scraping and video downloading without blocking the main thread.", tags: ["Celery", "RabbitMQ"] }}
                     />
                     
                     <ComponentBox 
-                      icon={<CodeGeneratorIcon className="w-8 h-8 text-purple-500" />}
+                      icon={<CodeGeneratorIcon className="w-5 h-5 sm:w-6 sm:h-6 text-purple-500" />}
                       title="GraphRAG"
                       subtitle="Entity Mapping"
                       popupData={{ title: "GraphRAG Engine", description: "Uses LLMs to extract nodes (entities) and edges (relationships), building a multi-hop semantic knowledge graph from unstructured text.", tags: ["Graph Extraction", "Multi-hop"] }}
@@ -183,23 +183,23 @@ export default function ArchitectureSection() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
                     <ComponentBox 
-                      icon={<Layers className="w-6 h-6 text-emerald-500" />}
+                      icon={<Layers className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500" />}
                       title="Chunker"
                       subtitle="Context-Aware Splits"
                       popupData={{ title: "Semantic Chunking", description: "Intelligently splits large documents into cohesive chunks based on semantic boundaries rather than fixed token limits.", tags: ["Recursive Splitting"] }}
                     />
                     
                     <ComponentBox 
-                      icon={<SettingsIcon className="w-6 h-6 text-orange-500" />}
+                      icon={<SettingsIcon className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />}
                       title="Reranker"
                       subtitle="Reranking Layer"
                       popupData={{ title: "Reranker", description: "A secondary neural model that scores and reranks the initial retrieved chunks to dramatically improve final context relevance.", tags: ["Cohere", "BGE-Reranker"] }}
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-4">
                     <ComponentBox 
                       icon={<Globe className="w-5 h-5 text-blue-500" />}
                       title="Firecrawl"
@@ -216,7 +216,7 @@ export default function ArchitectureSection() {
                   </div>
 
                   <ComponentBox 
-                    icon={<ChatGPTIcon className="w-6 h-6 text-emerald-500" />}
+                    icon={<ChatGPTIcon className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500" />}
                     title="LLM Router"
                     subtitle="GPT-4o / Claude 3.5 / Gemini"
                     className="w-full"
@@ -237,34 +237,34 @@ export default function ArchitectureSection() {
             {/* 3. Storage & Clients (Col 10-12) */}
             <div className="xl:col-span-3 flex flex-col gap-8">
               
-              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-5 rounded-2xl">
+              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-3.5 sm:p-5 rounded-2xl">
                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Data Layer
                 </div>
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5 sm:gap-3">
                   <ComponentBox 
-                    icon={<Database className="w-6 h-6 text-emerald-500" />}
+                    icon={<Database className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500" />}
                     title="Vector DB"
                     subtitle="LanceDB / pgvector"
                     popupData={{ title: "Vector Database", description: "Stores high-dimensional embeddings for blazing-fast similarity search and semantic retrieval.", tags: ["LanceDB", "pgvector"] }}
                   />
                   
                   <ComponentBox 
-                    icon={<CodeXmlIcon className="w-6 h-6 text-orange-500" />}
+                    icon={<CodeXmlIcon className="w-5 h-5 sm:w-6 sm:h-6 text-orange-500" />}
                     title="Relational DB"
                     subtitle="Supabase Postgres"
                     popupData={{ title: "Relational Database", description: "Stores user accounts, metadata, chat histories, and access controls using Postgres with Row Level Security.", tags: ["PostgreSQL", "RLS"] }}
                   />
 
                   <ComponentBox 
-                    icon={<Box className="w-6 h-6 text-pink-500" />}
+                    icon={<Box className="w-5 h-5 sm:w-6 sm:h-6 text-pink-500" />}
                     title="Graph Store"
                     subtitle="Supabase"
                     popupData={{ title: "Graph Database", description: "Maintains the structural topology of your knowledge graph, enabling complex Cypher queries for interconnected concepts.", tags: ["Supabase", "Graph Traversal"] }}
                   />
 
                   <ComponentBox 
-                    icon={<Cloud className="w-6 h-6 text-blue-400" />}
+                    icon={<Cloud className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />}
                     title="Blob Storage"
                     subtitle="S3 / R2"
                     popupData={{ title: "Object Storage", description: "Stores the raw, unprocessed PDFs, images, and raw HTML dumps securely before they pass through the ingestion pipeline.", tags: ["AWS S3", "Cloudflare R2"] }}
@@ -272,27 +272,27 @@ export default function ArchitectureSection() {
                 </div>
               </div>
 
-              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-5 rounded-2xl">
+              <div className="bg-gray-50/50 dark:bg-[#11151F] border border-gray-200 dark:border-white/5 p-3.5 sm:p-5 rounded-2xl">
                 <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-primary-500"></div> Client Apps
                 </div>
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5 sm:gap-3">
                   <ComponentBox 
-                    icon={<TextGeneratorIcon className="w-6 h-6 text-primary-500" />}
+                    icon={<TextGeneratorIcon className="w-5 h-5 sm:w-6 sm:h-6 text-primary-500" />}
                     title="Next.js Web UI"
                     subtitle="Dashboard & Canvas"
                     popupData={{ title: "Web Application", description: "React-based interface featuring a streaming chat window, interactive canvas, and graphical knowledge map.", tags: ["Next.js", "Tailwind", "React Flow"] }}
                   />
 
                   <ComponentBox 
-                    icon={<AppWindow className="w-6 h-6 text-gray-800 dark:text-gray-200" />}
+                    icon={<AppWindow className="w-5 h-5 sm:w-6 sm:h-6 text-gray-800 dark:text-gray-200" />}
                     title="Chrome Extension"
                     subtitle="Capture Anywhere"
                     popupData={{ title: "Browser Extension", description: "Injects SnapMind into your browser allowing you to highlight text, bookmark pages, and chat with the current tab context instantly.", tags: ["Content Scripts", "Service Workers"] }}
                   />
 
                   <ComponentBox 
-                    icon={<CodeXmlIcon className="w-6 h-6 text-indigo-500" />}
+                    icon={<CodeXmlIcon className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-500" />}
                     title="IDE Integrations"
                     subtitle="MCP Client"
                     popupData={{ title: "IDE Extension", description: "Connects your local VSCode or JetBrains environment directly to the SnapMind AI orchestrator to provide rich codebase context.", tags: ["VS Code", "Model Context Protocol"] }}
@@ -304,10 +304,10 @@ export default function ArchitectureSection() {
           </div>
 
           {/* Infrastructure & Deployment Layer (Bottom span) */}
-          <div className="mt-16 pt-10 border-t border-gray-200 dark:border-white/10 relative z-10">
+          <div className="mt-12 sm:mt-16 pt-8 sm:pt-10 border-t border-gray-200 dark:border-white/10 relative z-10">
             <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-6 text-center">Global Infrastructure & Deployment</div>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 max-w-4xl mx-auto">
               
               <ComponentBox 
                 icon={<svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6 dark:text-white text-black"><path d="M24 22.525H0l12-21.05 12 21.05z"/></svg>}
